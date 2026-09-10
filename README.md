@@ -42,9 +42,10 @@ checkouts should use `pnpm install --frozen-lockfile`.
 
 ## Quality commands
 
-Shared TypeScript, ESLint, and Prettier configuration lives in
-`packages/config` and is wired from the repository root. Every workspace
-project has a minimal `src/index.ts`, `tsconfig.json` (extending
+Shared TypeScript, ESLint, Prettier, and Vitest configuration lives in
+`packages/config` and is re-exported from the repository root
+(`eslint.config.mjs`, `prettier.config.mjs`, `vitest.config.ts`). Every
+workspace project has a minimal `src/index.ts`, `tsconfig.json` (extending
 `packages/config/tsconfig/base.json`), and `build` / `typecheck` scripts.
 
 ```sh
