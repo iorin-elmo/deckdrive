@@ -25,8 +25,9 @@ scripts/setup/setup.mjs generates .env, starts postgres/mailpit, waits for healt
 ```
 
 `api`, `web`, and `admin` services are intentionally not defined in
-`docker-compose.yml` yet — those apps do not exist in the repository yet, so
-there is nothing to containerize. Adding them is out of scope for F02.
+`docker-compose.yml` yet — those apps have no Dockerfile or application code
+to containerize yet (`apps/*` are still empty scaffolds from F00). Adding
+them is out of scope for F02.
 
 ## Usage
 

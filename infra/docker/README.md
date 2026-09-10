@@ -19,9 +19,10 @@ infra/docker/
   infrastructure and Raspberry Pi host configuration respectively; do not
   duplicate that responsibility here.
 - `api/`, `web/`, and `admin/` service definitions and their Dockerfiles are
-  added by each app's owning implementation phase, once the apps exist. Until
-  then, `docker-compose.yml` only defines the `postgres` and `mailpit`
-  dependencies described by this task (F02).
+  added by each app's owning implementation phase, once those apps have a
+  Dockerfile and something to run. Until then, `docker-compose.yml` only
+  defines the `postgres` and `mailpit` dependencies described by this task
+  (F02).
 
 ## Postgres init scripts
 
