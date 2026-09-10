@@ -71,6 +71,10 @@ docker compose down
 | mailpit | 1025 | SMTP (dev outbound mail capture) |
 | mailpit | 8025 | Web UI + REST API (`/livez`, `/readyz`) |
 
+All three ports are published bound to `127.0.0.1` only, so they are not
+reachable from other machines on the LAN. If you change `POSTGRES_PORT`,
+also update the port in `DATABASE_URL` — it is not derived automatically.
+
 ## Health checks
 
 - `postgres`: Compose `healthcheck` using `pg_isready`, since the official

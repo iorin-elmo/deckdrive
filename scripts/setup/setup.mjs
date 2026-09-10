@@ -147,4 +147,6 @@ async function main() {
   );
 }
 
-main();
+main().catch((error) => {
+  fail(error instanceof Error ? error.message : String(error));
+});
