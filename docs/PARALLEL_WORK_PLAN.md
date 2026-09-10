@@ -10,6 +10,31 @@
 - 並列化は原則として同一 Phase 内に限定する。後続 Phase は設計調査のみ先行可能で、実装着手は前 Phase の受け入れ後。
 - 以下のタスクはすべて未着手。GitHub Issue 作成時に担当、状態、ブランチ、PR、検証結果を追跡する。
 
+## GitHub 追跡先
+
+- リポジトリ: [iorin-elmo/deckdrive](https://github.com/iorin-elmo/deckdrive) (private)。
+- main と develop に元の仕様書を初回登録済み。以後の変更はレビュー付き PR とする。
+- 本計画のレビュー: [PR #1](https://github.com/iorin-elmo/deckdrive/pull/1) (`docs/parallel-work-plan` → `develop`)。レビューとマージは未完了。
+- [タスク一覧](https://github.com/iorin-elmo/deckdrive/issues) に24件を登録済み。依存は各 Issue 本文にリンクし、すべて未着手・未割当。
+- 最初に PR #1 を独立レビューし、マージ後に F00 を割り当てる。F00 完了後に F01 と F02 を並列化する。
+
+| Phase | タスクと Issue |
+| --- | --- |
+| 0 | [F00 #2](https://github.com/iorin-elmo/deckdrive/issues/2), [F01 #3](https://github.com/iorin-elmo/deckdrive/issues/3), [F02 #4](https://github.com/iorin-elmo/deckdrive/issues/4), [F03 #5](https://github.com/iorin-elmo/deckdrive/issues/5) |
+| 1 | [E00 #6](https://github.com/iorin-elmo/deckdrive/issues/6), [E01 #7](https://github.com/iorin-elmo/deckdrive/issues/7), [E02 #8](https://github.com/iorin-elmo/deckdrive/issues/8), [E03 #9](https://github.com/iorin-elmo/deckdrive/issues/9), [E04 #10](https://github.com/iorin-elmo/deckdrive/issues/10) |
+| 2 | [R00 #11](https://github.com/iorin-elmo/deckdrive/issues/11), [R01 #12](https://github.com/iorin-elmo/deckdrive/issues/12), [R02 #13](https://github.com/iorin-elmo/deckdrive/issues/13) |
+| 3 | [D00 #14](https://github.com/iorin-elmo/deckdrive/issues/14), [D01 #15](https://github.com/iorin-elmo/deckdrive/issues/15) |
+| 4 | [A00 #16](https://github.com/iorin-elmo/deckdrive/issues/16) |
+| 5 | [W00 #17](https://github.com/iorin-elmo/deckdrive/issues/17) |
+| 6 | [P00 #18](https://github.com/iorin-elmo/deckdrive/issues/18) |
+| 7 | [M00 #19](https://github.com/iorin-elmo/deckdrive/issues/19) |
+| 8 | [O00 #20](https://github.com/iorin-elmo/deckdrive/issues/20) |
+| 9 | [V00 #21](https://github.com/iorin-elmo/deckdrive/issues/21) |
+| 10 | [K00 #22](https://github.com/iorin-elmo/deckdrive/issues/22) |
+| 11 | [N00 #23](https://github.com/iorin-elmo/deckdrive/issues/23) |
+| 12 | [I00 #24](https://github.com/iorin-elmo/deckdrive/issues/24) |
+| 13 | [U00 #25](https://github.com/iorin-elmo/deckdrive/issues/25) |
+
 ## チーム構成
 
 | 役割 | 責任 | 制約 |
@@ -24,7 +49,7 @@
 
 ## ブランチと作業場所
 
-1. 初期仕様を main に登録し、develop を作る初回 bootstrap はユーザー承認のうえで行う。
+1. 初期仕様を main に登録し、develop を作る初回 bootstrap はユーザー承認のうえで実施済み。
 2. 以後は最新の develop から `feat/<task-id>-<topic>` または `docs/<task-id>-<topic>` を分岐する。
 3. 各 AI は別 clone または別 Git worktree を使う。同じ作業ディレクトリで並列編集しない。
 4. worktree はリポジトリの外の兄弟ディレクトリに作る。同じブランチを複数 worktree で使用しない。
@@ -80,7 +105,7 @@ git worktree add ../deckdrive-f02 -b feat/f02-local-runtime origin/develop
 
 ### 開始可能な並列枠
 
-- 現在: F00 の担当 1 名のみ実装開始可能。別 AI は仕様レビューと環境前提の調査を読み取り専用で実行できる。
+- 現在: 計画 PR #1 のレビュー待ち。マージ後に F00 の担当 1 名が実装開始可能。別 AI は仕様レビューと環境前提の調査を読み取り専用で実行できる。
 - F00 マージ後: F01 と F02 を並列実装。F01 がルートの品質コマンドを変更する間、F02 はルート manifests を変更しない。
 - F01 と F02 マージ後: F03 で統合。構成だけで api / web / admin が動いたことにはしない。
 - E00 マージ後: E01 と E02 を並列実装。その後 E03 → E04。
@@ -149,8 +174,8 @@ git worktree add ../deckdrive-f02 -b feat/f02-local-runtime origin/develop
 
 ## ユーザー確認が必要な外部操作
 
-- GitHub: `iorin-elmo` 名義の private リポジトリ作成は依頼済み。名前はローカル名に合わせ `deckdrive` を提案。
+- GitHub: `iorin-elmo/deckdrive` を private で作成済み。
 - GitHub 認証はブラウザまたは端末でユーザー本人が行う。token / password をチャットに貼らない。
-- 初回 commit / push、デフォルトブランチ、レビュー運用、Issues の一括作成は実行前に確認する。
+- 初回 commit / push、main / develop 作成、計画 PR、24件の Issues 登録は承認済み・実施済み。レビューとマージは別途行う。
 - GitHub Actions の有料枠、private repo の branch protection 利用可否、外部サービス・DNS・Pi・バックアップ先は必要時に確認する。
 - 本番への deploy、破壊的 DB 操作、課金が発生する apply は個別承認を得る。
