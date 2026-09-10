@@ -80,8 +80,8 @@ function runDockerCompose(args) {
 }
 
 async function waitForPostgres(env) {
-  const user = env.POSTGRES_USER ?? "deckdrive";
-  const db = env.POSTGRES_DB ?? "deckdrive";
+  const user = env.POSTGRES_USER || "deckdrive";
+  const db = env.POSTGRES_DB || "deckdrive";
   const deadline = Date.now() + WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const result = spawnSync(
@@ -99,7 +99,7 @@ async function waitForPostgres(env) {
 }
 
 async function waitForMailpit(env) {
-  const port = env.MAILPIT_UI_PORT ?? "8025";
+  const port = env.MAILPIT_UI_PORT || "8025";
   const deadline = Date.now() + WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const live = await checkHttpOk(`http://127.0.0.1:${port}/livez`);
