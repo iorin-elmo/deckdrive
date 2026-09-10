@@ -25,8 +25,8 @@ versions in individual workspaces.
 | Node.js | 26.8.2 | JavaScript runtime |
 | pnpm | 12.3.4 | Workspace package manager |
 | Terraform | 1.16.1 | Infrastructure provisioning |
-| pipx | 1.17.2 | Ansible installer (WSL2/Linux/macOS only) |
-| Ansible | 14.4.0 | Host configuration (WSL2/Linux/macOS only) |
+| pipx | 1.17.2 | Ansible installer (WSL2/Linux only) |
+| Ansible | 14.4.0 | Host configuration (WSL2/Linux only) |
 
 ## Setup
 
