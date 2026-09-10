@@ -87,8 +87,8 @@ async function waitForMailpit(env) {
   const port = env.MAILPIT_UI_PORT ?? "8025";
   const deadline = Date.now() + WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const live = await checkHttpOk(`http://localhost:${port}/livez`);
-    const ready = await checkHttpOk(`http://localhost:${port}/readyz`);
+    const live = await checkHttpOk(`http://127.0.0.1:${port}/livez`);
+    const ready = await checkHttpOk(`http://127.0.0.1:${port}/readyz`);
     if (live && ready) {
       log("mailpit is ready.");
       return true;

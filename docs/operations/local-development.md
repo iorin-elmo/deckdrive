@@ -41,7 +41,7 @@ node scripts/setup/setup.mjs
 1. Generates `.env` from `.env.example` if it does not already exist.
 2. Runs `docker compose up -d postgres mailpit`.
 3. Polls `pg_isready` inside the `postgres` container until ready.
-4. Polls `http://localhost:${MAILPIT_UI_PORT}/livez` and `/readyz` until
+4. Polls `http://127.0.0.1:${MAILPIT_UI_PORT}/livez` and `/readyz` until
    Mailpit responds `200 OK`.
 5. Prints which later `pnpm setup` steps (DB migration, DB seed, dev user,
    card/mission/cosmetic data) are **not implemented yet** — those belong to
@@ -58,8 +58,8 @@ Manual equivalent, without the setup script:
 docker compose up -d postgres mailpit
 docker compose ps
 docker compose exec postgres pg_isready -U deckdrive -d deckdrive
-curl http://localhost:8025/livez
-curl http://localhost:8025/readyz
+curl http://127.0.0.1:8025/livez
+curl http://127.0.0.1:8025/readyz
 docker compose down
 ```
 
@@ -108,7 +108,7 @@ docker compose down -v
   machine with Docker installed and confirm:
   - `docker compose config` reports no errors.
   - `docker compose ps` shows `postgres` as `healthy`.
-  - `curl http://localhost:8025/livez` and `/readyz` return `200`.
+  - `curl http://127.0.0.1:8025/livez` and `/readyz` return `200`.
 - `api` / `web` / `admin` real startup is explicitly out of scope (see
   "What this task provides" above) and is verified by their owning phases
   and F03 integration.
