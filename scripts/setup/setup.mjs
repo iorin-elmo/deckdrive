@@ -50,8 +50,11 @@ function loadEnvFile() {
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
     const quote = value[0];
-    if ((quote === '"' || quote === "'") && value.endsWith(quote) && value.length >= 2) {
-      value = value.slice(1, -1);
+    if (quote === '"' || quote === "'") {
+      // take only what's between the quotes; anything after the closing
+      // quote (e.g. a trailing "# comment") is discarded
+      const closingIndex = value.indexOf(quote, 1);
+      value = closingIndex !== -1 ? value.slice(1, closingIndex) : value.slice(1);
     } else {
       // strip an unquoted trailing "# ..." inline comment
       const commentIndex = value.indexOf(" #");
