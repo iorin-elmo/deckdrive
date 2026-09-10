@@ -86,18 +86,20 @@ git worktree add ../deckdrive-f02 -b feat/f02-local-runtime origin/develop
 
 依存欄の `-` は前提タスクなし。実装は TDD の Red → Green → Refactor を小さい単位で繰り返す。環境設定・文書のみの変更は、構成検証やリンク検証を対応する確認手段とする。
 
+変更範囲に記載した未作成のパスは、各タスクで作成する成果物の予定先であり、既存文書への参照リンクではない。特に新規文書と ADR ディレクトリは下表で明示する。本計画のローカル文書リンク検証は、Markdown リンクの参照先が現在存在することを確認するもので、予定成果物の存在確認は含まない。
+
 | ID | Phase | タスク | 依存 | 変更範囲 | 完了条件 |
 | --- | --- | --- | --- | --- | --- |
 | F00 | 0 | workspace とツールバージョンの契約 | - | ルート manifests、mise.toml、各 workspace の最小 manifests、README | 仕様 §4 の配置、§5 のバージョン固定、pnpm install 成功。Windows / WSL / Linux の対応境界を記録 |
 | F01 | 0 | TypeScript と品質チェック | F00 | packages/config、最小ソースと設定、品質コマンド | pnpm lint / typecheck / build 成功、format check と Vitest の実行基盤。意味のない常時成功テストは禁止 |
-| F02 | 0 | ローカル Docker と環境雛形 | F00 | infra/docker、docker-compose.yml、.env.example、scripts/setup 関連、docs/operations/local-development.md | Compose 構成検証、PostgreSQL / Mailpit の起動と health。api / web / admin の実起動は各実装と統合時に検証し、未実装を明記 |
-| F03 | 0 | PR CI と基盤受け入れ | F01,F02 | .github/workflows、docs/operations/ci.md | clean checkout で install / lint / format / typecheck / build。unit / integration / replay / E2E の導入段階と残ゲートを明示し、未実装を成功扱いしない |
-| E00 | 1 | Engine / カード公開契約と ADR | F03 | packages/game-engine の型・公開入口、packages/card-definitions の型、docs/architecture/adr | BattleState / Action / Event / Result / RNG 契約、version の責務、依存禁止をレビュー。状態不変性と不正 Action の失敗テスト |
+| F02 | 0 | ローカル Docker と環境雛形 | F00 | infra/docker、docker-compose.yml、.env.example、scripts/setup 関連、docs/operations/local-development.md（F02 で新規作成） | Compose 構成検証、PostgreSQL / Mailpit の起動と health。api / web / admin の実起動は各実装と統合時に検証し、未実装を明記 |
+| F03 | 0 | PR CI と基盤受け入れ | F01,F02 | .github/workflows、docs/operations/ci.md（F03 で新規作成） | clean checkout で install / lint / format / typecheck / build。unit / integration / replay / E2E の導入段階と残ゲートを明示し、未実装を成功扱いしない |
+| E00 | 1 | Engine / カード公開契約と ADR | F03 | packages/game-engine の型・公開入口、packages/card-definitions の型、docs/architecture/adr/（E00 でディレクトリと ADR 文書を新規作成） | BattleState / Action / Event / Result / RNG 契約、version の責務、依存禁止をレビュー。状態不変性と不正 Action の失敗テスト |
 | E01 | 1 | 決定的 RNG | E00 | packages/game-engine/src/random と隣接テスト | SeededRandom / FixedRandom。同 seed の同列、保存復元、Math.random 不使用。外部 I/O・global mutable state なし |
-| E02 | 1 | 最小カード DSL と基本カード | E00 | packages/card-definitions のデータ・検証・テスト、docs/game/cards.md | Sword / Guardian / Neutral の最小データ、カード ID / version / DSL / copy limit の検証。35 枚全体の完成とは分ける |
+| E02 | 1 | 最小カード DSL と基本カード | E00 | packages/card-definitions のデータ・検証・テスト、docs/game/cards.md（E02 で新規作成） | Sword / Guardian / Neutral の最小データ、カード ID / version / DSL / copy limit の検証。35 枚全体の完成とは分ける |
 | E03 | 1 | 状態遷移と基本効果 | E01,E02 | packages/game-engine の状態遷移・action・effect と隣接テスト | validateAction / applyAction / calculateResult、HP30・energy3、合法手、block・draw・勝敗、イベント順序を given/when/then で検証 |
-| E04 | 1 | Engine 不変条件と Phase 受け入れ | E03 | packages/game-engine の property test、tests/fixtures/battles、docs/game/engine.md | fast-check で §84、不正 action で不変、決定性・ゲーム外依存禁止を検証。UI / CPU への依存なし |
-| R00 | 2 | Replay 形式と記録 | E04 | packages/game-engine の Replay 純粋処理、tests/fixtures/replays、docs/game/replay.md | seed / versions / initialState / actions / events / snapshots / finalState を記録。同条件の再生一致と改変検出。filesystem は Engine 外 |
+| E04 | 1 | Engine 不変条件と Phase 受け入れ | E03 | packages/game-engine の property test、tests/fixtures/battles、docs/game/engine.md（E04 で新規作成） | fast-check で §84、不正 action で不変、決定性・ゲーム外依存禁止を検証。UI / CPU への依存なし |
+| R00 | 2 | Replay 形式と記録 | E04 | packages/game-engine の Replay 純粋処理、tests/fixtures/replays、docs/game/replay.md（R00 で新規作成） | seed / versions / initialState / actions / events / snapshots / finalState を記録。同条件の再生一致と改変検出。filesystem は Engine 外 |
 | R01 | 2 | Replay CLI | R00 | scripts/replay 関連と隣接テスト | pnpm replay --match <matchId> の成功・存在しない ID・非対応 version・不一致を検証。Phase 2 は fixture 入力、実 DB 接続は D01 |
 | R02 | 2 | Replay 回帰ゲート | R00 | tests の Replay 回帰スイート、統合担当による CI 追記 | 既知 fixture 再現、期待結果の故意の不一致で失敗。旧 version の結果を黙って上書きしない |
 | D00 | 3 | Prisma schema / migration / seed | R01,R02 | apps/api の Prisma 関連、tests/fixtures の DB seed データ | §52 のうち Phase 3 対象、version 保全・制約・index、空 DB migration / seed、開発専用 seed の本番拒否、復旧方針 |
