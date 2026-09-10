@@ -40,6 +40,25 @@ pnpm install
 The generated `pnpm-lock.yaml` is part of the workspace contract. CI and clean
 checkouts should use `pnpm install --frozen-lockfile`.
 
+## Quality commands
+
+Shared TypeScript, ESLint, Prettier, and Vitest configuration lives in
+`packages/config` and is re-exported from the repository root
+(`eslint.config.mjs`, `prettier.config.mjs`, `vitest.config.ts`). Every
+workspace project has a minimal `src/index.ts`, `tsconfig.json` (extending
+`packages/config/tsconfig/base.json`), and `build` / `typecheck` scripts.
+
+```sh
+pnpm lint       # eslint .
+pnpm format     # prettier --check .
+pnpm typecheck  # tsc -p tsconfig.json --noEmit in every workspace project
+pnpm build      # tsc -p tsconfig.json in every workspace project
+pnpm test       # vitest run
+```
+
+`pnpm format:write` applies Prettier fixes. Markdown files and the generated
+`pnpm-lock.yaml` are excluded from Prettier via `.prettierignore`.
+
 ## Platform boundary
 
 Node.js, pnpm, and Terraform are supported on Windows, WSL2, and Linux. Use a
