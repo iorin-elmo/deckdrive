@@ -92,6 +92,12 @@ async function waitForPostgres(env) {
       ["compose", "exec", "-T", "postgres", "pg_isready", "-U", user, "-d", db],
       { cwd: repoRoot, stdio: "ignore" },
     );
+    if (result.error && result.error.code === "ENOENT") {
+      fail(
+        "Docker is not installed or not on PATH. Install Docker (Docker Desktop " +
+          "on Windows/macOS, or Docker Engine on Linux/WSL2) and retry.",
+      );
+    }
     if (result.status === 0) {
       log("postgres is ready.");
       return true;
