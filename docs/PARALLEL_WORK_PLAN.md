@@ -2,20 +2,20 @@
 
 更新日: 2026-09-10
 
-## 目的と現在地
+## 目的と運用方針
 
 - 正本は [IMPLEMENTATION_SPEC.md](IMPLEMENTATION_SPEC.md) と [copilot-instructions.md](copilot-instructions.md)。本書は仕様の置き換えではなく実行計画。
-- 現時点の成果物は仕様書と本計画のみ。アプリケーション実装・CI・テストは未作成。
+- 実装・CI・テストの到達状況は、各タスクの GitHub Issue と関連 PR の検証結果を参照する。本書では進捗の写しを管理しない。
 - 仕様 §107 の Phase 0 から 13 の順に受け入れる。全機能を同時に実装しない。
 - 並列化は原則として同一 Phase 内に限定する。後続 Phase は設計調査のみ先行可能で、実装着手は前 Phase の受け入れ後。
-- 以下のタスクはすべて未着手。GitHub Issue 作成時に担当、状態、ブランチ、PR、検証結果を追跡する。
+- 本書は24件のタスクと依存関係・完了条件を定義する。担当、状態、ブランチ、関連 PR、検証結果の最新情報は各 GitHub Issue を正とする。
 
 ## GitHub 追跡先
 
 - リポジトリ: [iorin-elmo/deckdrive](https://github.com/iorin-elmo/deckdrive) (private)。
 - main と develop に元の仕様書を初回登録済み。以後の変更はレビュー付き PR とする。
-- 本計画のレビュー: [PR #1](https://github.com/iorin-elmo/deckdrive/pull/1) (`docs/parallel-work-plan` → `develop`)。レビューとマージは未完了。
-- [タスク一覧](https://github.com/iorin-elmo/deckdrive/issues) に24件を登録済み。依存は各 Issue 本文にリンクし、すべて未着手・未割当。
+- 本計画のレビュー: [PR #1](https://github.com/iorin-elmo/deckdrive/pull/1) (`docs/parallel-work-plan` → `develop`)。レビューとマージの最新状態は PR 自体を参照する。
+- 本書で定義する24件のタスクと GitHub Issue の対応は下表を参照する。最新の担当・進捗は [タスク一覧](https://github.com/iorin-elmo/deckdrive/issues) および各 Issue を正とし、依存 Issue へのリンクは各 Issue 本文で管理する。
 - 最初に PR #1 を独立レビューし、マージ後に F00 を割り当てる。F00 完了後に F01 と F02 を並列化する。
 
 | Phase | タスクと Issue |
@@ -107,7 +107,7 @@ git worktree add -b feat/f02-local-runtime ../deckdrive-f02 origin/develop
 
 ### 開始可能な並列枠
 
-- 現在: 計画 PR #1 のレビュー待ち。マージ後に F00 の担当 1 名が実装開始可能。別 AI は仕様レビューと環境前提の調査を読み取り専用で実行できる。
+- F00 の着手条件: 計画 PR #1 の独立レビューとマージ完了を GitHub 上で確認し、担当 1 名を割り当てる。この条件を満たす前は、仕様レビューと環境前提の調査のみ読み取り専用で実行できる。
 - F00 マージ後: F01 と F02 を並列実装。F01 がルートの品質コマンドを変更する間、F02 はルート manifests を変更しない。
 - F01 と F02 マージ後: F03 で統合。構成だけで api / web / admin が動いたことにはしない。
 - E00 マージ後: E01 と E02 を並列実装。その後 E03 → E04。
@@ -179,6 +179,6 @@ git worktree add -b feat/f02-local-runtime ../deckdrive-f02 origin/develop
 
 - GitHub: `iorin-elmo/deckdrive` を private で作成済み。
 - GitHub 認証はブラウザまたは端末でユーザー本人が行う。token / password をチャットに貼らない。
-- 初回 commit / push、main / develop 作成、計画 PR、24件の Issues 登録は承認済み・実施済み。レビューとマージは別途行う。
+- 初回 commit / push、main / develop 作成、計画 PR、24件の Issues 登録はユーザー承認のうえで実施した。レビューとマージの履歴・最新状態は各 PR を参照する。
 - GitHub Actions の有料枠、private repo の branch protection 利用可否、外部サービス・DNS・Pi・バックアップ先は必要時に確認する。
 - 本番への deploy、破壊的 DB 操作、課金が発生する apply は個別承認を得る。
