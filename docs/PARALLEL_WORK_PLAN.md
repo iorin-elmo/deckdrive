@@ -62,8 +62,8 @@
 
 ```sh
 git fetch origin
-git worktree add ../deckdrive-f01 -b feat/f01-quality origin/develop
-git worktree add ../deckdrive-f02 -b feat/f02-local-runtime origin/develop
+git worktree add -b feat/f01-quality ../deckdrive-f01 origin/develop
+git worktree add -b feat/f02-local-runtime ../deckdrive-f02 origin/develop
 ```
 
 ## 共有ファイルの所有権
@@ -118,6 +118,7 @@ git worktree add ../deckdrive-f02 -b feat/f02-local-runtime origin/develop
 下表は親タスク。各 Phase 開始時に上表と同じ粒度まで分割し、変更ファイルと契約を確定してから AI に渡す。前 Phase の全タスク受け入れが追加の前提となる。
 
 | ID | Phase | 内容と仕様参照 | 依存 | 並列分担と受け入れ |
+| --- | --- | --- | --- | --- |
 | A00 | 4 | Player / Cards / Decks / CPU Match / Rewards API (§19-20,94-96) | D01 | 先に DTO と認可境界、DB 担当による schema 追加。次に collection/deck と CPU 方策を分担。CPU は合法手だけを Engine に渡し、4 難易度を検証。報酬は ledger / idempotency / transaction を先に最小実装し Phase 6 で再利用。開発認証は production で拒否 |
 | W00 | 5 | Title / Login placeholder / Home / Cards / Deck / CPU / Result (§63-72) | A00 | UI 契約と packages/ui を先行、その後 cards/decks と battle を分担。React Router / Zustand / Query / Tailwind を仕様どおり使用。カード画像のライセンスを記録。CPU 一連の E2E と loading/error/empty、a11y、responsive |
 | P00 | 6 | Pack / Box / Rare / Currency / duplicates (§36-45,101) | W00 | 抽選・シミュレーションと transactional API を確定した契約で並列化。DB 変更は一人。R/SR/UR 保証、二重要求・同時購入・ロールバック、重複変換、UI/E2E |
