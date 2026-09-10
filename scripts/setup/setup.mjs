@@ -13,6 +13,7 @@ const envExamplePath = resolve(repoRoot, ".env.example");
 
 const WAIT_TIMEOUT_MS = 60_000;
 const POLL_INTERVAL_MS = 2_000;
+const HTTP_PROBE_TIMEOUT_MS = 2_000;
 
 function log(message) {
   console.log(`[setup] ${message}`);
@@ -60,7 +61,8 @@ function loadEnvFile() {
     }
     env[key] = value;
   }
-  return env;
+  // process env takes precedence, matching docker compose's own variable resolution
+  return { ...env, ...process.env };
 }
 
 function runDockerCompose(args) {
@@ -112,11 +114,15 @@ async function waitForMailpit(env) {
 }
 
 async function checkHttpOk(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HTTP_PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { method: "GET" });
+    const response = await fetch(url, { method: "GET", signal: controller.signal });
     return response.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
