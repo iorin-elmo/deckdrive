@@ -39,12 +39,25 @@ function loadEnvFile() {
   const env = {};
   const contents = readFileSync(envPath, "utf8");
   for (const line of contents.split(/\r?\n/)) {
-    const trimmed = line.trim();
+    let trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
+    if (trimmed.startsWith("export ")) {
+      trimmed = trimmed.slice("export ".length).trim();
+    }
     const eq = trimmed.indexOf("=");
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote) && value.length >= 2) {
+      value = value.slice(1, -1);
+    } else {
+      // strip an unquoted trailing "# ..." inline comment
+      const commentIndex = value.indexOf(" #");
+      if (commentIndex !== -1) {
+        value = value.slice(0, commentIndex).trim();
+      }
+    }
     env[key] = value;
   }
   return env;
