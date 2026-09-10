@@ -1,0 +1,37 @@
+name: deck-drive
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-deckdrive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deckdrive}
+      POSTGRES_DB: ${POSTGRES_DB:-deckdrive}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deckdrive} -d ${POSTGRES_DB:-deckdrive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: ${MAILPIT_MAX_MESSAGES:-500}
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    # Mailpit's docker image is a minimal scratch-based build with no shell or
+    # wget/curl, so it cannot run a container-exec HEALTHCHECK. Readiness is
+    # instead verified from the host against /livez and /readyz (see
+    # scripts/setup/setup.mjs and docs/operations/local-development.md).
+
+volumes:
+  postgres-data:
