@@ -2,5 +2,12 @@
   "name": "@deck-drive/config",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
 }
