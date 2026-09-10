@@ -50,8 +50,8 @@ project has a minimal `src/index.ts`, `tsconfig.json` (extending
 ```sh
 pnpm lint       # eslint .
 pnpm format     # prettier --check .
-pnpm typecheck  # tsc --noEmit in every workspace project
-pnpm build      # tsc build in every workspace project
+pnpm typecheck  # tsc -p tsconfig.json --noEmit in every workspace project
+pnpm build      # tsc -p tsconfig.json in every workspace project
 pnpm test       # vitest run
 ```
 
