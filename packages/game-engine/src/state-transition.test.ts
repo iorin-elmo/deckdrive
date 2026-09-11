@@ -56,7 +56,30 @@ function createState(): BattleState {
 
 describe('state transitions', () => {
   it('given the initial state, when it is created, then each player starts at HP 30 and energy 3', () => {
-    expect(createState().players[0]).toMatchObject({ hp: 30, maxHp: 30, energy: 3, maxEnergy: 3 });
+    for (const player of createState().players) {
+      expect(player).toMatchObject({ hp: 30, maxHp: 30, energy: 3, maxEnergy: 3 });
+    }
+  });
+
+  it('given an initial draw cadence, when a battle starts, then the first player draws that many cards', () => {
+    const state = createInitialBattleState({
+      matchId: 'draw-match' as MatchId,
+      engineVersion: '1.0.0',
+      rulesVersion: '1.0.0',
+      cardDataVersion: '1.0.0',
+      seed: 'seed',
+      turnDrawCount: 2,
+      players: [
+        { id: playerOne, drawPile: [card('draw-1', 'strike'), card('draw-2', 'guard')] },
+        { id: playerTwo, drawPile: [] },
+      ],
+    });
+
+    expect(state.players[0]).toMatchObject({
+      hand: [card('draw-1', 'strike'), card('draw-2', 'guard')],
+      drawPile: [],
+    });
+    expect(state.events.map((event) => event.type)).toEqual(['CARD_DRAWN', 'CARD_DRAWN']);
   });
 
   it('given an attack and block, when a card is played, then block absorbs damage before HP', () => {
@@ -150,6 +173,43 @@ describe('state transitions', () => {
     ]);
   });
 
+  it('given a heal card, when it is played, then healing caps at max HP and omits no-op healing events', () => {
+    const heal: CardDefinition = {
+      id: 'heal',
+      cost: 1,
+      effects: [{ type: 'HEAL', amount: 6, target: 'SELF' }],
+    };
+    const original = createState();
+    const state = {
+      ...original,
+      players: [
+        { ...original.players[0]!, hp: 27, hand: [card('heal-1', heal.id)] },
+        original.players[1]!,
+      ],
+    };
+    const result = applyAction(
+      state,
+      { type: 'PLAY_CARD', playerId: playerOne, cardInstanceId: 'heal-1' as CardInstanceId },
+      [heal],
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.state.players[0]).toMatchObject({ hp: 30 });
+    expect(result.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'HEALED', amount: 3 })]),
+    );
+
+    const maxHpResult = applyAction(
+      { ...state, players: [{ ...state.players[0]!, hp: 30 }, state.players[1]!] },
+      { type: 'PLAY_CARD', playerId: playerOne, cardInstanceId: 'heal-1' as CardInstanceId },
+      [heal],
+    );
+    expect(maxHpResult).toMatchObject({ ok: true });
+    if (!maxHpResult.ok) return;
+    expect(maxHpResult.events.some((event) => event.type === 'HEALED')).toBe(false);
+  });
+
   it('given lethal damage, when the card resolves, then the match finishes after the card is discarded', () => {
     const original = createState();
     const state = {
@@ -230,6 +290,31 @@ describe('state transitions', () => {
     });
   });
 
+  it('given lethal first effect, when a later enemy effect would resolve, then resolution stops safely', () => {
+    const doubleStrike: CardDefinition = {
+      id: 'strike',
+      cost: 1,
+      effects: [
+        { type: 'DAMAGE', amount: 6, target: 'ENEMY' },
+        { type: 'DAMAGE', amount: 1, target: 'ENEMY' },
+      ],
+    };
+    const original = createState();
+    const state = {
+      ...original,
+      players: [original.players[0]!, { ...original.players[1]!, hp: 6, block: 0 }],
+    };
+    const result = applyAction(
+      state,
+      { type: 'PLAY_CARD', playerId: playerOne, cardInstanceId: 'strike-1' as CardInstanceId },
+      [doubleStrike],
+    );
+
+    expect(result).toMatchObject({ ok: true, state: { phase: 'MATCH_END' } });
+    if (!result.ok) return;
+    expect(result.events.filter((event) => event.type === 'DAMAGE_DEALT')).toHaveLength(1);
+  });
+
   it('given a factory input without exactly two players, when it is created, then it rejects it', () => {
     expect(() =>
       createInitialBattleState({
@@ -242,6 +327,23 @@ describe('state transitions', () => {
         players: [{ id: playerOne, drawPile: [] }],
       }),
     ).toThrow('exactly two players');
+  });
+
+  it('given duplicate player IDs, when a battle is created, then it rejects the invalid battle', () => {
+    expect(() =>
+      createInitialBattleState({
+        matchId: 'duplicate' as MatchId,
+        engineVersion: '1.0.0',
+        rulesVersion: '1.0.0',
+        cardDataVersion: '1.0.0',
+        seed: 'seed',
+        turnDrawCount: 1,
+        players: [
+          { id: playerOne, drawPile: [] },
+          { id: playerOne, drawPile: [] },
+        ],
+      }),
+    ).toThrow('unique player IDs');
   });
 
   it('given an end turn, when it resolves, then the next player draws and starts their turn', () => {

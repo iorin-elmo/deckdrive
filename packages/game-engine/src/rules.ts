@@ -61,9 +61,27 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
   if (firstPlayer === undefined || options.players.length !== 2) {
     throw new RangeError('A battle requires exactly two players.');
   }
+  if (new Set(options.players.map((player) => player.id)).size !== options.players.length) {
+    throw new RangeError('A battle requires unique player IDs.');
+  }
   if (!isNonNegativeInteger(options.turnDrawCount)) {
     throw new RangeError('Turn draw count must be a non-negative integer.');
   }
+
+  let players: BattlePlayerState[] = options.players.map((player) => ({
+    id: player.id,
+    hp: initialHp,
+    maxHp: initialHp,
+    energy: initialMaxEnergy,
+    maxEnergy: initialMaxEnergy,
+    block: 0,
+    drawPile: [...player.drawPile],
+    hand: [],
+    discard: [],
+    statuses: [],
+  }));
+  const emitted = eventEmitter([]);
+  players = draw(players, 0, options.turnDrawCount, emitted);
 
   return {
     matchId: options.matchId,
@@ -76,19 +94,8 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
     phase: 'PLAYER_TURN',
     turnDrawCount: options.turnDrawCount,
     stack: [],
-    events: [],
-    players: options.players.map((player) => ({
-      id: player.id,
-      hp: initialHp,
-      maxHp: initialHp,
-      energy: initialMaxEnergy,
-      maxEnergy: initialMaxEnergy,
-      block: 0,
-      drawPile: [...player.drawPile],
-      hand: [],
-      discard: [],
-      statuses: [],
-    })),
+    events: emitted.values,
+    players,
   };
 }
 
@@ -100,6 +107,10 @@ export function validateRuleAction(
   const player = state.players.find((candidate) => candidate.id === action.playerId);
   if (player === undefined)
     return invalid('PLAYER_NOT_FOUND', 'The action player is not in this battle.');
+  if (!isNonNegativeInteger(state.turnDrawCount)) {
+    return invalid('INVALID_TURN_DRAW_COUNT', 'Turn draw count must be a non-negative integer.');
+  }
+  if (player.hp <= 0) return invalid('PLAYER_DEFEATED', 'A defeated player cannot act.');
   if (calculateResult(state).status !== 'IN_PROGRESS')
     return invalid('MATCH_FINISHED', 'The match has finished.');
   if (state.phase !== 'PLAYER_TURN')
@@ -153,6 +164,7 @@ export function applyRuleAction(
   emitted.emit({ type: 'CARD_PLAYED', playerId: action.playerId, cardInstanceId: card.id });
 
   for (const [effectIndex, effect] of definition.effects.entries()) {
+    if (calculateResult({ ...state, players }).status !== 'IN_PROGRESS') break;
     emitted.emit({ type: 'EFFECT_STARTED', effectId: `${card.id}:${String(effectIndex + 1)}` });
     players = applyEffect(players, playerIndex, action, effect, emitted);
   }
@@ -176,7 +188,7 @@ function endTurn(state: BattleState, playerId: PlayerId) {
   const emitted = eventEmitter(state.events);
   let players = clonePlayers(state.players);
   emitted.emit({ type: 'TURN_ENDED', playerId });
-  players = draw(players, nextIndex, state.turnDrawCount ?? 0, emitted);
+  players = draw(players, nextIndex, state.turnDrawCount, emitted);
   players[nextIndex] = { ...players[nextIndex]!, energy: players[nextIndex]!.maxEnergy };
   emitted.emit({ type: 'TURN_STARTED', playerId: nextPlayer.id });
   return finish(
@@ -326,12 +338,29 @@ function isValidDefinition(definition: CardDefinition): boolean {
   return (
     isNonNegativeInteger(definition.cost) &&
     definition.effects.length > 0 &&
-    definition.effects.every((effect) =>
-      effect.type === 'CUSTOM'
-        ? typeof effect.resolver === 'string' && effect.resolver.trim().length > 0
-        : isPositiveInteger(effect.amount),
-    )
+    definition.effects.every(isValidEffect)
   );
+}
+
+function isValidEffect(effect: CardEffect): boolean {
+  switch (effect.type) {
+    case 'DAMAGE':
+      return (
+        isPositiveInteger(effect.amount) && (effect.target === 'SELF' || effect.target === 'ENEMY')
+      );
+    case 'HEAL':
+    case 'GAIN_BLOCK':
+    case 'DRAW':
+      return isPositiveInteger(effect.amount) && effect.target === 'SELF';
+    case 'CUSTOM':
+      return (
+        typeof effect.resolver === 'string' &&
+        effect.resolver.trim().length > 0 &&
+        (effect.target === 'SELF' || effect.target === 'ENEMY')
+      );
+    default:
+      return false;
+  }
 }
 
 function isPositiveInteger(value: number): boolean {
