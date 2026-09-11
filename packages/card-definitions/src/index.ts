@@ -1,10 +1,11 @@
 /** Versioned, serializable card-definition contracts. */
 export const packageName = '@deck-drive/card-definitions' as const;
 
-export type CardClass = 'NEUTRAL' | 'WARRIOR' | 'MAGE' | 'ROGUE';
+export type CardClass =
+  'SWORD' | 'GUARDIAN' | 'MAGE' | 'ALCHEMIST' | 'HUNTER' | 'TRICKSTER' | 'NEUTRAL';
 export type CardRarity = 'BASIC' | 'COMMON' | 'UNCOMMON' | 'RARE';
-export type CardType = 'ATTACK' | 'SKILL' | 'POWER' | 'STATUS' | 'CURSE';
-export type EffectTarget = 'SELF' | 'SINGLE_ENEMY' | 'ALL_ENEMIES' | 'RANDOM_ENEMY';
+export type CardType = 'ATTACK' | 'SKILL' | 'POWER' | 'REACTION' | 'CURSE';
+export type EffectTarget = 'SELF' | 'ENEMY';
 
 export type CardEffect =
   | {

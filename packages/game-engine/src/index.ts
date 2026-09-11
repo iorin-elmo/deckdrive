@@ -91,6 +91,9 @@ export interface EndTurnAction {
 /** Only player decisions belong here; effects and random values are engine-owned. */
 export type GameAction = PlayCardAction | EndTurnAction;
 
+export type TerminalBattleResult =
+  { readonly status: 'DRAW' } | { readonly status: 'WIN'; readonly winnerId: PlayerId };
+
 export type GameEvent =
   | {
       readonly type: 'CARD_PLAYED';
@@ -177,7 +180,7 @@ export type GameEvent =
   | {
       readonly type: 'MATCH_FINISHED';
       readonly sequence: number;
-      readonly result: BattleResult;
+      readonly result: TerminalBattleResult;
     };
 
 export type ActionValidationCode =
@@ -209,10 +212,7 @@ export type EngineResult =
       readonly error: EngineError;
     };
 
-export type BattleResult =
-  | { readonly status: 'IN_PROGRESS' }
-  | { readonly status: 'DRAW' }
-  | { readonly status: 'WIN'; readonly winnerId: PlayerId };
+export type BattleResult = { readonly status: 'IN_PROGRESS' } | TerminalBattleResult;
 
 export function validateAction(state: BattleState, action: GameAction): ValidationResult {
   const player = state.players.find((candidate) => candidate.id === action.playerId);
