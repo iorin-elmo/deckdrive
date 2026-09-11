@@ -132,6 +132,7 @@ describe('card-definition public contracts', () => {
       { ...basicCardDefinitions[0], id: ['sword_strike'] },
       { ...basicCardDefinitions[0], version: '1.0.0\n' },
       { ...basicCardDefinitions[0], version: ['1.0.0'] },
+      [],
     ]) {
       expect(validateCardDefinition(invalid)).toMatchObject({
         ok: false,
@@ -139,11 +140,42 @@ describe('card-definition public contracts', () => {
       });
     }
 
+    expect(
+      validateCardDefinition({ ...basicCardDefinitions[0], id: 'sword_strike\n' }),
+    ).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_ID' })]),
+    });
+    expect(
+      validateCardDefinition({ ...basicCardDefinitions[0], version: '1.0.0\n' }),
+    ).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_VERSION' })]),
+    });
+
     for (const invalid of [null, undefined, {}, [null], [undefined]]) {
       expect(validateCardDefinitions(invalid)).toMatchObject({
         ok: false,
         errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_DEFINITION' })]),
       });
     }
+  });
+
+  it('enforces the remaining serialized card metadata fields', () => {
+    const invalid = {
+      ...basicCardDefinitions[0],
+      name: null,
+      description: null,
+      keywords: ['valid', 1],
+      artwork: 1,
+    };
+
+    expect(validateCardDefinition(invalid)).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([
+        expect.objectContaining({ code: 'INVALID_NAME' }),
+        expect.objectContaining({ code: 'INVALID_DESCRIPTION' }),
+        expect.objectContaining({ code: 'INVALID_KEYWORDS' }),
+        expect.objectContaining({ code: 'INVALID_ARTWORK' }),
+      ]),
+    });
   });
 });
