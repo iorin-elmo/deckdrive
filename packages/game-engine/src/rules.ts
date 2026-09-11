@@ -147,7 +147,7 @@ export function prepareRuleAction(
   if (card === undefined)
     return prepared(invalid('CARD_NOT_IN_HAND', 'The selected card is not in the player hand.'));
   const definition = resolve(card.definitionId, definitions);
-  if (definition === undefined || definition.id !== card.definitionId)
+  if (!isRecord(definition) || definition.id !== card.definitionId)
     return prepared(
       invalid('CARD_DEFINITION_NOT_FOUND', 'No definition was supplied for this card.'),
     );

@@ -457,6 +457,21 @@ describe('state transitions', () => {
     }
   });
 
+  it('given a resolver returning null, when a card is validated, then it returns a structured failure', () => {
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    const source = { resolve: () => null } as unknown as CardDefinition[];
+
+    expect(() => validateAction(createState(), action, source)).not.toThrow();
+    expect(validateAction(createState(), action, source)).toMatchObject({
+      ok: false,
+      code: 'CARD_DEFINITION_NOT_FOUND',
+    });
+  });
+
   it('given an unknown action type or mismatched resolved definition, when it is validated, then it is rejected', () => {
     const unknownAction = {
       type: 'UNKNOWN',

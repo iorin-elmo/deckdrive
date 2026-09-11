@@ -32,15 +32,8 @@ export type CardDefinitionId = string;
 export type CardInstanceId = Brand<string, 'CardInstanceId'>;
 export type EntityId = Brand<string, 'EntityId'>;
 
-export type BattlePhase =
-  | 'MATCH_INIT'
-  | 'DRAW'
-  | 'PLAYER_TURN'
-  | 'ACTION'
-  | 'RESOLVE'
-  | 'CHECK_WIN'
-  | 'NEXT_TURN'
-  | 'MATCH_END';
+/** Actions resolve atomically; only stable, externally observable phases are represented. */
+export type BattlePhase = 'PLAYER_TURN' | 'MATCH_END';
 
 /** A source of random values. Seeded implementations are added in E01. */
 export interface RandomSource {
