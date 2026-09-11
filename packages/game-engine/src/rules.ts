@@ -139,12 +139,15 @@ export function prepareRuleAction(
   if (state.activePlayerId !== action.playerId)
     return prepared(invalid('NOT_ACTIVE_PLAYER', 'Only the active player can act.'));
   if (action.type === 'END_TURN') return prepared({ ok: true });
+  if (action.type !== 'PLAY_CARD') {
+    return prepared(invalid('UNKNOWN_ACTION_TYPE', 'The action type is not supported.'));
+  }
 
   const card = player.hand.find((candidate) => candidate.id === action.cardInstanceId);
   if (card === undefined)
     return prepared(invalid('CARD_NOT_IN_HAND', 'The selected card is not in the player hand.'));
   const definition = resolve(card.definitionId, definitions);
-  if (definition === undefined)
+  if (definition === undefined || definition.id !== card.definitionId)
     return prepared(
       invalid('CARD_DEFINITION_NOT_FOUND', 'No definition was supplied for this card.'),
     );
@@ -304,15 +307,13 @@ function resolve(
   definitions?: CardDefinitionSource,
 ): CardDefinition | undefined {
   if (definitions === undefined) return undefined;
+  if (typeof definitions !== 'object' || definitions === null) return undefined;
   if (Array.isArray(definitions)) {
     const definition = definitions.find((candidate) => isRecord(candidate) && candidate.id === id);
     return definition as CardDefinition | undefined;
   }
-  return (
-    definitions as {
-      readonly resolve: (definitionId: CardDefinitionId) => CardDefinition | undefined;
-    }
-  ).resolve(id);
+  if (!('resolve' in definitions) || typeof definitions.resolve !== 'function') return undefined;
+  return definitions.resolve(id);
 }
 
 function targetId(

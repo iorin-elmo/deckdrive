@@ -214,7 +214,8 @@ export type ActionValidationCode =
   | 'INVALID_CARD_DEFINITION'
   | 'UNSUPPORTED_EFFECT'
   | 'INVALID_TURN_DRAW_COUNT'
-  | 'PLAYER_DEFEATED';
+  | 'PLAYER_DEFEATED'
+  | 'UNKNOWN_ACTION_TYPE';
 
 export type ValidationResult =
   | { readonly ok: true }

@@ -394,7 +394,8 @@ calculateResult(
 ): BattleResult;
 ```
 
-`PLAY_CARD` には、そのmatchで固定された `CardDefinitionSource` を渡す。`END_TURN` は不要である。
+`PLAY_CARD` には、そのmatchで固定された `CardDefinitionSource` を渡す。`END_TURN` では
+`definitions` 引数は不要である。
 
 可能な限りpure functionとする。
 
