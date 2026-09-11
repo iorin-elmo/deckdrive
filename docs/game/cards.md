@@ -13,5 +13,17 @@ E02 の最小セットは次の 3 枚である。ここでの数値は DSL と�
 | `guardian_guard` | Guardian | 1 | Self に 5 block |
 | `neutral_insight` | Neutral | 1 | Self が 1 draw |
 
-Effects は `DAMAGE`、`HEAL`、`GAIN_BLOCK`、`DRAW`、`CUSTOM` をサポートする。クライアントは
-effect の実行結果を送信せず、engine がカード定義を解釈して状態と event を生成する。
+Effects は次の variant をサポートする。`amount` は 1 以上の整数、`resolver` は空白だけでは
+ない文字列である。
+
+| Type | 必須フィールド | 許可 target |
+| --- | --- | --- |
+| `DAMAGE` | `amount`, `target` | `SELF`, `ENEMY` |
+| `HEAL` | `amount`, `target` | `SELF` |
+| `GAIN_BLOCK` | `amount`, `target` | `SELF` |
+| `DRAW` | `amount`, `target` | `SELF` |
+| `CUSTOM` | `resolver`, `target` | `SELF`, `ENEMY` |
+
+例えば `DAMAGE` は `{ "type": "DAMAGE", "amount": 6, "target": "ENEMY" }` と表現する。
+クライアントは effect の実行結果を送信せず、engine がカード定義を解釈して状態と event を
+生成する。

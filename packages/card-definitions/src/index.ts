@@ -132,7 +132,7 @@ export const basicCardDefinitions: readonly CardDefinition[] = [
 export function validateCardDefinition(card: CardDefinition): CardDefinitionValidationResult {
   const errors: CardDefinitionValidationError[] = [];
 
-  if (!/^[a-z][a-z0-9_]*$/.test(card.id)) {
+  if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(card.id)) {
     errors.push({ code: 'INVALID_ID', message: 'Card ID must be lower snake case.' });
   }
 
@@ -166,13 +166,17 @@ export function validateCardDefinition(card: CardDefinition): CardDefinitionVali
     });
   }
 
-  if (card.effects.length === 0) {
-    errors.push({ code: 'MISSING_EFFECT', message: 'Card must define at least one effect.' });
-  }
+  if (!Array.isArray(card.effects)) {
+    errors.push({ code: 'INVALID_EFFECT', message: 'Card effects must be an array.' });
+  } else {
+    if (card.effects.length === 0) {
+      errors.push({ code: 'MISSING_EFFECT', message: 'Card must define at least one effect.' });
+    }
 
-  for (const effect of card.effects) {
-    if (!isValidCardEffect(effect)) {
-      errors.push({ code: 'INVALID_EFFECT', message: 'Card effect is not supported.' });
+    for (const effect of card.effects) {
+      if (!isValidCardEffect(effect)) {
+        errors.push({ code: 'INVALID_EFFECT', message: 'Card effect is not supported.' });
+      }
     }
   }
 

@@ -80,6 +80,11 @@ describe('card-definition public contracts', () => {
       ...basicCardDefinitions[0],
       effects: [{ type: 'UNKNOWN' }],
     } as unknown as CardDefinition;
+    const missingEffects = {
+      ...basicCardDefinitions[0],
+      effects: null,
+    } as unknown as CardDefinition;
+    const invalidId = { ...basicCardDefinitions[0], id: 'sword__strike' } as CardDefinition;
 
     for (const invalid of [
       invalidVersion,
@@ -87,6 +92,8 @@ describe('card-definition public contracts', () => {
       invalidDamageTarget,
       invalidCustomResolver,
       unknownEffect,
+      missingEffects,
+      invalidId,
     ]) {
       expect(validateCardDefinition(invalid)).toMatchObject({
         ok: false,
@@ -108,6 +115,12 @@ describe('card-definition public contracts', () => {
     });
     expect(validateCardDefinition(unknownEffect)).toMatchObject({
       errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+    expect(validateCardDefinition(missingEffects)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+    expect(validateCardDefinition(invalidId)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_ID' })]),
     });
   });
 });
