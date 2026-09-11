@@ -9,12 +9,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deckdrive}
       POSTGRES_DB: ${POSTGRES_DB:-deckdrive}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deckdrive} -d ${POSTGRES_DB:-deckdrive}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-deckdrive} -d ${POSTGRES_DB:-deckdrive}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,8 +26,8 @@ services:
     environment:
       MP_MAX_MESSAGES: ${MAILPIT_MAX_MESSAGES:-500}
     ports:
-      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+      - '127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
     # Mailpit's docker image is a minimal scratch-based build with no shell or
     # wget/curl, so it cannot run a container-exec HEALTHCHECK. Readiness is
     # instead verified from the host against /livez and /readyz (see
