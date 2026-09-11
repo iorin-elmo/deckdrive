@@ -410,6 +410,37 @@ describe('state transitions', () => {
     ).toMatchObject({ ok: false, code: 'INVALID_CARD_DEFINITION' });
   });
 
+  it('given null entries in a deserialized definition source, when it is validated, then it does not throw', () => {
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    expect(() =>
+      validateAction(createState(), action, [null] as unknown as CardDefinition[]),
+    ).not.toThrow();
+    expect(
+      validateAction(createState(), action, [null] as unknown as CardDefinition[]),
+    ).toMatchObject({
+      ok: false,
+      code: 'CARD_DEFINITION_NOT_FOUND',
+    });
+  });
+
+  it('given a null effect in deserialized card data, when it is validated, then it returns an error', () => {
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    const definition = { id: 'strike', cost: 1, effects: [null] } as unknown as CardDefinition;
+
+    expect(validateAction(createState(), action, [definition])).toMatchObject({
+      ok: false,
+      code: 'INVALID_CARD_DEFINITION',
+    });
+  });
+
   it('given an end turn, when it resolves, then the next player draws and starts their turn', () => {
     const original = createState();
     const state = {

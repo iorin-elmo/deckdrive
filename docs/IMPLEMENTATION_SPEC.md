@@ -379,18 +379,22 @@ Game Engineは純粋なdomain packageとする。
 ```ts
 validateAction(
   state: BattleState,
-  action: GameAction
+  action: GameAction,
+  definitions?: CardDefinitionSource
 ): ValidationResult;
 
 applyAction(
   state: BattleState,
-  action: GameAction
+  action: GameAction,
+  definitions?: CardDefinitionSource
 ): EngineResult;
 
 calculateResult(
   state: BattleState
 ): BattleResult;
 ```
+
+`PLAY_CARD` には、そのmatchで固定された `CardDefinitionSource` を渡す。`END_TURN` は不要である。
 
 可能な限りpure functionとする。
 

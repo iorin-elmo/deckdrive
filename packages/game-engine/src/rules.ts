@@ -304,9 +304,15 @@ function resolve(
   definitions?: CardDefinitionSource,
 ): CardDefinition | undefined {
   if (definitions === undefined) return undefined;
-  return 'resolve' in definitions
-    ? definitions.resolve(id)
-    : definitions.find((definition) => definition.id === id);
+  if (Array.isArray(definitions)) {
+    const definition = definitions.find((candidate) => isRecord(candidate) && candidate.id === id);
+    return definition as CardDefinition | undefined;
+  }
+  return (
+    definitions as {
+      readonly resolve: (definitionId: CardDefinitionId) => CardDefinition | undefined;
+    }
+  ).resolve(id);
 }
 
 function targetId(
@@ -378,8 +384,8 @@ function prepared(
   return { validation, definition };
 }
 
-function isValidDefinition(definition: CardDefinition): boolean {
-  if (typeof definition !== 'object' || definition === null || !Array.isArray(definition.effects)) {
+function isValidDefinition(definition: unknown): definition is CardDefinition {
+  if (!isRecord(definition) || !Array.isArray(definition.effects)) {
     return false;
   }
   return (
@@ -389,7 +395,8 @@ function isValidDefinition(definition: CardDefinition): boolean {
   );
 }
 
-function isValidEffect(effect: CardEffect): boolean {
+function isValidEffect(effect: unknown): effect is CardEffect {
+  if (!isRecord(effect)) return false;
   switch (effect.type) {
     case 'DAMAGE':
       return (
@@ -410,10 +417,14 @@ function isValidEffect(effect: CardEffect): boolean {
   }
 }
 
-function isPositiveInteger(value: number): boolean {
-  return Number.isInteger(value) && value > 0;
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
-function isNonNegativeInteger(value: number): boolean {
-  return Number.isInteger(value) && value >= 0;
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
