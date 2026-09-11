@@ -1,12 +1,22 @@
 /**
  * Public, dependency-free contracts for deterministic battles.
  *
- * State transition and effect resolution are deliberately introduced in later
- * milestones. Consumers must treat a failed result as an unchanged state.
+ * State transition and effect resolution are deterministic and side-effect
+ * free. Consumers must treat a failed result as an unchanged state.
  */
+import { applyRuleAction, validateRuleAction } from './rules.js';
+import type { CardDefinitionSource } from './rules.js';
+
 export const packageName = '@deck-drive/game-engine' as const;
 
 export * from './random/index.js';
+export { createInitialBattleState, initialHp, initialMaxEnergy } from './rules.js';
+export type {
+  CardDefinition,
+  CardDefinitionSource,
+  CardEffect,
+  CreateInitialBattleStateOptions,
+} from './rules.js';
 
 type Brand<Value, Name extends string> = Value & {
   readonly __brand: Name;
@@ -191,7 +201,14 @@ export type GameEvent =
     };
 
 export type ActionValidationCode =
-  'PLAYER_NOT_FOUND' | 'NOT_ACTIVE_PLAYER' | 'INVALID_PHASE' | 'CARD_NOT_IN_HAND';
+  | 'PLAYER_NOT_FOUND'
+  | 'NOT_ACTIVE_PLAYER'
+  | 'INVALID_PHASE'
+  | 'MATCH_FINISHED'
+  | 'CARD_NOT_IN_HAND'
+  | 'CARD_DEFINITION_NOT_FOUND'
+  | 'INSUFFICIENT_ENERGY'
+  | 'INVALID_TARGET';
 
 export type ValidationResult =
   | { readonly ok: true }
@@ -202,7 +219,7 @@ export type ValidationResult =
     };
 
 export interface EngineError {
-  readonly code: ActionValidationCode | 'ACTION_NOT_IMPLEMENTED';
+  readonly code: ActionValidationCode;
   readonly message: string;
 }
 
@@ -221,52 +238,28 @@ export type EngineResult =
 
 export type BattleResult = { readonly status: 'IN_PROGRESS' } | TerminalBattleResult;
 
-export function validateAction(state: BattleState, action: GameAction): ValidationResult {
-  const player = state.players.find((candidate) => candidate.id === action.playerId);
-
-  if (player === undefined) {
-    return invalidAction('PLAYER_NOT_FOUND', 'The action player is not in this battle.');
-  }
-
-  if (state.phase !== 'PLAYER_TURN') {
-    return invalidAction('INVALID_PHASE', 'Actions can only be submitted during PLAYER_TURN.');
-  }
-
-  if (state.activePlayerId !== action.playerId) {
-    return invalidAction('NOT_ACTIVE_PLAYER', 'Only the active player can submit an action.');
-  }
-
-  if (
-    action.type === 'PLAY_CARD' &&
-    !player.hand.some((card) => card.id === action.cardInstanceId)
-  ) {
-    return invalidAction('CARD_NOT_IN_HAND', 'The selected card is not in the player hand.');
-  }
-
-  return { ok: true };
+export function validateAction(
+  state: BattleState,
+  action: GameAction,
+  definitions?: CardDefinitionSource,
+): ValidationResult {
+  return validateRuleAction(state, action, definitions);
 }
 
-/**
- * Applies validation only until E03 adds rule effects. A valid action must not
- * be reported as a successful no-op, so callers cannot mistake this contract
- * milestone for complete game-rule support.
- */
-export function applyAction(state: BattleState, action: GameAction): EngineResult {
-  const validation = validateAction(state, action);
+/** Applies one decision without mutating the supplied state. */
+export function applyAction(
+  state: BattleState,
+  action: GameAction,
+  definitions?: CardDefinitionSource,
+): EngineResult {
+  const validation = validateAction(state, action, definitions);
 
   if (!validation.ok) {
     return { ok: false, state, events: [], error: validation };
   }
 
-  return {
-    ok: false,
-    state,
-    events: [],
-    error: {
-      code: 'ACTION_NOT_IMPLEMENTED',
-      message: 'Action resolution is introduced in E03.',
-    },
-  };
+  const result = applyRuleAction(state, action, definitions);
+  return { ok: true, ...result };
 }
 
 /** Returns the observable terminal result from player HP without mutating state. */
@@ -279,8 +272,4 @@ export function calculateResult(state: BattleState): BattleResult {
   }
 
   return remainingPlayers.length === 0 ? { status: 'DRAW' } : { status: 'IN_PROGRESS' };
-}
-
-function invalidAction(code: ActionValidationCode, message: string): ValidationResult {
-  return { ok: false, code, message };
 }
