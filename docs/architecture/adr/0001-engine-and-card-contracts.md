@@ -15,15 +15,17 @@ or rule effects are added.
 engine-generated events, results, and the `RandomSource` boundary. Its public
 entry point exports `validateAction`, `applyAction`, and `calculateResult`.
 
-The state records `rulesVersion`, `cardDataVersion`, and `seed`. A match records
-the rules and card-data versions selected when it starts; callers must not infer
-them from current deployment state. The engine is responsible for interpreting
-those versions, while `@deck-drive/card-definitions` supplies versioned,
-serializable definitions.
+The state records `engineVersion`, `rulesVersion`, `cardDataVersion`, and `seed`.
+A match records the engine, rules, and card-data versions selected when it
+starts; callers must not infer them from current deployment state. The engine is
+responsible for interpreting its engine and rules versions, while
+`@deck-drive/card-definitions` supplies versioned, serializable definitions.
 
-Card definitions use a definition ID and version. Battle state instead stores
-card instances with a separate instance ID plus the definition ID. This permits
-multiple copies of one definition and makes replay/event references unambiguous.
+Card definitions use a string definition ID and version. Battle state instead
+stores card instances with a separate instance ID plus that structurally
+compatible definition ID. This permits multiple copies of one definition,
+allows integration code to compose both dependency-free packages without casts,
+and makes replay/event references unambiguous.
 
 Only player decisions may enter as `GameAction`. Damage, healing, drawing, state
 changes, events, and random values are engine-owned outputs. Invalid actions

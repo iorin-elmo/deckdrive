@@ -9,6 +9,7 @@ const playerTwo = 'player-2' as PlayerId;
 function createState(): BattleState {
   return {
     matchId: 'match-1' as MatchId,
+    engineVersion: '1.0.0',
     rulesVersion: '1.0.0',
     cardDataVersion: '1.0.0',
     seed: 'seed-1',

@@ -12,7 +12,11 @@ type Brand<Value, Name extends string> = Value & {
 
 export type MatchId = Brand<string, 'MatchId'>;
 export type PlayerId = Brand<string, 'PlayerId'>;
-export type CardDefinitionId = Brand<string, 'CardDefinitionId'>;
+/**
+ * Card definitions are owned by a separate, dependency-free package. Keep this
+ * structural so a CardDefinition.id can be used without a cross-package cast.
+ */
+export type CardDefinitionId = string;
 export type CardInstanceId = Brand<string, 'CardInstanceId'>;
 export type EntityId = Brand<string, 'EntityId'>;
 
@@ -65,6 +69,7 @@ export interface BattlePlayerState {
 
 export interface BattleState {
   readonly matchId: MatchId;
+  readonly engineVersion: string;
   readonly rulesVersion: string;
   readonly cardDataVersion: string;
   readonly seed: string;
