@@ -55,6 +55,7 @@ export type CardDefinitionValidationCode =
   | 'DUPLICATE_ID'
   | 'INVALID_CLASS'
   | 'INVALID_COST'
+  | 'INVALID_DEFINITION'
   | 'INVALID_DECK_LIMIT'
   | 'INVALID_EFFECT'
   | 'INVALID_ID'
@@ -72,7 +73,7 @@ export type CardDefinitionValidationResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly errors: readonly CardDefinitionValidationError[] };
 
-const cardClasses = new Set<CardClass>([
+const cardClasses = new Set<string>([
   'SWORD',
   'GUARDIAN',
   'MAGE',
@@ -81,8 +82,8 @@ const cardClasses = new Set<CardClass>([
   'TRICKSTER',
   'NEUTRAL',
 ]);
-const cardTypes = new Set<CardType>(['ATTACK', 'SKILL', 'POWER', 'REACTION', 'CURSE']);
-const cardRarities = new Set<CardRarity>(['BASIC', 'COMMON', 'UNCOMMON', 'RARE']);
+const cardTypes = new Set<string>(['ATTACK', 'SKILL', 'POWER', 'REACTION', 'CURSE']);
+const cardRarities = new Set<string>(['BASIC', 'COMMON', 'UNCOMMON', 'RARE']);
 
 export const basicCardDefinitions: readonly CardDefinition[] = [
   {
@@ -129,36 +130,46 @@ export const basicCardDefinitions: readonly CardDefinition[] = [
   },
 ];
 
-export function validateCardDefinition(card: CardDefinition): CardDefinitionValidationResult {
+export function validateCardDefinition(card: unknown): CardDefinitionValidationResult {
   const errors: CardDefinitionValidationError[] = [];
 
-  if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(card.id)) {
+  if (!isRecord(card)) {
+    return invalidDefinitionResult();
+  }
+
+  if (typeof card.id !== 'string' || !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(card.id)) {
     errors.push({ code: 'INVALID_ID', message: 'Card ID must be lower snake case.' });
   }
 
-  if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(card.version)) {
+  if (
+    typeof card.version !== 'string' ||
+    !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(card.version)
+  ) {
     errors.push({ code: 'INVALID_VERSION', message: 'Card version must use semver x.y.z.' });
   }
 
-  if (!cardClasses.has(card.class)) {
+  if (typeof card.class !== 'string' || !cardClasses.has(card.class)) {
     errors.push({ code: 'INVALID_CLASS', message: 'Card class is not supported.' });
   }
 
-  if (!cardRarities.has(card.rarity)) {
+  if (typeof card.rarity !== 'string' || !cardRarities.has(card.rarity)) {
     errors.push({ code: 'INVALID_RARITY', message: 'Card rarity is not supported.' });
   }
 
-  if (!cardTypes.has(card.type)) {
+  if (typeof card.type !== 'string' || !cardTypes.has(card.type)) {
     errors.push({ code: 'INVALID_TYPE', message: 'Card type is not supported.' });
   }
 
-  if (!Number.isInteger(card.cost) || card.cost < 0) {
+  if (typeof card.cost !== 'number' || !Number.isInteger(card.cost) || card.cost < 0) {
     errors.push({ code: 'INVALID_COST', message: 'Card cost must be a non-negative integer.' });
   }
 
   if (
     card.deckLimit !== null &&
-    (!Number.isInteger(card.deckLimit) || card.deckLimit < 1 || card.deckLimit > maximumCardCopies)
+    (typeof card.deckLimit !== 'number' ||
+      !Number.isInteger(card.deckLimit) ||
+      card.deckLimit < 1 ||
+      card.deckLimit > maximumCardCopies)
   ) {
     errors.push({
       code: 'INVALID_DECK_LIMIT',
@@ -208,18 +219,23 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
   }
 }
 
-export function validateCardDefinitions(
-  cards: readonly CardDefinition[],
-): CardDefinitionValidationResult {
+export function validateCardDefinitions(cards: unknown): CardDefinitionValidationResult {
   const errors: CardDefinitionValidationError[] = [];
   const seenIds = new Set<string>();
 
+  if (!Array.isArray(cards)) {
+    return invalidDefinitionResult('Card definitions must be an array.');
+  }
+
   for (const card of cards) {
-    if (seenIds.has(card.id)) {
-      errors.push({ code: 'DUPLICATE_ID', message: `Card ID is duplicated: ${card.id}.` });
+    if (isRecord(card) && typeof card.id === 'string') {
+      if (seenIds.has(card.id)) {
+        errors.push({ code: 'DUPLICATE_ID', message: `Card ID is duplicated: ${card.id}.` });
+      }
+
+      seenIds.add(card.id);
     }
 
-    seenIds.add(card.id);
     const result = validateCardDefinition(card);
 
     if (!result.ok) {
@@ -228,4 +244,14 @@ export function validateCardDefinitions(
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function invalidDefinitionResult(
+  message = 'Card definition must be an object.',
+): CardDefinitionValidationResult {
+  return { ok: false, errors: [{ code: 'INVALID_DEFINITION', message }] };
 }

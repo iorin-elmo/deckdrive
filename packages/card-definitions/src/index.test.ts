@@ -123,4 +123,27 @@ describe('card-definition public contracts', () => {
       errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_ID' })]),
     });
   });
+
+  it('safely rejects malformed deserialized definitions and collections', () => {
+    for (const invalid of [
+      null,
+      undefined,
+      { ...basicCardDefinitions[0], id: 'sword_strike\n' },
+      { ...basicCardDefinitions[0], id: ['sword_strike'] },
+      { ...basicCardDefinitions[0], version: '1.0.0\n' },
+      { ...basicCardDefinitions[0], version: ['1.0.0'] },
+    ]) {
+      expect(validateCardDefinition(invalid)).toMatchObject({
+        ok: false,
+        errors: expect.arrayContaining([expect.objectContaining({ code: expect.any(String) })]),
+      });
+    }
+
+    for (const invalid of [null, undefined, {}, [null], [undefined]]) {
+      expect(validateCardDefinitions(invalid)).toMatchObject({
+        ok: false,
+        errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_DEFINITION' })]),
+      });
+    }
+  });
 });
