@@ -6,6 +6,8 @@
  */
 export const packageName = '@deck-drive/game-engine' as const;
 
+export * from './random/index.js';
+
 type Brand<Value, Name extends string> = Value & {
   readonly __brand: Name;
 };
