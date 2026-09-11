@@ -4,7 +4,7 @@
  * State transition and effect resolution are deterministic and side-effect
  * free. Consumers must treat a failed result as an unchanged state.
  */
-import { applyRuleAction, validateRuleAction } from './rules.js';
+import { applyRuleAction, prepareRuleAction, validateRuleAction } from './rules.js';
 import type { CardDefinitionSource } from './rules.js';
 
 export const packageName = '@deck-drive/game-engine' as const;
@@ -258,13 +258,14 @@ export function applyAction(
   action: GameAction,
   definitions?: CardDefinitionSource,
 ): EngineResult {
-  const validation = validateAction(state, action, definitions);
+  const prepared = prepareRuleAction(state, action, definitions);
+  const { validation } = prepared;
 
   if (!validation.ok) {
     return { ok: false, state, events: [], error: validation };
   }
 
-  const result = applyRuleAction(state, action, definitions);
+  const result = applyRuleAction(state, action, prepared.definition);
   return { ok: true, ...result };
 }
 

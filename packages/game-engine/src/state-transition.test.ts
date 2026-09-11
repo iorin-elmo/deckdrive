@@ -346,6 +346,70 @@ describe('state transitions', () => {
     ).toThrow('unique player IDs');
   });
 
+  it('given duplicate card instance IDs, when a battle is created, then it rejects the invalid battle', () => {
+    expect(() =>
+      createInitialBattleState({
+        matchId: 'duplicate-card' as MatchId,
+        engineVersion: '1.0.0',
+        rulesVersion: '1.0.0',
+        cardDataVersion: '1.0.0',
+        seed: 'seed',
+        turnDrawCount: 1,
+        players: [
+          { id: playerOne, drawPile: [card('same', 'strike')] },
+          { id: playerTwo, drawPile: [card('same', 'guard')] },
+        ],
+      }),
+    ).toThrow('unique card instance IDs');
+  });
+
+  it('given a state restored after event 42, when an action emits events, then numbering continues at 43', () => {
+    const state = {
+      ...createState(),
+      events: [{ type: 'TURN_STARTED' as const, sequence: 42, playerId: playerOne }],
+    };
+    const result = applyAction(state, { type: 'END_TURN', playerId: playerOne });
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.events[0]).toMatchObject({ type: 'TURN_ENDED', sequence: 43 });
+  });
+
+  it('given a stateful definition resolver, when a card is played, then the resolved definition is used once', () => {
+    let calls = 0;
+    const result = applyAction(
+      createState(),
+      { type: 'PLAY_CARD', playerId: playerOne, cardInstanceId: 'strike-1' as CardInstanceId },
+      {
+        resolve() {
+          calls += 1;
+          return calls === 1 ? strike : undefined;
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(calls).toBe(1);
+  });
+
+  it('given malformed deserialized card data, when it is validated, then it returns an error instead of throwing', () => {
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    expect(() =>
+      validateAction(createState(), action, [
+        { id: 'strike', cost: 1, effects: null } as unknown as CardDefinition,
+      ]),
+    ).not.toThrow();
+    expect(
+      validateAction(createState(), action, [
+        { id: 'strike', cost: 1, effects: null } as unknown as CardDefinition,
+      ]),
+    ).toMatchObject({ ok: false, code: 'INVALID_CARD_DEFINITION' });
+  });
+
   it('given an end turn, when it resolves, then the next player draws and starts their turn', () => {
     const original = createState();
     const state = {

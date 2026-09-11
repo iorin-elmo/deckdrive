@@ -64,6 +64,12 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
   if (new Set(options.players.map((player) => player.id)).size !== options.players.length) {
     throw new RangeError('A battle requires unique player IDs.');
   }
+  const cardInstanceIds = options.players.flatMap((player) =>
+    player.drawPile.map((card) => card.id),
+  );
+  if (new Set(cardInstanceIds).size !== cardInstanceIds.length) {
+    throw new RangeError('A battle requires unique card instance IDs.');
+  }
   if (!isNonNegativeInteger(options.turnDrawCount)) {
     throw new RangeError('Turn draw count must be a non-negative integer.');
   }
@@ -104,62 +110,88 @@ export function validateRuleAction(
   action: GameAction,
   definitions?: CardDefinitionSource,
 ): ValidationResult {
+  return prepareRuleAction(state, action, definitions).validation;
+}
+
+export interface PreparedRuleAction {
+  readonly validation: ValidationResult;
+  readonly definition: CardDefinition | undefined;
+}
+
+export function prepareRuleAction(
+  state: BattleState,
+  action: GameAction,
+  definitions?: CardDefinitionSource,
+): PreparedRuleAction {
   const player = state.players.find((candidate) => candidate.id === action.playerId);
   if (player === undefined)
-    return invalid('PLAYER_NOT_FOUND', 'The action player is not in this battle.');
+    return prepared(invalid('PLAYER_NOT_FOUND', 'The action player is not in this battle.'));
   if (!isNonNegativeInteger(state.turnDrawCount)) {
-    return invalid('INVALID_TURN_DRAW_COUNT', 'Turn draw count must be a non-negative integer.');
+    return prepared(
+      invalid('INVALID_TURN_DRAW_COUNT', 'Turn draw count must be a non-negative integer.'),
+    );
   }
-  if (player.hp <= 0) return invalid('PLAYER_DEFEATED', 'A defeated player cannot act.');
   if (calculateResult(state).status !== 'IN_PROGRESS')
-    return invalid('MATCH_FINISHED', 'The match has finished.');
+    return prepared(invalid('MATCH_FINISHED', 'The match has finished.'));
+  if (player.hp <= 0) return prepared(invalid('PLAYER_DEFEATED', 'A defeated player cannot act.'));
   if (state.phase !== 'PLAYER_TURN')
-    return invalid('INVALID_PHASE', 'Actions require PLAYER_TURN.');
+    return prepared(invalid('INVALID_PHASE', 'Actions require PLAYER_TURN.'));
   if (state.activePlayerId !== action.playerId)
-    return invalid('NOT_ACTIVE_PLAYER', 'Only the active player can act.');
-  if (action.type === 'END_TURN') return { ok: true };
+    return prepared(invalid('NOT_ACTIVE_PLAYER', 'Only the active player can act.'));
+  if (action.type === 'END_TURN') return prepared({ ok: true });
 
   const card = player.hand.find((candidate) => candidate.id === action.cardInstanceId);
   if (card === undefined)
-    return invalid('CARD_NOT_IN_HAND', 'The selected card is not in the player hand.');
+    return prepared(invalid('CARD_NOT_IN_HAND', 'The selected card is not in the player hand.'));
   const definition = resolve(card.definitionId, definitions);
   if (definition === undefined)
-    return invalid('CARD_DEFINITION_NOT_FOUND', 'No definition was supplied for this card.');
+    return prepared(
+      invalid('CARD_DEFINITION_NOT_FOUND', 'No definition was supplied for this card.'),
+    );
   if (!isValidDefinition(definition)) {
-    return invalid('INVALID_CARD_DEFINITION', 'The supplied card definition is malformed.');
+    return prepared(
+      invalid('INVALID_CARD_DEFINITION', 'The supplied card definition is malformed.'),
+    );
   }
   if (definition.effects.some((effect) => effect.type === 'CUSTOM')) {
-    return invalid('UNSUPPORTED_EFFECT', 'CUSTOM effects are not supported by the basic resolver.');
+    return prepared(
+      invalid('UNSUPPORTED_EFFECT', 'CUSTOM effects are not supported by the basic resolver.'),
+    );
   }
   if (player.energy < definition.cost)
-    return invalid('INSUFFICIENT_ENERGY', 'The active player does not have enough energy.');
+    return prepared(
+      invalid('INSUFFICIENT_ENERGY', 'The active player does not have enough energy.'),
+    );
   if (
     definition.effects.some((effect) => effect.target === 'ENEMY') &&
     targetId(state.players, action.playerId, action.targetId) === undefined
   ) {
-    return invalid('INVALID_TARGET', 'The card requires a valid enemy target.');
+    return prepared(invalid('INVALID_TARGET', 'The card requires a valid enemy target.'));
   }
-  return { ok: true };
+  return prepared({ ok: true }, definition);
 }
 
 export function applyRuleAction(
   state: BattleState,
   action: GameAction,
-  definitions?: CardDefinitionSource,
+  resolvedDefinition?: CardDefinition,
 ) {
   if (action.type === 'END_TURN') return endTurn(state, action.playerId);
   const playerIndex = state.players.findIndex((player) => player.id === action.playerId);
   const card = state.players[playerIndex]!.hand.find(
     (candidate) => candidate.id === action.cardInstanceId,
   )!;
-  const definition = resolve(card.definitionId, definitions)!;
+  const definition = resolvedDefinition!;
   const emitted = eventEmitter(state.events);
   let players = clonePlayers(state.players);
   const actor = players[playerIndex]!;
   players[playerIndex] = {
     ...actor,
     energy: actor.energy - definition.cost,
-    hand: actor.hand.filter((item) => item.id !== card.id),
+    hand: removeCardAt(
+      actor.hand,
+      actor.hand.findIndex((item) => item.id === card.id),
+    ),
   };
   emitted.emit({ type: 'CARD_PLAYED', playerId: action.playerId, cardInstanceId: card.id });
 
@@ -308,6 +340,10 @@ function clonePlayers(players: readonly BattlePlayerState[]): BattlePlayerState[
   }));
 }
 
+function removeCardAt(cards: readonly CardInstance[], index: number): CardInstance[] {
+  return [...cards.slice(0, index), ...cards.slice(index + 1)];
+}
+
 type WithoutSequence<Event> = Event extends unknown ? Omit<Event, 'sequence'> : never;
 type EventInput = WithoutSequence<GameEvent>;
 interface EventEmitter {
@@ -316,10 +352,11 @@ interface EventEmitter {
 }
 function eventEmitter(existing: readonly GameEvent[]): EventEmitter {
   const values: GameEvent[] = [];
+  const lastSequence = existing.at(-1)?.sequence ?? 0;
   return {
     values,
     emit(event) {
-      values.push({ ...event, sequence: existing.length + values.length + 1 } as GameEvent);
+      values.push({ ...event, sequence: lastSequence + values.length + 1 } as GameEvent);
     },
   };
 }
@@ -334,7 +371,17 @@ function invalid(code: ActionValidationCode, message: string): ValidationResult 
   return { ok: false, code, message };
 }
 
+function prepared(
+  validation: ValidationResult,
+  definition: CardDefinition | undefined = undefined,
+): PreparedRuleAction {
+  return { validation, definition };
+}
+
 function isValidDefinition(definition: CardDefinition): boolean {
+  if (typeof definition !== 'object' || definition === null || !Array.isArray(definition.effects)) {
+    return false;
+  }
   return (
     isNonNegativeInteger(definition.cost) &&
     definition.effects.length > 0 &&
