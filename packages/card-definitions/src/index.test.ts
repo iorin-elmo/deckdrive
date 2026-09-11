@@ -61,4 +61,53 @@ describe('card-definition public contracts', () => {
       errors: expect.arrayContaining([expect.objectContaining({ code: 'DUPLICATE_ID' })]),
     });
   });
+
+  it('rejects non-semver versions, invalid rarities, and malformed effects', () => {
+    const invalidVersion = { ...basicCardDefinitions[0], version: '01.2.3' } as CardDefinition;
+    const invalidRarity = {
+      ...basicCardDefinitions[0],
+      rarity: 'INVALID',
+    } as unknown as CardDefinition;
+    const invalidDamageTarget = {
+      ...basicCardDefinitions[0],
+      effects: [{ type: 'DAMAGE', amount: 1, target: 'ALLY' }],
+    } as unknown as CardDefinition;
+    const invalidCustomResolver = {
+      ...basicCardDefinitions[0],
+      effects: [{ type: 'CUSTOM', target: 'SELF', resolver: '  ' }],
+    } as unknown as CardDefinition;
+    const unknownEffect = {
+      ...basicCardDefinitions[0],
+      effects: [{ type: 'UNKNOWN' }],
+    } as unknown as CardDefinition;
+
+    for (const invalid of [
+      invalidVersion,
+      invalidRarity,
+      invalidDamageTarget,
+      invalidCustomResolver,
+      unknownEffect,
+    ]) {
+      expect(validateCardDefinition(invalid)).toMatchObject({
+        ok: false,
+        errors: expect.arrayContaining([expect.objectContaining({ code: expect.any(String) })]),
+      });
+    }
+
+    expect(validateCardDefinition(invalidVersion)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_VERSION' })]),
+    });
+    expect(validateCardDefinition(invalidRarity)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_RARITY' })]),
+    });
+    expect(validateCardDefinition(invalidDamageTarget)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+    expect(validateCardDefinition(invalidCustomResolver)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+    expect(validateCardDefinition(unknownEffect)).toMatchObject({
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+  });
 });

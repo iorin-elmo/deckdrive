@@ -58,6 +58,7 @@ export type CardDefinitionValidationCode =
   | 'INVALID_DECK_LIMIT'
   | 'INVALID_EFFECT'
   | 'INVALID_ID'
+  | 'INVALID_RARITY'
   | 'INVALID_TYPE'
   | 'INVALID_VERSION'
   | 'MISSING_EFFECT';
@@ -81,6 +82,7 @@ const cardClasses = new Set<CardClass>([
   'NEUTRAL',
 ]);
 const cardTypes = new Set<CardType>(['ATTACK', 'SKILL', 'POWER', 'REACTION', 'CURSE']);
+const cardRarities = new Set<CardRarity>(['BASIC', 'COMMON', 'UNCOMMON', 'RARE']);
 
 export const basicCardDefinitions: readonly CardDefinition[] = [
   {
@@ -134,12 +136,16 @@ export function validateCardDefinition(card: CardDefinition): CardDefinitionVali
     errors.push({ code: 'INVALID_ID', message: 'Card ID must be lower snake case.' });
   }
 
-  if (!/^\d+\.\d+\.\d+$/.test(card.version)) {
+  if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(card.version)) {
     errors.push({ code: 'INVALID_VERSION', message: 'Card version must use semver x.y.z.' });
   }
 
   if (!cardClasses.has(card.class)) {
     errors.push({ code: 'INVALID_CLASS', message: 'Card class is not supported.' });
+  }
+
+  if (!cardRarities.has(card.rarity)) {
+    errors.push({ code: 'INVALID_RARITY', message: 'Card rarity is not supported.' });
   }
 
   if (!cardTypes.has(card.type)) {
@@ -165,12 +171,37 @@ export function validateCardDefinition(card: CardDefinition): CardDefinitionVali
   }
 
   for (const effect of card.effects) {
-    if ('amount' in effect && (!Number.isInteger(effect.amount) || effect.amount < 1)) {
-      errors.push({ code: 'INVALID_EFFECT', message: 'Effect amount must be a positive integer.' });
+    if (!isValidCardEffect(effect)) {
+      errors.push({ code: 'INVALID_EFFECT', message: 'Card effect is not supported.' });
     }
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+function isValidCardEffect(effect: unknown): effect is CardEffect {
+  if (typeof effect !== 'object' || effect === null || !('type' in effect)) {
+    return false;
+  }
+
+  const value = effect as Record<string, unknown>;
+  const hasPositiveAmount = Number.isInteger(value.amount) && (value.amount as number) > 0;
+  const hasSupportedTarget = value.target === 'SELF' || value.target === 'ENEMY';
+
+  switch (value.type) {
+    case 'DAMAGE':
+      return hasPositiveAmount && hasSupportedTarget;
+    case 'HEAL':
+    case 'GAIN_BLOCK':
+    case 'DRAW':
+      return hasPositiveAmount && value.target === 'SELF';
+    case 'CUSTOM':
+      return (
+        hasSupportedTarget && typeof value.resolver === 'string' && value.resolver.trim().length > 0
+      );
+    default:
+      return false;
+  }
 }
 
 export function validateCardDefinitions(
