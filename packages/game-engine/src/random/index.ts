@@ -18,7 +18,8 @@ export class SeededRandom implements RandomSource {
   }
 
   public next(): number {
-    let value = (this.#state += 0x6d2b_79f5);
+    this.#state = (this.#state + 0x6d2b_79f5) >>> 0;
+    let value = this.#state;
     value = Math.imul(value ^ (value >>> 15), value | 1);
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
 
@@ -44,7 +45,7 @@ export class FixedRandom implements RandomSource {
   #position = 0;
 
   public constructor(values: readonly number[]) {
-    this.#values = values.map(validateRandomValue);
+    this.#values = Array.from(values, validateRandomValue);
   }
 
   public next(): number {
@@ -63,8 +64,14 @@ export class FixedRandom implements RandomSource {
   }
 
   public restore(snapshot: FixedRandomState): void {
-    if (!Number.isInteger(snapshot.position) || snapshot.position < 0) {
-      throw new RangeError('FixedRandom state position must be a non-negative integer.');
+    if (
+      !Number.isInteger(snapshot.position) ||
+      snapshot.position < 0 ||
+      snapshot.position > this.#values.length
+    ) {
+      throw new RangeError(
+        'FixedRandom state position must be an integer within the configured value range.',
+      );
     }
 
     this.#position = snapshot.position;

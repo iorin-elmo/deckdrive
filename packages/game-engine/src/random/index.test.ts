@@ -12,6 +12,8 @@ describe('SeededRandom', () => {
       second.next(),
       second.next(),
     ]);
+    const values = Array.from({ length: 100 }, () => first.next());
+    expect(values.every((value) => value >= 0 && value < 1)).toBe(true);
   });
 
   it('continues the same sequence after state restoration', () => {
@@ -40,8 +42,10 @@ describe('FixedRandom', () => {
 
   it('rejects invalid values and exhausted sources', () => {
     expect(() => new FixedRandom([1])).toThrow(RangeError);
+    expect(() => new FixedRandom(new Array<number>(1))).toThrow(RangeError);
 
     const random = new FixedRandom([]);
     expect(() => random.next()).toThrow('FixedRandom has no remaining values.');
+    expect(() => random.restore({ position: 1 })).toThrow(RangeError);
   });
 });
