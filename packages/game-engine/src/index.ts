@@ -88,6 +88,8 @@ export interface BattleState {
   readonly turn: number;
   readonly activePlayerId: PlayerId;
   readonly phase: BattlePhase;
+  /** Explicit, replayable turn-start draw cadence. */
+  readonly turnDrawCount?: number;
   readonly players: readonly BattlePlayerState[];
   readonly stack: EffectStack;
   readonly events: readonly GameEvent[];
@@ -208,7 +210,9 @@ export type ActionValidationCode =
   | 'CARD_NOT_IN_HAND'
   | 'CARD_DEFINITION_NOT_FOUND'
   | 'INSUFFICIENT_ENERGY'
-  | 'INVALID_TARGET';
+  | 'INVALID_TARGET'
+  | 'INVALID_CARD_DEFINITION'
+  | 'UNSUPPORTED_EFFECT';
 
 export type ValidationResult =
   | { readonly ok: true }

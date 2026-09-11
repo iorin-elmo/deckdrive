@@ -39,6 +39,7 @@ function createState(): BattleState {
     rulesVersion: '1.0.0',
     cardDataVersion: '1.0.0',
     seed: 'seed-1',
+    turnDrawCount: 1,
     players: [
       { id: playerOne, drawPile: [] },
       { id: playerTwo, drawPile: [] },
@@ -199,6 +200,48 @@ describe('state transitions', () => {
       error: { code: 'INSUFFICIENT_ENERGY' },
     });
     expect(state).toEqual(snapshot);
+  });
+
+  it('given malformed or unsupported card effects, when they are validated, then they are rejected', () => {
+    const state = createState();
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    const negativeHeal = {
+      id: 'strike',
+      cost: 1,
+      effects: [{ type: 'HEAL' as const, amount: -1, target: 'SELF' as const }],
+    };
+    const custom = {
+      id: 'strike',
+      cost: 1,
+      effects: [{ type: 'CUSTOM' as const, resolver: 'later', target: 'ENEMY' as const }],
+    };
+
+    expect(validateAction(state, action, [negativeHeal])).toMatchObject({
+      ok: false,
+      code: 'INVALID_CARD_DEFINITION',
+    });
+    expect(validateAction(state, action, [custom])).toMatchObject({
+      ok: false,
+      code: 'UNSUPPORTED_EFFECT',
+    });
+  });
+
+  it('given a factory input without exactly two players, when it is created, then it rejects it', () => {
+    expect(() =>
+      createInitialBattleState({
+        matchId: 'solo' as MatchId,
+        engineVersion: '1.0.0',
+        rulesVersion: '1.0.0',
+        cardDataVersion: '1.0.0',
+        seed: 'seed',
+        turnDrawCount: 1,
+        players: [{ id: playerOne, drawPile: [] }],
+      }),
+    ).toThrow('exactly two players');
   });
 
   it('given an end turn, when it resolves, then the next player draws and starts their turn', () => {

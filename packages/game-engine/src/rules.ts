@@ -15,10 +15,19 @@ import type {
 } from './index.js';
 
 export type CardEffect =
-  | { readonly type: 'DAMAGE'; readonly amount: number; readonly target: 'ENEMY' }
+  | {
+      readonly type: 'DAMAGE';
+      readonly amount: number;
+      readonly target: 'SELF' | 'ENEMY';
+    }
   | { readonly type: 'HEAL'; readonly amount: number; readonly target: 'SELF' }
   | { readonly type: 'GAIN_BLOCK'; readonly amount: number; readonly target: 'SELF' }
-  | { readonly type: 'DRAW'; readonly amount: number; readonly target: 'SELF' };
+  | { readonly type: 'DRAW'; readonly amount: number; readonly target: 'SELF' }
+  | {
+      readonly type: 'CUSTOM';
+      readonly resolver: string;
+      readonly target: 'SELF' | 'ENEMY';
+    };
 
 /** Structural to keep the engine free of a card-definition runtime dependency. */
 export interface CardDefinition {
@@ -40,6 +49,7 @@ export interface CreateInitialBattleStateOptions {
   readonly rulesVersion: string;
   readonly cardDataVersion: string;
   readonly seed: string;
+  readonly turnDrawCount: number;
   readonly players: readonly {
     readonly id: PlayerId;
     readonly drawPile: readonly CardInstance[];
@@ -48,7 +58,12 @@ export interface CreateInitialBattleStateOptions {
 
 export function createInitialBattleState(options: CreateInitialBattleStateOptions): BattleState {
   const firstPlayer = options.players[0];
-  if (firstPlayer === undefined) throw new RangeError('A battle requires at least one player.');
+  if (firstPlayer === undefined || options.players.length !== 2) {
+    throw new RangeError('A battle requires exactly two players.');
+  }
+  if (!isNonNegativeInteger(options.turnDrawCount)) {
+    throw new RangeError('Turn draw count must be a non-negative integer.');
+  }
 
   return {
     matchId: options.matchId,
@@ -59,6 +74,7 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
     turn: 1,
     activePlayerId: firstPlayer.id,
     phase: 'PLAYER_TURN',
+    turnDrawCount: options.turnDrawCount,
     stack: [],
     events: [],
     players: options.players.map((player) => ({
@@ -98,6 +114,12 @@ export function validateRuleAction(
   const definition = resolve(card.definitionId, definitions);
   if (definition === undefined)
     return invalid('CARD_DEFINITION_NOT_FOUND', 'No definition was supplied for this card.');
+  if (!isValidDefinition(definition)) {
+    return invalid('INVALID_CARD_DEFINITION', 'The supplied card definition is malformed.');
+  }
+  if (definition.effects.some((effect) => effect.type === 'CUSTOM')) {
+    return invalid('UNSUPPORTED_EFFECT', 'CUSTOM effects are not supported by the basic resolver.');
+  }
   if (player.energy < definition.cost)
     return invalid('INSUFFICIENT_ENERGY', 'The active player does not have enough energy.');
   if (
@@ -148,13 +170,13 @@ export function applyRuleAction(
 }
 
 function endTurn(state: BattleState, playerId: PlayerId) {
-  const nextIndex =
-    (state.players.findIndex((player) => player.id === playerId) + 1) % state.players.length;
+  const currentIndex = state.players.findIndex((player) => player.id === playerId);
+  const nextIndex = nextLivingPlayerIndex(state.players, currentIndex);
   const nextPlayer = state.players[nextIndex]!;
   const emitted = eventEmitter(state.events);
   let players = clonePlayers(state.players);
   emitted.emit({ type: 'TURN_ENDED', playerId });
-  players = draw(players, nextIndex, 1, emitted);
+  players = draw(players, nextIndex, state.turnDrawCount ?? 0, emitted);
   players[nextIndex] = { ...players[nextIndex]!, energy: players[nextIndex]!.maxEnergy };
   emitted.emit({ type: 'TURN_STARTED', playerId: nextPlayer.id });
   return finish(
@@ -177,6 +199,7 @@ function applyEffect(
   effect: CardEffect,
   emitted: EventEmitter,
 ) {
+  if (effect.type === 'CUSTOM') return players;
   if (effect.type === 'DRAW') return draw(players, actorIndex, effect.amount, emitted);
   const actor = players[actorIndex]!;
   if (effect.type === 'HEAL') {
@@ -190,7 +213,10 @@ function applyEffect(
     emitted.emit({ type: 'BLOCK_GAINED', targetId: actor.id, amount: effect.amount });
     return players;
   }
-  const id = targetId(players, action.playerId, action.targetId)!;
+  const id =
+    effect.target === 'SELF'
+      ? action.playerId
+      : targetId(players, action.playerId, action.targetId)!;
   const targetIndex = players.findIndex((player) => player.id === id);
   const target = players[targetIndex]!;
   const blocked = Math.min(target.block, effect.amount);
@@ -244,10 +270,21 @@ function targetId(
   playerId: PlayerId,
   requested: EntityId | PlayerId | undefined,
 ) {
-  const id = requested ?? players.find((player) => player.id !== playerId)?.id;
-  return players.some((player) => player.id === id && player.id !== playerId)
+  const id = requested ?? players.find((player) => player.id !== playerId && player.hp > 0)?.id;
+  return players.some((player) => player.id === id && player.id !== playerId && player.hp > 0)
     ? (id as PlayerId)
     : undefined;
+}
+
+function nextLivingPlayerIndex(
+  players: readonly BattlePlayerState[],
+  currentIndex: number,
+): number {
+  for (let offset = 1; offset < players.length; offset += 1) {
+    const index = (currentIndex + offset) % players.length;
+    if ((players[index]?.hp ?? 0) > 0) return index;
+  }
+  return currentIndex;
 }
 
 function clonePlayers(players: readonly BattlePlayerState[]): BattlePlayerState[] {
@@ -283,4 +320,24 @@ function finish(
 }
 function invalid(code: ActionValidationCode, message: string): ValidationResult {
   return { ok: false, code, message };
+}
+
+function isValidDefinition(definition: CardDefinition): boolean {
+  return (
+    isNonNegativeInteger(definition.cost) &&
+    definition.effects.length > 0 &&
+    definition.effects.every((effect) =>
+      effect.type === 'CUSTOM'
+        ? typeof effect.resolver === 'string' && effect.resolver.trim().length > 0
+        : isPositiveInteger(effect.amount),
+    )
+  );
+}
+
+function isPositiveInteger(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }
