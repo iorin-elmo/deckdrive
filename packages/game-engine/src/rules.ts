@@ -393,9 +393,11 @@ function isValidDefinition(definition: unknown): definition is CardDefinition {
     return false;
   }
   return (
+    typeof definition.id === 'string' &&
+    definition.id.length > 0 &&
     isNonNegativeInteger(definition.cost) &&
     definition.effects.length > 0 &&
-    definition.effects.every(isValidEffect)
+    [...definition.effects].every(isValidEffect)
   );
 }
 

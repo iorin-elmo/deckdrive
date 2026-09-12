@@ -441,6 +441,46 @@ describe('state transitions', () => {
     });
   });
 
+  it('given sparse effects or missing definition IDs, when card data is validated, then it returns an error', () => {
+    const action = {
+      type: 'PLAY_CARD' as const,
+      playerId: playerOne,
+      cardInstanceId: 'strike-1' as CardInstanceId,
+    };
+    const sparseDefinition = {
+      id: 'strike',
+      cost: 1,
+      effects: new Array(1),
+    } as unknown as CardDefinition;
+    const original = createState();
+    const malformedState = {
+      ...original,
+      players: [
+        {
+          ...original.players[0]!,
+          hand: [
+            { ...card('strike-1', 'strike'), definitionId: undefined } as unknown as CardInstance,
+          ],
+        },
+        original.players[1]!,
+      ],
+    };
+    const missingIdDefinition = {
+      id: undefined,
+      cost: 1,
+      effects: strike.effects,
+    } as unknown as CardDefinition;
+
+    expect(validateAction(createState(), action, [sparseDefinition])).toMatchObject({
+      ok: false,
+      code: 'INVALID_CARD_DEFINITION',
+    });
+    expect(validateAction(malformedState, action, [missingIdDefinition])).toMatchObject({
+      ok: false,
+      code: 'INVALID_CARD_DEFINITION',
+    });
+  });
+
   it('given a malformed resolver source, when a card is validated, then it returns a structured failure', () => {
     const action = {
       type: 'PLAY_CARD' as const,
