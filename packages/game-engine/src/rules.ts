@@ -49,6 +49,7 @@ export interface CreateInitialBattleStateOptions {
   readonly rulesVersion: string;
   readonly cardDataVersion: string;
   readonly seed: string;
+  readonly initialDrawCount: number;
   readonly turnDrawCount: number;
   readonly players: readonly {
     readonly id: PlayerId;
@@ -70,6 +71,9 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
   if (new Set(cardInstanceIds).size !== cardInstanceIds.length) {
     throw new RangeError('A battle requires unique card instance IDs.');
   }
+  if (!isNonNegativeInteger(options.initialDrawCount)) {
+    throw new RangeError('Initial draw count must be a non-negative integer.');
+  }
   if (!isNonNegativeInteger(options.turnDrawCount)) {
     throw new RangeError('Turn draw count must be a non-negative integer.');
   }
@@ -87,7 +91,7 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
     statuses: [],
   }));
   const emitted = eventEmitter([]);
-  players = draw(players, 0, options.turnDrawCount, emitted);
+  players = draw(players, 0, options.initialDrawCount, emitted);
 
   return {
     matchId: options.matchId,
@@ -98,6 +102,7 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
     turn: 1,
     activePlayerId: firstPlayer.id,
     phase: 'PLAYER_TURN',
+    initialDrawCount: options.initialDrawCount,
     turnDrawCount: options.turnDrawCount,
     stack: [],
     events: emitted.values,

@@ -39,6 +39,7 @@ function createState(): BattleState {
     rulesVersion: '1.0.0',
     cardDataVersion: '1.0.0',
     seed: 'seed-1',
+    initialDrawCount: 0,
     turnDrawCount: 1,
     players: [
       { id: playerOne, drawPile: [] },
@@ -61,17 +62,18 @@ describe('state transitions', () => {
     }
   });
 
-  it('given an initial draw cadence, when a battle starts, then the first player draws that many cards', () => {
+  it('given distinct initial and turn draw cadences, when a battle starts and turns advance, then each cadence is applied independently', () => {
     const state = createInitialBattleState({
       matchId: 'draw-match' as MatchId,
       engineVersion: '1.0.0',
       rulesVersion: '1.0.0',
       cardDataVersion: '1.0.0',
       seed: 'seed',
-      turnDrawCount: 2,
+      initialDrawCount: 2,
+      turnDrawCount: 1,
       players: [
         { id: playerOne, drawPile: [card('draw-1', 'strike'), card('draw-2', 'guard')] },
-        { id: playerTwo, drawPile: [] },
+        { id: playerTwo, drawPile: [card('turn-draw', 'strike')] },
       ],
     });
 
@@ -80,6 +82,15 @@ describe('state transitions', () => {
       drawPile: [],
     });
     expect(state.events.map((event) => event.type)).toEqual(['CARD_DRAWN', 'CARD_DRAWN']);
+
+    const result = applyAction(state, { type: 'END_TURN', playerId: playerOne });
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.state.players[1]).toMatchObject({
+      hand: [card('turn-draw', 'strike')],
+      drawPile: [],
+    });
   });
 
   it('given an attack and block, when a card is played, then block absorbs damage before HP', () => {
@@ -323,6 +334,7 @@ describe('state transitions', () => {
         rulesVersion: '1.0.0',
         cardDataVersion: '1.0.0',
         seed: 'seed',
+        initialDrawCount: 1,
         turnDrawCount: 1,
         players: [{ id: playerOne, drawPile: [] }],
       }),
@@ -337,6 +349,7 @@ describe('state transitions', () => {
         rulesVersion: '1.0.0',
         cardDataVersion: '1.0.0',
         seed: 'seed',
+        initialDrawCount: 1,
         turnDrawCount: 1,
         players: [
           { id: playerOne, drawPile: [] },
@@ -354,6 +367,7 @@ describe('state transitions', () => {
         rulesVersion: '1.0.0',
         cardDataVersion: '1.0.0',
         seed: 'seed',
+        initialDrawCount: 1,
         turnDrawCount: 1,
         players: [
           { id: playerOne, drawPile: [card('same', 'strike')] },

@@ -417,6 +417,7 @@ type BattleState = {
   turn: number;
   activePlayerId: PlayerId;
   phase: BattlePhase;
+  initialDrawCount: number;
   turnDrawCount: number;
 
   players: BattlePlayerState[];
