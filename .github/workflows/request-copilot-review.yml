@@ -26,6 +26,7 @@ jobs:
           curl --fail-with-body --request POST \
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Content-Type: application/json" \
             --header "X-GitHub-Api-Version: 2026-03-10" \
             --data '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' \
             "https://api.github.com/repos/$REPOSITORY/pulls/$PR_NUMBER/requested_reviewers"
