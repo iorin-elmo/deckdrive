@@ -16,6 +16,8 @@ function createState(): BattleState {
     turn: 1,
     activePlayerId: playerOne,
     phase: 'PLAYER_TURN',
+    initialDrawCount: 0,
+    turnDrawCount: 1,
     players: [
       {
         id: playerOne,

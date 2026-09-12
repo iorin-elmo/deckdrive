@@ -1,0 +1,48 @@
+name: Request Copilot review
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: request-copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-review:
+    name: Request Copilot review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+
+    steps:
+      - name: Request review from Copilot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEWER: copilot-pull-request-reviewer[bot]
+        run: |
+          requested_reviewers="$(
+            curl --fail-with-body --silent --show-error \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/$REPOSITORY/pulls/$PR_NUMBER/requested_reviewers"
+          )"
+          if jq --exit-status --arg reviewer "$REVIEWER" \
+            '.users[]? | select(.login == $reviewer)' <<<"$requested_reviewers" >/dev/null; then
+            exit 0
+          fi
+          curl --fail-with-body --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Api-Version: 2026-03-10" \
+            --data "{\"reviewers\":[\"$REVIEWER\"]}" \
+            "https://api.github.com/repos/$REPOSITORY/pulls/$PR_NUMBER/requested_reviewers"
