@@ -83,7 +83,7 @@ export interface BattleState {
   readonly phase: BattlePhase;
   /** Explicit, replayable turn-start draw cadence. */
   readonly turnDrawCount: number;
-  /** Explicit, replayable initial-hand draw count. */
+  /** Explicit, replayable initial-hand draw count applied to every player. */
   readonly initialDrawCount: number;
   readonly players: readonly BattlePlayerState[];
   readonly stack: EffectStack;

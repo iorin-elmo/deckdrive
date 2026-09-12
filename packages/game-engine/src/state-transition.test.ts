@@ -73,7 +73,14 @@ describe('state transitions', () => {
       turnDrawCount: 1,
       players: [
         { id: playerOne, drawPile: [card('draw-1', 'strike'), card('draw-2', 'guard')] },
-        { id: playerTwo, drawPile: [card('turn-draw', 'strike')] },
+        {
+          id: playerTwo,
+          drawPile: [
+            card('draw-3', 'strike'),
+            card('draw-4', 'guard'),
+            card('turn-draw', 'strike'),
+          ],
+        },
       ],
     });
 
@@ -81,14 +88,23 @@ describe('state transitions', () => {
       hand: [card('draw-1', 'strike'), card('draw-2', 'guard')],
       drawPile: [],
     });
-    expect(state.events.map((event) => event.type)).toEqual(['CARD_DRAWN', 'CARD_DRAWN']);
+    expect(state.players[1]).toMatchObject({
+      hand: [card('draw-3', 'strike'), card('draw-4', 'guard')],
+      drawPile: [card('turn-draw', 'strike')],
+    });
+    expect(state.events.map((event) => event.type)).toEqual([
+      'CARD_DRAWN',
+      'CARD_DRAWN',
+      'CARD_DRAWN',
+      'CARD_DRAWN',
+    ]);
 
     const result = applyAction(state, { type: 'END_TURN', playerId: playerOne });
 
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) return;
     expect(result.state.players[1]).toMatchObject({
-      hand: [card('turn-draw', 'strike')],
+      hand: [card('draw-3', 'strike'), card('draw-4', 'guard'), card('turn-draw', 'strike')],
       drawPile: [],
     });
   });

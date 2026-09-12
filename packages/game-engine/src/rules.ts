@@ -91,7 +91,9 @@ export function createInitialBattleState(options: CreateInitialBattleStateOption
     statuses: [],
   }));
   const emitted = eventEmitter([]);
-  players = draw(players, 0, options.initialDrawCount, emitted);
+  for (let playerIndex = 0; playerIndex < players.length; playerIndex += 1) {
+    players = draw(players, playerIndex, options.initialDrawCount, emitted);
+  }
 
   return {
     matchId: options.matchId,

@@ -428,6 +428,8 @@ type BattleState = {
 };
 ```
 
+`initialDrawCount` は各プレイヤーの初期手札に、`turnDrawCount` は各ターン開始時に適用する。
+
 Player:
 
 ```ts
