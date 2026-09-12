@@ -225,7 +225,7 @@ describe('state transitions', () => {
     const original = createState();
     const state = {
       ...original,
-      players: [original.players[0]!, { ...original.players[1]!, hp: 6, block: 0 }],
+      players: [original.players[0]!, { ...original.players[1]!, hp: 4, block: 0 }],
     };
     const result = applyAction(
       state,
@@ -247,6 +247,9 @@ describe('state transitions', () => {
       type: 'MATCH_FINISHED',
       result: { status: 'WIN', winnerId: playerOne },
     });
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ type: 'ENTITY_DAMAGED', targetId: playerTwo, amount: 4 }),
+    );
   });
 
   it('given too little energy, when a card is validated, then it is rejected without mutation', () => {

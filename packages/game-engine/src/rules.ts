@@ -275,7 +275,7 @@ function applyEffect(
   const targetIndex = players.findIndex((player) => player.id === id);
   const target = players[targetIndex]!;
   const blocked = Math.min(target.block, effect.amount);
-  const hpDamage = effect.amount - blocked;
+  const hpDamage = Math.min(effect.amount - blocked, target.hp);
   emitted.emit({
     type: 'DAMAGE_DEALT',
     sourceId: action.playerId,
