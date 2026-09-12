@@ -123,6 +123,9 @@ export function prepareRuleAction(
   action: GameAction,
   definitions?: CardDefinitionSource,
 ): PreparedRuleAction {
+  if (!isValidAction(action)) {
+    return prepared(invalid('UNKNOWN_ACTION_TYPE', 'The action is malformed or not supported.'));
+  }
   const player = state.players.find((candidate) => candidate.id === action.playerId);
   if (player === undefined)
     return prepared(invalid('PLAYER_NOT_FOUND', 'The action player is not in this battle.'));
@@ -428,4 +431,14 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isValidAction(action: unknown): action is GameAction {
+  if (!isRecord(action) || typeof action.playerId !== 'string') return false;
+  if (action.type === 'END_TURN') return true;
+  return (
+    action.type === 'PLAY_CARD' &&
+    typeof action.cardInstanceId === 'string' &&
+    (action.targetId === undefined || typeof action.targetId === 'string')
+  );
 }

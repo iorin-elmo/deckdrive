@@ -495,6 +495,22 @@ describe('state transitions', () => {
     ).toMatchObject({ ok: false, code: 'CARD_DEFINITION_NOT_FOUND' });
   });
 
+  it('given null, undefined, or incomplete action input, when it is validated, then it returns a structured failure', () => {
+    for (const action of [
+      null,
+      undefined,
+      { type: 'PLAY_CARD' },
+      { type: 'END_TURN', playerId: 1 },
+    ]) {
+      expect(() =>
+        validateAction(createState(), action as Parameters<typeof validateAction>[1]),
+      ).not.toThrow();
+      expect(
+        validateAction(createState(), action as Parameters<typeof validateAction>[1]),
+      ).toMatchObject({ ok: false, code: 'UNKNOWN_ACTION_TYPE' });
+    }
+  });
+
   it('given an end turn, when it resolves, then the next player draws and starts their turn', () => {
     const original = createState();
     const state = {
