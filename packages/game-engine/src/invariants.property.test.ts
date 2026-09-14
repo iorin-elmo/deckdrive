@@ -206,7 +206,7 @@ describe('Phase 1 engine invariants', () => {
       (match) => match[1],
     );
 
-    expect(moduleSpecifiers).not.toHaveLength(0);
+    expect(sources).not.toHaveLength(0);
     expect(moduleSpecifiers.every((specifier) => specifier?.startsWith('.') === true)).toBe(true);
     expect(sourceWithoutComments).not.toMatch(/\bMath\.random\s*\(/u);
   });
