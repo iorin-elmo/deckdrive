@@ -180,6 +180,7 @@ describe('Phase 1 engine invariants', () => {
 
         expect(result.ok).toBe(false);
         expect(result.state).toBe(state);
+        expect(result.events).toEqual([]);
         expect(state).toEqual(snapshot);
       }),
       { numRuns: 100 },
@@ -197,11 +198,15 @@ describe('Phase 1 engine invariants', () => {
 
   it('keeps implementation modules isolated from UI, CPU, and platform dependencies', () => {
     const sources = readImplementationSources(new URL('./', import.meta.url));
-    const moduleSpecifiers = sources.flatMap((source) =>
-      Array.from(source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/gu), (match) => match[1]),
-    );
     const sourceWithoutComments = sources.join('\n').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gmu, '');
+    const moduleSpecifiers = Array.from(
+      sourceWithoutComments.matchAll(
+        /\b(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)['"]([^'"]+)['"]/gu,
+      ),
+      (match) => match[1],
+    );
 
+    expect(moduleSpecifiers).not.toHaveLength(0);
     expect(moduleSpecifiers.every((specifier) => specifier?.startsWith('.') === true)).toBe(true);
     expect(sourceWithoutComments).not.toMatch(/\bMath\.random\s*\(/u);
   });

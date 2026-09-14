@@ -30,11 +30,14 @@ shared battle fixture; production engine code performs no I/O.
 
 ## Definition of done
 
-For this Engine change, the applicable §110 checks are complete:
+For this Engine change, these applicable §110 checks are complete:
 
 - Implementation, typecheck, unit/property tests, and documentation are present.
-- Determinism is tested. Replay regression is intentionally deferred to R00/R02,
-  when the replay format and fixtures exist.
+- Determinism is tested.
 - UI, loading, empty, responsive, accessibility, logging, security, migration,
   and E2E checks are not applicable because this change has no user interface,
   service, database, or external I/O.
+
+Replay regression remains pending for R00/R02, when the replay format and
+fixtures exist. It is a required Game Engine check and is not satisfied by this
+Phase 1 change.
