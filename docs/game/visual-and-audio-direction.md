@@ -79,36 +79,39 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 ## 4. 対戦演出
 
-すべての演出は `GameEvent.sequence` 順に再生する。同一アクション内のイベントは 60〜120 ms の最小間隔で連結し、通信の到着順には依存しない。
+すべての演出は `GameEvent.sequence` 順に再生する。同一アクション内のイベントは 60〜120 ms の最小間隔で連結し、通信の到着順には依存しない。`DAMAGE_DEALT.amount` はブロック軽減前の攻撃量であり、実 HP ダメージを意味しない。
 
 | engine event | 視覚演出 | 音 | 標準時間 |
 | --- | --- | --- | --- |
 | `CARD_PLAYED` | 手札から中央プレイレーンへカードが弧を描いて飛び、カード名を 0.5 秒だけ表示 | 紙のスワイプ + 小さな決定音 | 280 ms |
 | `EFFECT_STARTED` | 効果種別の色でカード枠をフラッシュ。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
-| `DAMAGE_DEALT` | 攻撃カードから相手へ色つきの軌跡。対象は 6 px 横揺れ、赤橙の衝撃波 | 斬撃 / 打撃。amount が大きいほど低音を追加 | 280–420 ms |
+| `DAMAGE_DEALT` | 攻撃カードから相手へ中立色の軌跡を飛ばす「攻撃予告」。対象はまだ揺らさず、HP ダメージ色も使わない | 斬撃 / 打撃の導入音 | 180–260 ms |
 | `BLOCK_REDUCED` | 盾の六角形が前面に出て、ひび割れて消える。実 HP の減少より先に再生 | 金属の軽い反響 | 180 ms |
-| `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。致死時は 400 ms 静止してから敗北処理へ | 被弾音 | 240 ms |
+| `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。対象は 6 px 横揺れ、赤橙の衝撃波。致死時は 400 ms 静止してから敗北処理へ | 被弾音。amount が大きいほど低音を追加 | 240 ms |
 | `BLOCK_GAINED` | 自分を囲む半透明の六角シールドが組み上がり、`+N BLOCK` | 上昇するガラス音 | 360 ms |
 | `HEALED` | 黄緑の粒子が下から上へ流れ、HP バーを満たす | 柔らかな上昇音 | 360 ms |
+| `CARDS_DRAWN` | `cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。同じ player と card instance の `CARD_DRAWN` が続く場合はバッチ演出を優先し、後続の個別イベントは消費のみして二重に演出しない | 紙をめくる音を最大 3 レイヤー | 220 ms + 90 ms / 枚（最大 580 ms） |
 | `CARD_DRAWN` | 山札の上から手札へ 1 枚ずつスライド。複数枚は 90 ms 間隔 | 紙をめくる音 | 220 ms / 枚 |
 | `CARD_DISCARDED` | 解決済みカードが縮み、墓地カウンタへ吸い込まれる | 小さな紙音 | 180 ms |
+| `STATUS_APPLIED` | `status` のアイコンを対象のステータス列に 0.18 秒で追加し、輪郭を一度だけ発光 | 小さな付与音 | 180 ms |
+| `STATUS_REMOVED` | `statusId` に対応するアイコンを対象のステータス列から淡く消す。不明な ID は表示を変えずログに記録 | 柔らかな解除音 | 150 ms |
 | `MATCH_FINISHED` | 画面の彩度を少し落として、勝者側から色が戻る。`VICTORY` / `DEFEAT` を表示 | 勝利=短い和音、敗北=低い終止音 | 1,200 ms |
 
 ### 攻撃・防御の細則
 
-- ダメージの色は HP を削る結果にだけ使い、ブロックに吸収された分は青緑のシールド演出にする。`6 DAMAGE` のうち 5 ブロックなら、先に `BLOCK -5`、続けて `HP -1` を表示する。
+- ダメージの色は `ENTITY_DAMAGED` による HP 減少だけに使い、ブロックに吸収された分は青緑のシールド演出にする。`DAMAGE_DEALT` は中立色の攻撃予告に留める。`6 DAMAGE` のうち 5 ブロックなら、先に `BLOCK -5`、続けて `HP -1` を表示する。完全にブロックされた場合は `BLOCK_REDUCED` だけを表示し、赤橙の衝撃波や HP 揺れは出さない。
 - 同じ対象への多段ダメージは、個別に揺らすのではなく 150 ms 内の入力を一つの衝撃群にまとめる。ただし数値は個別に残す。
 - 回避不能の大ダメージ（将来の閾値: 最大 HP の 25% 以上）は、画面全体ではなく対象パネル周辺だけを 1 回強く光らせる。カメラ揺れは既定で無効にし、設定で有効化する。
 - 防御獲得時のシールドは蓄積値を視覚化するが、重ねすぎない。2 枚目以降は同じシールドを明るくして数値だけ更新する。
 
 ## 5. ターン遷移
 
-ターン終了から相手ターン開始までは、入力可能状態が曖昧にならない 650 ms の遷移にする。
+ターン終了から相手ターン開始までは、入力可能状態が曖昧にならない **合計 650 ms** の遷移にする。各処理は次の開始時刻で一部並行して動く。
 
-1. `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
-2. 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. `CARD_DRAWN` を再生し、`TURN_STARTED` でエネルギーを満たす（250 ms）。
-4. 自分の番だけ手札を 6 px せり上げ、主ボタンを有効化する（120 ms）。
+1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
+2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
+3. 290 ms: `CARD_DRAWN` / `CARDS_DRAWN` を再生し、`TURN_STARTED` でエネルギーを満たす（250 ms）。
+4. 530 ms: 自分の番だけ手札を 6 px せり上げ、主ボタンを有効化する（120 ms）。
 
 相手の行動中は操作領域を単に無効化するのではなく、相手のアバター周囲に「思考中」の弱いリングを表示する。通信待ちでは `同期中…` を表示し、ゲームのイベントが届くまで偽の結果を確定表示しない。
 
@@ -175,31 +178,38 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 ## 9. 実装インターフェース
 
-UI は engine のイベントを受け取る `BattleAnimationQueue` を持つ。キューは `sequence` でソートし、イベントを「演出定義」「対象」「数値」「開始時刻」に変換する。状態の反映はサーバーから受けた確定状態で行い、アニメーション終了を待ってゲームロジックを進めない。
+UI は engine のイベントを受け取る `BattleAnimationQueue` を持つ。状態の反映はサーバーから受けた確定状態で行い、アニメーション終了を待ってゲームロジックを進めない。
+
+キューは `sequence` をキーにした保留バッファを持ち、最初に表示するスナップショットの最終再生 sequence + 1 で `nextExpectedSequence` を初期化する。`nextExpectedSequence` と一致するイベントだけを取り出すため、到着済みの大きい sequence は先に再生しない。`nextExpectedSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせずイベント履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、スナップショットの最終 sequence の次から再開する。このため、遅延・重複・順不同の配信でも視覚上の因果関係を崩さない。
+
+各キュー項目は元の `GameEvent` を保持する。カード ID、効果 ID、状態オブジェクト、結果などの契約上の payload を `amount` だけに縮約しない。演出種別は UI 用の派生情報であり、ゲームイベントを置き換えない。
 
 ```ts
 type AnimationKind =
   | 'card-play'
+  | 'effect-start'
+  | 'attack-intent'
   | 'damage'
   | 'block-break'
   | 'block-gain'
   | 'heal'
   | 'draw'
   | 'discard'
+  | 'status-apply'
+  | 'status-remove'
   | 'turn-change'
   | 'match-result';
 
 interface BattleAnimation {
   readonly sequence: number;
   readonly kind: AnimationKind;
-  readonly sourceId?: string;
-  readonly targetId?: string;
-  readonly amount?: number;
+  readonly event: GameEvent;
+  readonly startedAt: number;
   readonly reducedMotion: boolean;
 }
 ```
 
-`CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARD_DRAWN`、`CARD_DISCARDED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED` を網羅してテストする。未知のイベントは無視せず、ログと安全な短いフェードにフォールバックする。
+`GameEvent` の全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。テストでは、順不同・重複・欠番・再接続時に、連続した sequence 以外を先行再生しないこと、元イベントの payload が保持されること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。将来追加される未知のイベントは無視せず、ログと安全な短いフェードにフォールバックする。
 
 ## 10. 完成判定
 
