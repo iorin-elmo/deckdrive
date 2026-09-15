@@ -186,6 +186,26 @@ describe('Replay recording', () => {
     });
   });
 
+  it('rejects malformed nested state even with a recalculated checksum', () => {
+    const replay = successfulReplay();
+    const corrupt = withChecksum({
+      ...replay,
+      initialState: {
+        matchId: replay.matchId,
+        engineVersion: replay.engineVersion,
+        rulesVersion: replay.rulesVersion,
+        cardDataVersion: replay.cardDataVersion,
+        seed: replay.seed,
+        events: [],
+      } as unknown as Replay['initialState'],
+    });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
     const state = initialState();
     const result = recordReplay(

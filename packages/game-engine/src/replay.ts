@@ -211,8 +211,8 @@ function failure(
   return { ok: false, error: { code, message } };
 }
 
-function isPositiveInteger(value: number): boolean {
-  return Number.isInteger(value) && value > 0;
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 function isReplayShape(value: unknown): value is Replay {
@@ -225,17 +225,161 @@ function isReplayShape(value: unknown): value is Replay {
     typeof value.rulesVersion === 'string' &&
     typeof value.cardDataVersion === 'string' &&
     typeof value.seed === 'string' &&
-    isRecord(value.initialState) &&
+    isBattleState(value.initialState) &&
     Array.isArray(value.actions) &&
+    value.actions.every(isGameAction) &&
     Array.isArray(value.events) &&
+    value.events.every(isGameEvent) &&
     Array.isArray(value.snapshots) &&
-    isRecord(value.finalState) &&
+    value.snapshots.every(isReplaySnapshot) &&
+    isBattleState(value.finalState) &&
     typeof value.snapshotInterval === 'number'
   );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isBattleState(value: unknown): value is BattleState {
+  return hasBattleStateFields(value, true);
+}
+
+function isSnapshotState(value: unknown): value is Omit<BattleState, 'events'> {
+  return hasBattleStateFields(value, false);
+}
+
+function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.matchId === 'string' &&
+    typeof value.engineVersion === 'string' &&
+    typeof value.rulesVersion === 'string' &&
+    typeof value.cardDataVersion === 'string' &&
+    typeof value.seed === 'string' &&
+    isPositiveInteger(value.turn) &&
+    typeof value.activePlayerId === 'string' &&
+    (value.phase === 'PLAYER_TURN' || value.phase === 'MATCH_END') &&
+    isNonNegativeInteger(value.turnDrawCount) &&
+    isNonNegativeInteger(value.initialDrawCount) &&
+    Array.isArray(value.players) &&
+    value.players.length > 0 &&
+    value.players.every(isBattlePlayerState) &&
+    Array.isArray(value.stack) &&
+    value.stack.every(isEffectStackItem) &&
+    (includesEvents
+      ? Array.isArray(value.events) && value.events.every(isGameEvent)
+      : !('events' in value))
+  );
+}
+
+function isBattlePlayerState(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    isNonNegativeNumber(value.hp) &&
+    isPositiveInteger(value.maxHp) &&
+    isNonNegativeInteger(value.energy) &&
+    isPositiveInteger(value.maxEnergy) &&
+    isNonNegativeInteger(value.block) &&
+    Array.isArray(value.drawPile) &&
+    value.drawPile.every(isCardInstance) &&
+    Array.isArray(value.hand) &&
+    value.hand.every(isCardInstance) &&
+    Array.isArray(value.discard) &&
+    value.discard.every(isCardInstance) &&
+    Array.isArray(value.statuses) &&
+    value.statuses.every(isStatus)
+  );
+}
+
+function isCardInstance(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.definitionId === 'string';
+}
+
+function isStatus(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === 'string' && isNonNegativeInteger(value.stacks);
+}
+
+function isEffectStackItem(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.sourceId === 'string' &&
+    typeof value.description === 'string'
+  );
+}
+
+function isGameAction(value: unknown): value is GameAction {
+  if (!isRecord(value) || typeof value.playerId !== 'string') return false;
+  if (value.type === 'END_TURN') return true;
+  return (
+    value.type === 'PLAY_CARD' &&
+    typeof value.cardInstanceId === 'string' &&
+    (value.targetId === undefined || typeof value.targetId === 'string')
+  );
+}
+
+function isGameEvent(value: unknown): value is GameEvent {
+  if (!isRecord(value) || !isPositiveInteger(value.sequence)) return false;
+  switch (value.type) {
+    case 'CARD_PLAYED':
+    case 'CARD_DRAWN':
+    case 'CARD_DISCARDED':
+      return typeof value.playerId === 'string' && typeof value.cardInstanceId === 'string';
+    case 'EFFECT_STARTED':
+      return typeof value.effectId === 'string';
+    case 'DAMAGE_DEALT':
+      return (
+        typeof value.sourceId === 'string' &&
+        typeof value.targetId === 'string' &&
+        isNonNegativeNumber(value.amount)
+      );
+    case 'BLOCK_REDUCED':
+    case 'ENTITY_DAMAGED':
+    case 'HEALED':
+    case 'BLOCK_GAINED':
+      return typeof value.targetId === 'string' && isNonNegativeNumber(value.amount);
+    case 'CARDS_DRAWN':
+      return (
+        typeof value.playerId === 'string' &&
+        Array.isArray(value.cardInstanceIds) &&
+        value.cardInstanceIds.every((id) => typeof id === 'string')
+      );
+    case 'STATUS_APPLIED':
+      return typeof value.targetId === 'string' && isStatus(value.status);
+    case 'STATUS_REMOVED':
+      return typeof value.targetId === 'string' && typeof value.statusId === 'string';
+    case 'TURN_STARTED':
+    case 'TURN_ENDED':
+      return typeof value.playerId === 'string';
+    case 'MATCH_FINISHED':
+      return isTerminalBattleResult(value.result);
+    default:
+      return false;
+  }
+}
+
+function isTerminalBattleResult(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return value.status === 'DRAW' || (value.status === 'WIN' && typeof value.winnerId === 'string');
+}
+
+function isReplaySnapshot(value: unknown): value is ReplaySnapshot {
+  return (
+    isRecord(value) &&
+    isNonNegativeInteger(value.actionIndex) &&
+    isNonNegativeInteger(value.eventSequence) &&
+    isSnapshotState(value.state)
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function checksum(value: unknown): string {
