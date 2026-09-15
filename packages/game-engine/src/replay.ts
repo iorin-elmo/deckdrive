@@ -7,9 +7,13 @@ export const replayFormatVersion = 1 as const;
 export interface ReplaySnapshot {
   /** Number of player decisions already applied when this snapshot was taken. */
   readonly actionIndex: number;
-  /** Last globally ordered event included in state, or zero before any events. */
+  /** Last globally ordered event represented by this state, or zero before any events. */
   readonly eventSequence: number;
-  readonly state: BattleState;
+  /**
+   * State at the boundary without its event history. The top-level replay
+   * event stream and eventSequence reconstruct the complete BattleState.
+   */
+  readonly state: Omit<BattleState, 'events'>;
 }
 
 export interface Replay {
@@ -119,28 +123,39 @@ export function verifyReplay(
   replay: Replay,
   definitions?: CardDefinitionSource,
 ): ReplayVerificationResult {
-  const { checksum: recordedChecksum, ...content } = replay;
-  if (recordedChecksum !== calculateReplayChecksum(content)) {
-    return failure('CHECKSUM_MISMATCH', 'Replay content does not match its recorded checksum.');
-  }
-  if (replay.formatVersion !== replayFormatVersion) {
-    return failure('REPLAY_MISMATCH', 'Replay format version is not supported by this engine.');
-  }
-  if (!isPositiveInteger(replay.snapshotInterval)) {
-    return failure('REPLAY_MISMATCH', 'Replay snapshotInterval must be a positive integer.');
+  if (!isReplayShape(replay)) {
+    return failure('REPLAY_MISMATCH', 'Replay content has an invalid persisted shape.');
   }
 
-  const recorded = recordReplay(replay.initialState, replay.actions, definitions, {
-    snapshotInterval: replay.snapshotInterval,
-  });
-  if (!recorded.ok) {
-    return failure(
-      'ACTION_REJECTED',
-      `Recorded action ${String(recorded.error.actionIndex)} was rejected: ${recorded.error.message}`,
-    );
-  }
-  if (!deepEqual(recorded.replay, replay)) {
-    return failure('REPLAY_MISMATCH', 'Replay events, snapshots, final state, or metadata differ.');
+  try {
+    const { checksum: recordedChecksum, ...content } = replay;
+    if (recordedChecksum !== calculateReplayChecksum(content)) {
+      return failure('CHECKSUM_MISMATCH', 'Replay content does not match its recorded checksum.');
+    }
+    if (replay.formatVersion !== replayFormatVersion) {
+      return failure('REPLAY_MISMATCH', 'Replay format version is not supported by this engine.');
+    }
+    if (!isPositiveInteger(replay.snapshotInterval)) {
+      return failure('REPLAY_MISMATCH', 'Replay snapshotInterval must be a positive integer.');
+    }
+
+    const recorded = recordReplay(replay.initialState, replay.actions, definitions, {
+      snapshotInterval: replay.snapshotInterval,
+    });
+    if (!recorded.ok) {
+      return failure(
+        'ACTION_REJECTED',
+        `Recorded action ${String(recorded.error.actionIndex)} was rejected: ${recorded.error.message}`,
+      );
+    }
+    if (!deepEqual(recorded.replay, replay)) {
+      return failure(
+        'REPLAY_MISMATCH',
+        'Replay events, snapshots, final state, or metadata differ.',
+      );
+    }
+  } catch {
+    return failure('REPLAY_MISMATCH', 'Replay content has an invalid persisted shape.');
   }
   return { ok: true };
 }
@@ -170,10 +185,22 @@ export function calculateReplayChecksum(replay: ReplayContent | Replay): string 
 }
 
 function snapshot(actionIndex: number, state: BattleState): ReplaySnapshot {
+  const { events, ...stateWithoutEvents } = state;
   return {
     actionIndex,
-    eventSequence: state.events.at(-1)?.sequence ?? 0,
-    state,
+    eventSequence: events.at(-1)?.sequence ?? 0,
+    state: stateWithoutEvents,
+  };
+}
+
+/** Reconstructs a complete engine state from an event-free replay snapshot. */
+export function restoreReplaySnapshot(
+  snapshot: ReplaySnapshot,
+  events: readonly GameEvent[],
+): BattleState {
+  return {
+    ...snapshot.state,
+    events: events.filter((event) => event.sequence <= snapshot.eventSequence),
   };
 }
 
@@ -186,6 +213,29 @@ function failure(
 
 function isPositiveInteger(value: number): boolean {
   return Number.isInteger(value) && value > 0;
+}
+
+function isReplayShape(value: unknown): value is Replay {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.checksum === 'string' &&
+    typeof value.formatVersion === 'number' &&
+    typeof value.matchId === 'string' &&
+    typeof value.engineVersion === 'string' &&
+    typeof value.rulesVersion === 'string' &&
+    typeof value.cardDataVersion === 'string' &&
+    typeof value.seed === 'string' &&
+    isRecord(value.initialState) &&
+    Array.isArray(value.actions) &&
+    Array.isArray(value.events) &&
+    Array.isArray(value.snapshots) &&
+    isRecord(value.finalState) &&
+    typeof value.snapshotInterval === 'number'
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function checksum(value: unknown): string {
@@ -230,10 +280,13 @@ function canonicalJson(value: unknown): string {
   if (value === null) return 'null';
   if (typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => (entry === undefined ? 'null' : canonicalJson(entry))).join(',')}]`;
+  }
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
       .sort()
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
       .join(',')}}`;

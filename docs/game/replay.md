@@ -16,13 +16,16 @@ values after applying each legal action deterministically:
 - a format version and deterministic FNV-1a checksum.
 
 Snapshots carry both `actionIndex` and the last included `eventSequence`, so a
-consumer can resume from a known action/event boundary. The initial state and
-all snapshots remain ordinary engine state: no filesystem paths, timestamps,
-network data, or runtime-global state are recorded.
+consumer can resume from a known action/event boundary. Snapshot state omits
+the event history to avoid storing every growing event prefix repeatedly;
+`restoreReplaySnapshot(snapshot, replay.events)` reconstructs an ordinary
+`BattleState` at that boundary. The initial state and snapshot state contain no
+filesystem paths, timestamps, network data, or runtime-global state.
 
 ## Verification and version policy
 
-`verifyReplay(replay, definitions)` first verifies the checksum, then reruns
+`verifyReplay(replay, definitions)` first validates the persisted shape and
+verifies the checksum, then reruns
 every action from `initialState` and compares the resulting metadata, events,
 snapshots, and final state. It therefore detects changed actions, events,
 snapshots, states, and version or seed metadata. The checksum detects storage
@@ -37,11 +40,12 @@ may be added as explicit migrations without rewriting old fixtures.
 ## Validation evidence
 
 `packages/game-engine/src/replay.test.ts` loads
-`tests/fixtures/replays/phase-2-recording.json` and verifies successful replay
-equality against golden event types, snapshot boundaries, final state, and a
-full-record checksum. It also verifies invalid-action rejection, checksum
-mismatch detection, recalculated-checksum consistency detection, and UTF-8
-handling for non-ASCII metadata.
+`tests/fixtures/replays/phase-2-recording.json` and compares a successful
+recording with golden full events, event-free snapshot states, final state, and
+checksum. It also verifies invalid-action rejection, checksum mismatch
+detection, recalculated-checksum consistency detection, malformed persisted
+content, optional properties set to `undefined`, and UTF-8 handling for
+non-ASCII metadata.
 
 Applicable Definition of Done: implementation, typecheck, unit test,
 determinism/replay regression, error state, security consideration, and

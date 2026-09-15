@@ -6,6 +6,7 @@ import {
   calculateReplayChecksum,
   createInitialBattleState,
   recordReplay,
+  restoreReplaySnapshot,
   verifyReplay,
 } from './index.js';
 import type {
@@ -31,22 +32,11 @@ interface ReplayFixture {
     readonly cards: readonly { readonly id: string; readonly definitionId: string }[];
   }[];
   readonly actions: readonly GameAction[];
-  readonly expectedChecksum: string;
-  readonly expectedEventTypes: readonly string[];
-  readonly expectedSnapshots: readonly {
-    readonly actionIndex: number;
-    readonly eventSequence: number;
-  }[];
-  readonly expectedFinalState: {
-    readonly activePlayerId: string;
-    readonly phase: string;
-    readonly turn: number;
-    readonly players: readonly {
-      readonly id: string;
-      readonly hp: number;
-      readonly energy: number;
-      readonly block: number;
-    }[];
+  readonly expectedReplay: {
+    readonly checksum: string;
+    readonly events: readonly unknown[];
+    readonly snapshots: readonly unknown[];
+    readonly finalState: unknown;
   };
 }
 
@@ -104,15 +94,18 @@ describe('Replay recording', () => {
       cardDataVersion: fixture.cardDataVersion,
       actions: fixture.actions,
     });
-    expect(replay.checksum).toBe(fixture.expectedChecksum);
-    expect(replay.events.map((event) => event.type)).toEqual(fixture.expectedEventTypes);
-    expect(
-      replay.snapshots.map(({ actionIndex, eventSequence }) => ({ actionIndex, eventSequence })),
-    ).toEqual(fixture.expectedSnapshots);
-    expect(replay.finalState).toMatchObject(fixture.expectedFinalState);
+    expect({
+      checksum: replay.checksum,
+      events: replay.events,
+      snapshots: replay.snapshots,
+      finalState: replay.finalState,
+    }).toEqual(fixture.expectedReplay);
     expect(replay.events).toEqual(replay.finalState.events);
     expect(replay.snapshots.map((entry) => entry.actionIndex)).toEqual([0, 2, 3]);
-    expect(replay.snapshots.at(-1)?.state).toEqual(replay.finalState);
+    expect(replay.snapshots.every((entry) => !('events' in entry.state))).toBe(true);
+    expect(restoreReplaySnapshot(replay.snapshots.at(-1)!, replay.events)).toEqual(
+      replay.finalState,
+    );
     expect(verifyReplay(replay, definitions)).toEqual({ ok: true });
   });
 
@@ -165,6 +158,34 @@ describe('Replay recording', () => {
     });
   });
 
+  it('records an optional targetId explicitly set to undefined', () => {
+    const actions: readonly GameAction[] = [
+      ...fixture.actions.slice(0, 2),
+      {
+        type: 'PLAY_CARD',
+        playerId: 'player-2' as PlayerId,
+        cardInstanceId: 'player-2-guard' as CardInstanceId,
+        targetId: undefined,
+      } as unknown as GameAction,
+    ];
+    const result = recordReplay(initialState(), actions, definitions, { snapshotInterval: 2 });
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(verifyReplay(result.replay, definitions)).toEqual({ ok: true });
+  });
+
+  it('returns a verification failure for malformed persisted content', () => {
+    const replay = successfulReplay();
+    const corrupt = { ...replay } as Record<string, unknown>;
+    delete corrupt.events;
+
+    expect(verifyReplay(corrupt as unknown as Replay, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
     const state = initialState();
     const result = recordReplay(
@@ -176,6 +197,6 @@ describe('Replay recording', () => {
 
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) return;
-    expect(result.replay.checksum).toBe('fnv1a-32:7a33e0d9');
+    expect(result.replay.checksum).toBe('fnv1a-32:dbdded95');
   });
 });
