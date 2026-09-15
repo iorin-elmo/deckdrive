@@ -59,7 +59,8 @@ envelope alongside the engine replay. For each viewer it must persist:
 - a viewer-scoped presentation snapshot containing the safe battle state and
   `lastViewSequence`, so replay resume starts from a known projection boundary;
 - contiguous `viewSequence` projected events, including `REDACTED` markers
-  that retain non-secret `sourceSequence` and `sourceEventType` values;
+  that retain non-secret `sourceSequence`, `sourceEventType`, and `playerId`
+  values;
 - the per-event before/after presentation transitions;
 - a catalog keyed by opaque `presentationCardRef`, containing display fields
   only for the viewer's own or otherwise public cards; hidden opponent cards
@@ -67,15 +68,19 @@ envelope alongside the engine replay. For each viewer it must persist:
 - `EffectPresentationMetadata` keyed by `viewSequence` and the viewer-safe
   `presentationEffectRef`, with
   the zero-based effect index and presentation tone;
-- the source engine replay checksum, the envelope format version, and a
-  checksum over the envelope itself.
+- a persisted `VisualReplayEnvelope` wrapper containing the source engine
+  replay checksum, visual replay format version, and checksum over the
+  envelope itself.
 
 The visual-replay verifier must validate both checksums, the metadata/event
-key relationship, the catalog coverage of every visible card reference, and a
-one-to-one mapping from each source event sequence to either a viewer-safe
-projected event or a matching redacted marker before playback. R00 format
-version 1 remains readable as a rules-only replay; it must use a non-animated
-fallback until a compatible visual envelope is available.
+key relationship, and the catalog coverage of every visible card reference.
+Each non-batch source event must map to exactly one viewer-safe event or a
+matching redacted marker. A `CARDS_DRAWN` source event must map to exactly one
+batch event, one matching redacted marker, or one contiguous ordered group of
+individual `CARD_DRAWN` events with the same source sequence and player; that
+group is verified as one unit and may not coexist with a batch event. R00
+format version 1 remains readable as a rules-only replay; it must use a
+non-animated fallback until a compatible visual envelope is available.
 
 ## Validation evidence
 
