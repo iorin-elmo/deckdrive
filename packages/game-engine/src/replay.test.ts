@@ -77,8 +77,31 @@ function successfulReplay(): Replay {
   return result.replay;
 }
 
+function zeroActionReplay(): Replay {
+  const result = recordReplay(initialState(), [], definitions);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.replay;
+}
+
 function withChecksum(content: Omit<Replay, 'checksum'>): Replay {
   return { ...content, checksum: calculateReplayChecksum(content) };
+}
+
+function rebuildZeroActionReplay(replay: Replay, initialState: Replay['initialState']): Replay {
+  const { events, ...snapshotState } = initialState;
+  return withChecksum({
+    ...replay,
+    initialState,
+    events,
+    snapshots: [
+      {
+        actionIndex: 0,
+        eventSequence: events.at(-1)?.sequence ?? 0,
+        state: snapshotState,
+      },
+    ],
+    finalState: initialState,
+  });
 }
 
 describe('Replay recording', () => {
@@ -212,6 +235,44 @@ describe('Replay recording', () => {
       ...replay,
       initialState: { ...replay.initialState, players: replay.initialState.players.slice(0, 1) },
     });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
+  it('rejects duplicate player and card instance IDs in persisted state', () => {
+    const replay = zeroActionReplay();
+    const [firstPlayer, secondPlayer] = replay.initialState.players;
+    const card = firstPlayer?.drawPile[0];
+    if (firstPlayer === undefined || secondPlayer === undefined || card === undefined) {
+      throw new Error('Replay fixture must have two players and a card.');
+    }
+    const duplicatePlayerId = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      players: [firstPlayer, { ...secondPlayer, id: firstPlayer.id }],
+    });
+    const duplicateCardId = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      players: [{ ...firstPlayer, drawPile: [...firstPlayer.drawPile, card] }, secondPlayer],
+    });
+
+    for (const corrupt of [duplicatePlayerId, duplicateCardId]) {
+      expect(verifyReplay(corrupt, definitions)).toMatchObject({
+        ok: false,
+        error: { code: 'REPLAY_MISMATCH' },
+      });
+    }
+  });
+
+  it('rejects an out-of-order persisted event stream with a recalculated checksum', () => {
+    const replay = zeroActionReplay();
+    const reorderedState = {
+      ...replay.initialState,
+      events: [...replay.initialState.events].reverse(),
+    };
+    const corrupt = rebuildZeroActionReplay(replay, reorderedState);
 
     expect(verifyReplay(corrupt, definitions)).toMatchObject({
       ok: false,

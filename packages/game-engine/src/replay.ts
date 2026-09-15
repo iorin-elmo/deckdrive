@@ -265,12 +265,46 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     Array.isArray(value.players) &&
     value.players.length === 2 &&
     value.players.every(isBattlePlayerState) &&
+    hasUniqueBattleStateIds(value.players) &&
     Array.isArray(value.stack) &&
     value.stack.every(isEffectStackItem) &&
     (includesEvents
-      ? Array.isArray(value.events) && value.events.every(isGameEvent)
+      ? Array.isArray(value.events) &&
+        value.events.every(isGameEvent) &&
+        hasStrictlyIncreasingEventSequences(value.events)
       : !('events' in value))
   );
+}
+
+function hasUniqueBattleStateIds(players: readonly unknown[]): boolean {
+  const playerIds = players.map((player) => (isRecord(player) ? player.id : undefined));
+  const cardIds = players.flatMap((player) => {
+    if (!isRecord(player)) return [];
+    return ['drawPile', 'hand', 'discard'].flatMap((zone) => {
+      const cards = player[zone];
+      return Array.isArray(cards)
+        ? cards.map((card) => (isRecord(card) ? card.id : undefined))
+        : [];
+    });
+  });
+  return hasUniqueStrings(playerIds) && hasUniqueStrings(cardIds);
+}
+
+function hasUniqueStrings(values: readonly unknown[]): boolean {
+  return (
+    values.every((value) => typeof value === 'string') && new Set(values).size === values.length
+  );
+}
+
+function hasStrictlyIncreasingEventSequences(events: readonly unknown[]): boolean {
+  let previous = 0;
+  return events.every((event) => {
+    if (!isRecord(event) || !isPositiveInteger(event.sequence) || event.sequence <= previous) {
+      return false;
+    }
+    previous = event.sequence;
+    return true;
+  });
 }
 
 function isBattlePlayerState(value: unknown): boolean {

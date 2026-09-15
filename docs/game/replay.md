@@ -34,7 +34,8 @@ must be supplied by the persistence boundary if needed.
 
 Persisted data validation covers replay metadata plus nested battle states,
 actions, events, and snapshots before replay execution, including the engine's
-exact two-player battle invariant. Malformed JSON data is reported as
+exact two-player battle invariant, unique player/card-instance IDs, and
+strictly ordered event sequences. Malformed JSON data is reported as
 `REPLAY_MISMATCH`, including when its checksum was recomputed.
 
 R00 supports replay format version `1` and records the exact engine, rules,
