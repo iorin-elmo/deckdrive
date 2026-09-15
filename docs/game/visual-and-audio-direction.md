@@ -80,24 +80,26 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | ドラッグ中 | 1.08 倍、回転を解除、プレイ領域へ薄い軌道 | 有効な対象のみ明るくする |
 | 使用可能 | コストチップが基調光で呼吸（2.4 秒周期） | クリックまたはドラッグで使用 |
 | 使用不可 | 彩度 35%、コストチップを暗くする | クリック時に短い拒否音と不足理由 |
-| 解決中 | 一瞬白くフラッシュしてから効果色の残光 | 入力を受け付けない |
+| 解決中 | 効果色へ短く明度を変化させてから残光 | 入力を受け付けない |
 | 墓地へ | 縮小しながら 8° 傾き、0.28 秒で吸い込まれる | 演出中でも次の状態はキューで保持 |
 
 ## 4. 対戦演出
 
 すべての UI 演出は viewer projection の `viewSequence` 順に再生する。`GameEvent.sequence` は engine / rules replay の順序として保持し、UI 順序の待機には使わない。同一アクション内のイベントは 60〜120 ms の最小間隔で連結し、通信の到着順には依存しない。`DAMAGE_DEALT.amount` はブロック軽減前の攻撃量であり、実 HP ダメージを意味しない。
 
+ドローを一つの演出に合成できるのは、同じ `playerId` の `CARD_DRAWN`、`CARDS_DRAWN`、または `REDACTED` draw marker が `viewSequence` 上で連続する区間だけとする。`EFFECT_STARTED`、ダメージ、状態変化などドロー以外の entry が 1 件でも入った時点で区間を閉じ、前後のドローをまたいで合成しない。同じ source draw を individual event と batch event の両方で投影してはならず、server projection は batch の `CARDS_DRAWN` か構成する `CARD_DRAWN` 群のどちらか一方だけを出力する。
+
 | engine event | 視覚演出 | 音 | 標準時間 |
 | --- | --- | --- | --- |
 | `CARD_PLAYED` | 手札から中央プレイレーンへカードが弧を描いて飛ぶ（280 ms）。カード名の 0.5 秒表示は後続 event を止めない独立 overlay とする | 紙のスワイプ + 小さな決定音 | 280 ms |
-| `EFFECT_STARTED` | server-provided `presentationEffectRef` に対応する metadata の effect type 色でカード枠をフラッシュ。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
+| `EFFECT_STARTED` | server-provided `presentationEffectRef` に対応する metadata の effect type 色でカード枠を一度だけ発光。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
 | `DAMAGE_DEALT` | `sourceId` から `targetId` へ中立色の軌跡を飛ばす「攻撃予告」。自己ダメージでは自分のパネル内へ短く収束させる。対象はまだ揺らさず、HP ダメージ色も使わない | 斬撃 / 打撃の導入音 | 180–260 ms |
 | `BLOCK_REDUCED` | 盾の六角形が前面に出て、ひび割れて消える。実 HP の減少より先に再生 | 金属の軽い反響 | 180 ms |
 | `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。対象は 6 px 横揺れ、赤橙の衝撃波 | 被弾音。amount が大きいほど低音を追加 | 240 ms |
 | `BLOCK_GAINED` | 自分を囲む半透明の六角シールドが組み上がり、`+N BLOCK` | 上昇するガラス音 | 360 ms |
 | `HEALED` | 黄緑の粒子が下から上へ流れ、HP バーを満たす | 柔らかな上昇音 | 360 ms |
-| `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
-| `CARD_DRAWN` | 現行 resolver のドローイベント。viewer 自身または公開ドローは viewer ごとの `presentationCardRef` を表示用に保持し、同一 action response 内の同じ `playerId` を一つの演出へ合成する。非公開の相手ドローは ID を含めない `REDACTED` marker と枚数だけの transition に変換する。`n≤5` は各カードまたはカード背面を 90 ms 間隔で表示し、`n>5` は先頭 5 枚の後に残りを一束と `+残数` で 580 ms 時点に表示する | 紙をめくる音 | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
+| `CARDS_DRAWN` | 将来の batch event 用。viewer-safe な `presentationCardRefs` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
+| `CARD_DRAWN` | 現行 resolver のドローイベント。viewer 自身または公開ドローは viewer ごとの `presentationCardRef` を表示用に保持する。非公開の相手ドローは ID を含めない `REDACTED` marker と枚数だけの transition に変換する。連続区間の合成と `n≤5` / `n>5` の表示は上記規則に従う | 紙をめくる音 | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
 | `CARD_DISCARDED` | 解決済みカードが縮み、墓地カウンタへ吸い込まれる | 小さな紙音 | 180 ms |
 | `STATUS_APPLIED` | `status` のアイコンを対象のステータス列に 0.18 秒で追加し、輪郭を一度だけ発光 | 小さな付与音 | 180 ms |
 | `STATUS_REMOVED` | `statusId` に対応するアイコンを対象のステータス列から淡く消す。不明な ID は表示を変えずログに記録 | 柔らかな解除音 | 150 ms |
@@ -110,6 +112,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 - 回避不能の大ダメージ（将来の閾値: 最大 HP の 25% 以上）は、画面全体ではなく対象パネル周辺だけを 1 回強く光らせる。カメラ揺れは既定で無効にし、設定で有効化する。
 - 防御獲得時のシールドは蓄積値を視覚化するが、重ねすぎない。2 枚目以降は同じシールドを明るくして数値だけ更新する。
 - 致死ダメージでも event の順序を変えない。`ENTITY_DAMAGED`（240 ms）の後に `CARD_DISCARDED`（180 ms）を再生し、その直後に 400 ms の terminal barrier を置く。`MATCH_FINISHED` は barrier 完了後に再生するため、捨て札を飛ばす演出を消さず、結果画面の前に死亡状態を確実に読める。
+- 通常設定でも、発光は対象カードまたは対象パネルの範囲に限定し、1 event につき 1 回・120 ms 以下、同じ要素では 1 秒に 3 回以下とする。全画面フラッシュ、色を交互に切り替える点滅、連続する白フラッシュは使わない。
 
 ## 5. ターン遷移
 
@@ -117,7 +120,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
 2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. 290 ms: viewer-safe な `CARD_DRAWN` と `REDACTED` draw marker を player ごとにまとめて再生する。`n` は要求枚数ではなく、表示可能な `CARD_DRAWN` 数に、draw marker の `after.handCountByPlayer - before.handCountByPlayer` の正の差分を加えた実ドロー数とする。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
+3. 290 ms: 同じ player の連続した draw 区間ごとに、viewer-safe な `CARD_DRAWN`、`CARDS_DRAWN`、`REDACTED` draw marker をまとめて再生する。`n` は要求枚数ではなく、その区間の表示可能な `CARD_DRAWN` の件数、`CARDS_DRAWN.presentationCardRefs.length`、redacted marker ごとの `after.handCountByPlayer - before.handCountByPlayer` の正の差分を合計した実ドロー数とする。ドロー以外の entry は区間を分断するため、`EFFECT_STARTED`、ダメージ、状態変化をまたいで合成・加算しない。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
 4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
 5. `max(650, 410 + D(n))` ms: 主ボタンを有効化する。よって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは 650 ms、2 枚以上では枚数に応じて延長される。
 
@@ -134,7 +137,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 ### フロー
 
 1. **選択** — パックを棚から選ぶ。ホバーで封の一部が光り、収録枚数と提供割合への導線を常時表示する。
-2. **開封** — タップ / クリックで封を横に裂く。紙の裂け目と 0.35 秒の白い光。`演出を短縮` ボタンはこの時点から表示する。
+2. **開封** — タップ / クリックで封を横に裂く。紙の裂け目と、パック周辺だけに収めた 0.35 秒の柔らかな光を出す。`演出を短縮` ボタンはこの時点から表示する。モーション削減時は光らせず、0.15 秒の不透明度フェードと静的な開封アイコンに置き換える。
 3. **放出** — 5 枚を裏向きで扇状に置く。レアリティは裏面の発光量でほのかに予告するが、色だけでは区別しない。
 4. **公開** — 左から順に選択して 3D 風の半回転（0.42 秒）。カード名、効果、所持済み枚数を読み上げ可能なテキストとして表示する。
 5. **ハイライト** — RARE は紫、SR はピンク、SSR は水色、UR は金のリングと紙吹雪を 0.8 秒。いずれもレア名バッジを併記し、自動連続点滅・全画面フラッシュは行わない。モーション削減時は粒子を出さず、静的な高コントラストのバッジと枠色だけで示す。
@@ -163,7 +166,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 - 同一 SE は 80 ms 以内に連続再生しない。連撃など必要な場合はピッチを ±4% だけ変え、最大 3 レイヤーまでにする。
 - BGM は戦闘中の集中を邪魔しない 90–115 BPM、短いループのアンビエント・エレクトロ。自分のターンにはハイハットを一段足し、勝敗確定時に 300 ms でフェードする。
 - ブラウザの自動再生制限に従い、最初のユーザー入力後に音声を初期化する。音が無効でもすべての情報は視覚とテキストで分かるようにする。
-- `prefers-reduced-motion` またはゲーム内「演出を抑える」が有効なら、粒子・揺れ・拡大を停止し、0.15 秒のフェードと数値表示に置き換える。音は独立して設定できる。
+- `prefers-reduced-motion` またはゲーム内「演出を抑える」が有効なら、粒子・揺れ・拡大に加え、発光、白フラッシュ、点滅を停止する。0.15 秒の非点滅フェード、静的アイコン、数値表示に置き換える。音は独立して設定できる。
 
 ## 8. いらすとや素材の利用方針
 
@@ -172,17 +175,17 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 ### 素材選定・加工
 
 - 公式サイトから取得したオリジナルを、カードごとに 1 点だけ登録する。検索結果や第三者サイトから取得しない。
-- 背景を切り抜く、余白を調整する、色調をクラスに合わせる、枠の内側でトリミングする加工は可とする。ただし作者・素材の印象を損なう攻撃的、差別的、性的、過激な文脈には使わない。
+- 背景を切り抜く、余白を調整する、枠の内側でトリミングする加工は可とする。イラスト本体の色調変更は行わず、クラスごとの色は独自フレームと背景で表現する。ただし作者・素材の印象を損なう攻撃的、差別的、性的、過激な文脈には使わない。
 - カード名と絵の意味を揃える。例: `Strike` は剣・格闘の絵、`Guard` は盾・防具の絵、`Insight` はひらめき・読書の絵を候補にする。
 - イラストの上に重要なルールテキストを重ねない。挿絵は中央に置き、顔や道具がコスト・カード名・効果文と重ならないトリミングを選ぶ。
-- 同じ絵を複数カードに使う場合は、イラスト自体の色調を変えず、差分は独自フレームに限る。異なる表情・ポーズは別素材として数える。将来、イラストの色替え版を使う場合は、派生版ごとに別アセット ID・別素材点数として台帳に登録する。
+- 同じ絵を複数カードに使う場合は、イラスト自体の色調を変えず、差分は独自フレームに限る。異なる表情・ポーズは別素材として数える。将来、権利者が許可したイラストの色替え版を使う場合は、派生版ごとに別アセット ID・別素材点数として台帳に登録し、用途確認を改めて取得する。
 
 ### ライセンス運用
 
 - 本プロジェクトは、いらすとやの画像そのものを販売・再配布しない。また、現時点では広告掲載、ゲーム内課金、素材・カードを得るための課金を含む形で公開する予定はない。したがって本リリースの利用形態は非商用を前提とする。
 - 現行の公式規約では、規約範囲内なら商用・非商用で利用できる一方、商用の一制作物で 21 点以上を使う場合は有償対応が必要。広告掲載・課金を含むゲームは商用として数える前提で管理する。規約は変更され得るため、リリースごとに公式規約を再確認する。
 - 「ダウンロード」導線を UI に設けないことは、ブラウザ配信された画像をユーザーが取得できないことを保証するものではない。素材の再利用を技術的な制御で担保できるとは扱わず、公式規約、用途確認の回答、素材台帳に基づいて利用可否を判断する。許可がない限り、素材を中心に見せるカード、素材獲得を報酬にする仕組み、素材の再配布・販売は行わない。
-- 将来、広告・課金を導入するなど商用形態へ変える場合は、公開前にいらすとやへ必要な有償利用を問い合わせるか、利用素材数を 20 点以下に抑える。Canva を利用する場合にも、完成物・利用経路がその条件に合うかを公式案内で確認する。
+- 将来、広告・課金を導入するなど商用形態へ変える場合も、公開前に用途確認を必ず取得する。商用の一制作物で素材が 21 点以上になる場合は、その確認とは別に必要な有償利用の条件を問い合わせて満たす。20 点以下であっても、用途確認を省略してよい根拠にはしない。Canva を利用する場合にも、完成物・利用経路がその条件に合うかを公式案内で確認する。
 - クレジット表記の有無にかかわらず、社内素材台帳には出典 URL、取得日、利用カード、加工内容、商用点数を必ず記録する。
 
 公開ゲート: 素材を初めて収録する前に、カードゲーム内の挿絵としての具体的な表示例、非商用であること、画像単体の販売・再配布をしないことをいらすとやへ提示し、用途確認の回答を台帳に記録する。回答が得られない、または許可されない場合は、いらすとや素材を使用しない。
@@ -209,7 +212,7 @@ CSV のヘッダーを唯一のスキーマとする。以下は各列の説明�
 
 ## 9. 実装インターフェース
 
-UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。完全な engine `BattleState`（全手札・山札・墓地・seed を含む）はサーバーだけに保持し、ブラウザには viewer-safe な `authoritativeViewerState` だけを送る。クライアントはそれを直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeViewerState` と照合し、差分があれば 150 ms フェードで同期する。
+UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。完全な engine `BattleState`（全手札・山札・墓地・seed を含む）はサーバーだけに保持し、ブラウザには viewer-safe な `authoritativeViewerState` だけを送る。クライアントはそれを直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。`turn`、`activePlayerId`、`phase` もスナップショットの必須値とし、再接続直後に `YOUR TURN` / `ENEMY TURN`、主ボタンの有効可否、終局画面を推測なしで復元する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeViewerState` と照合し、差分があれば 150 ms フェードで同期する。
 
 キューはグローバルな `GameEvent.sequence` ではなく、viewer ごとに連続する `viewSequence` をキーにした保留バッファを持つ。プライベート情報を隠す global event は viewer projection で ID やカード定義を含まない `REDACTED` marker となる。marker は非機密な `sourceSequence` と `sourceEventType` を保持するため、visual replay verifier は対応する engine event が 1 件だけ投影され、欠落・重複していないことを確認できる。marker も viewer に観測可能な集計値（例: `handCountByPlayer`、`drawPileCountByPlayer`、`discardCountByPlayer`）の before / after transition を持ち、非公開のカード内容を出さずにカウンタを正しく進める。最初に表示するスナップショットの `lastViewSequence + 1` で `nextExpectedViewSequence` を初期化し、一致する event / marker だけを取り出す。これにより相手の非公開ドローによる global sequence の穴を待たない。`nextExpectedViewSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせず viewer-scoped event 履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、`lastViewSequence + 1` から再開する。
 
@@ -246,17 +249,21 @@ interface EffectPresentationMetadata {
 
 interface BattlePresentationState {
   readonly viewerPlayerId: string;
+  /** Public current-turn state used to restore input availability after reconnecting. */
+  readonly turn: number;
+  readonly activePlayerId: string;
+  readonly phase: 'PLAYER_TURN' | 'MATCH_END';
   readonly hpByEntity: Readonly<Record<string, number>>;
   readonly blockByEntity: Readonly<Record<string, number>>;
   readonly energyByPlayer: Readonly<Record<string, number>>;
-  /** Only the viewer's own card IDs; opponent identities are never projected. */
-  readonly ownHandCardIds: readonly string[];
+  /** Viewer-scoped opaque refs for the viewer's own hand; opponent identities are never projected. */
+  readonly ownHandCardRefs: readonly string[];
   /** Public hand sizes for all players, including the viewer. */
   readonly handCountByPlayer: Readonly<Record<string, number>>;
   readonly drawPileCountByPlayer: Readonly<Record<string, number>>;
   readonly discardCountByPlayer: Readonly<Record<string, number>>;
-  /** Card IDs only when the game rules make that discard public; otherwise an empty array. */
-  readonly publicDiscardCardIdsByPlayer: Readonly<Record<string, readonly string[]>>;
+  /** Viewer-safe refs only when the game rules make that discard public; otherwise an empty array. */
+  readonly publicDiscardCardRefsByPlayer: Readonly<Record<string, readonly string[]>>;
   readonly statusesByEntity: Readonly<Record<string, readonly Status[]>>;
 }
 
