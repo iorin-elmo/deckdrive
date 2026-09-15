@@ -8,9 +8,10 @@ Phase 3 will provide database adapters.
 
 Run `pnpm replay --match phase-2-recording` to locate a Phase 2 fixture, build
 the deterministic initial state, and verify its golden replay output. The CLI
-reports `REPLAY_NOT_FOUND`, `UNSUPPORTED_REPLAY_FORMAT`, or `REPLAY_MISMATCH`
-as explicit non-zero error states. It reads fixture files only; it does not
-connect to a database.
+accepts the Phase 2 `1.0.0` engine, rules, and card-data adapters only; it
+reports `REPLAY_NOT_FOUND`, `UNSUPPORTED_REPLAY_FORMAT`,
+`UNSUPPORTED_REPLAY_VERSION`, or `REPLAY_MISMATCH` as explicit non-zero error
+states. It reads fixture files only; it does not connect to a database.
 
 ## Record format
 

@@ -15,6 +15,11 @@ import {
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultFixturesDirectory = path.resolve(scriptDirectory, '../../tests/fixtures/replays');
+const supportedFixtureVersions = {
+  engineVersion: new Set(['1.0.0']),
+  rulesVersion: new Set(['1.0.0']),
+  cardDataVersion: new Set(['1.0.0']),
+};
 
 export async function runReplayCli(argv, environment = process.env, io = console) {
   const matchId = parseMatchId(argv);
@@ -27,6 +32,7 @@ export async function runReplayCli(argv, environment = process.env, io = console
       `Fixture format ${String(fixture.formatVersion)} is not supported.`,
     );
   }
+  validateSupportedVersions(fixture);
 
   const initialState = createInitialBattleState({
     matchId: fixture.matchId,
@@ -60,6 +66,17 @@ export async function runReplayCli(argv, environment = process.env, io = console
   const verification = verifyReplay(recorded.replay, fixture.definitions);
   if (!verification.ok) fail(verification.error.code, verification.error.message);
   io.log(`Replay ${matchId} verified.`);
+}
+
+function validateSupportedVersions(fixture) {
+  for (const [field, supported] of Object.entries(supportedFixtureVersions)) {
+    if (!supported.has(fixture[field])) {
+      fail(
+        'UNSUPPORTED_REPLAY_VERSION',
+        `Fixture ${field} ${String(fixture[field])} has no supported adapter.`,
+      );
+    }
+  }
 }
 
 function parseMatchId(argv) {

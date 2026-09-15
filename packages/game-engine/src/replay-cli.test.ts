@@ -72,6 +72,21 @@ describe('replay CLI', () => {
     expect(result.stderr).toContain('UNSUPPORTED_REPLAY_FORMAT');
   });
 
+  it.each(['engineVersion', 'rulesVersion', 'cardDataVersion'])(
+    'rejects an unsupported %s',
+    (field) => {
+      const result = run(
+        'phase-2-recording',
+        copiedFixtures((fixture) => {
+          fixture[field] = 'unavailable';
+        }),
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('UNSUPPORTED_REPLAY_VERSION');
+    },
+  );
+
   it('rejects a fixture whose expected replay output does not match', () => {
     const result = run(
       'phase-2-recording',
