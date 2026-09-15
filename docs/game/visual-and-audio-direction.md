@@ -31,6 +31,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | 回復 | `#D7FF6D` | 回復、再生 |
 | レア | `#B78CFF` | RARE、パックの高レア演出 |
 | SUPER RARE | `#FF7BD5` | SR のカード枠、公開リング |
+| SPECIAL SUPER RARE | `#A9E8FF` | SSR のカード枠、公開リング |
 | ULTRA RARE | `#FFD166` | UR のカード枠、公開リング |
 | 警告 | `#FFC857` | エネルギー不足、残り時間 |
 
@@ -65,9 +66,9 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | クラス | 左右の細い発光ラインとカード下部のラベル色。SWORD=赤、GUARDIAN=緑、MAGE=紫、ALCHEMIST=黄、HUNTER=橙、TRICKSTER=青緑、NEUTRAL=青灰。 |
 | 種別 | 右上バッジ。ATTACK=照準、SKILL=工具、POWER=稲妻、REACTION=稲光、CURSE=割れた印。 |
 | コスト | 左上の大きな六角形チップ。使用不能時は彩度を落とし、ホバー時に不足値を表示する。 |
-| レアリティ | 外周の細い縁と箔のような緩い光。BASIC は無彩色、COMMON は青、UNCOMMON は緑、RARE は紫、SR はピンク、UR は金。常時点滅させない。 |
+| レアリティ | 外周の細い縁と箔のような緩い光。BASIC は無彩色、COMMON は青、UNCOMMON は緑、RARE は紫、SR はピンク、SSR は水色、UR は金。常時点滅させない。 |
 
-現行 `@deck-drive/card-definitions` の rarity 契約は `RARE` までである。Pack の SR / UR 保証を有効化する前に、card-definitions の versioned rarity contract と Pack の提供割合・保証 contract へ `SR` / `UR` を追加し、この表示トークンを対応付ける。構造的な `@deck-drive/game-engine` の `CardDefinition` contract は rarity を持たないため変更しない。それまでは SR / UR を含む Pack を公開しない。
+現行 `@deck-drive/card-definitions` の rarity 契約は `RARE` までである。Pack の SR / SSR / UR 保証を有効化する前に、card-definitions の versioned rarity contract と Pack の提供割合・保証 contract へ `SR` / `SSR` / `UR` を追加し、この表示トークンを対応付ける。構造的な `@deck-drive/game-engine` の `CardDefinition` contract は rarity を持たないため変更しない。それまでは SR / SSR / UR を含む Pack を公開しない。
 
 ### 状態別の振る舞い
 
@@ -89,14 +90,14 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | engine event | 視覚演出 | 音 | 標準時間 |
 | --- | --- | --- | --- |
 | `CARD_PLAYED` | 手札から中央プレイレーンへカードが弧を描いて飛ぶ（280 ms）。カード名の 0.5 秒表示は後続 event を止めない独立 overlay とする | 紙のスワイプ + 小さな決定音 | 280 ms |
-| `EFFECT_STARTED` | `effectId` は opaque として扱う。後述の server-provided presentation metadata にある effect type の色でカード枠をフラッシュ。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
+| `EFFECT_STARTED` | server-provided `presentationEffectRef` に対応する metadata の effect type 色でカード枠をフラッシュ。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
 | `DAMAGE_DEALT` | `sourceId` から `targetId` へ中立色の軌跡を飛ばす「攻撃予告」。自己ダメージでは自分のパネル内へ短く収束させる。対象はまだ揺らさず、HP ダメージ色も使わない | 斬撃 / 打撃の導入音 | 180–260 ms |
 | `BLOCK_REDUCED` | 盾の六角形が前面に出て、ひび割れて消える。実 HP の減少より先に再生 | 金属の軽い反響 | 180 ms |
 | `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。対象は 6 px 横揺れ、赤橙の衝撃波 | 被弾音。amount が大きいほど低音を追加 | 240 ms |
 | `BLOCK_GAINED` | 自分を囲む半透明の六角シールドが組み上がり、`+N BLOCK` | 上昇するガラス音 | 360 ms |
 | `HEALED` | 黄緑の粒子が下から上へ流れ、HP バーを満たす | 柔らかな上昇音 | 360 ms |
 | `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
-| `CARD_DRAWN` | 現行 resolver のドローイベント。viewer 自身または公開ドローは `cardInstanceId` を表示用に保持し、同一 action response 内の同じ `playerId` を一つの演出へ合成する。非公開の相手ドローは ID を含めない `REDACTED` marker と枚数だけの transition に変換する。`n≤5` は各カードまたはカード背面を 90 ms 間隔で表示し、`n>5` は先頭 5 枚の後に残りを一束と `+残数` で 580 ms 時点に表示する | 紙をめくる音 | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
+| `CARD_DRAWN` | 現行 resolver のドローイベント。viewer 自身または公開ドローは viewer ごとの `presentationCardRef` を表示用に保持し、同一 action response 内の同じ `playerId` を一つの演出へ合成する。非公開の相手ドローは ID を含めない `REDACTED` marker と枚数だけの transition に変換する。`n≤5` は各カードまたはカード背面を 90 ms 間隔で表示し、`n>5` は先頭 5 枚の後に残りを一束と `+残数` で 580 ms 時点に表示する | 紙をめくる音 | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
 | `CARD_DISCARDED` | 解決済みカードが縮み、墓地カウンタへ吸い込まれる | 小さな紙音 | 180 ms |
 | `STATUS_APPLIED` | `status` のアイコンを対象のステータス列に 0.18 秒で追加し、輪郭を一度だけ発光 | 小さな付与音 | 180 ms |
 | `STATUS_REMOVED` | `statusId` に対応するアイコンを対象のステータス列から淡く消す。不明な ID は表示を変えずログに記録 | 柔らかな解除音 | 150 ms |
@@ -116,7 +117,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
 2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. 290 ms: `CARD_DRAWN` を同一 action response 内で player ごとにまとめて再生する。`n` は要求枚数ではなく、この response で実際に emit された `CARD_DRAWN` の枚数とする。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
+3. 290 ms: viewer-safe な `CARD_DRAWN` と `REDACTED` draw marker を player ごとにまとめて再生する。`n` は要求枚数ではなく、表示可能な `CARD_DRAWN` 数に、draw marker の `after.handCountByPlayer - before.handCountByPlayer` の正の差分を加えた実ドロー数とする。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
 4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
 5. `max(650, 410 + D(n))` ms: 主ボタンを有効化する。よって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは 650 ms、2 枚以上では枚数に応じて延長される。
 
@@ -136,7 +137,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 2. **開封** — タップ / クリックで封を横に裂く。紙の裂け目と 0.35 秒の白い光。`演出を短縮` ボタンはこの時点から表示する。
 3. **放出** — 5 枚を裏向きで扇状に置く。レアリティは裏面の発光量でほのかに予告するが、色だけでは区別しない。
 4. **公開** — 左から順に選択して 3D 風の半回転（0.42 秒）。カード名、効果、所持済み枚数を読み上げ可能なテキストとして表示する。
-5. **ハイライト** — RARE は紫、SR はピンク、UR は金のリングと紙吹雪を 0.8 秒。いずれもレア名バッジを併記し、自動連続点滅・全画面フラッシュは行わない。モーション削減時は粒子を出さず、静的な高コントラストのバッジと枠色だけで示す。
+5. **ハイライト** — RARE は紫、SR はピンク、SSR は水色、UR は金のリングと紙吹雪を 0.8 秒。いずれもレア名バッジを併記し、自動連続点滅・全画面フラッシュは行わない。モーション削減時は粒子を出さず、静的な高コントラストのバッジと枠色だけで示す。
 6. **確定** — `コレクションへ` と `もう一度開封` を表示。重複カードの変換量・保存先を明示する。
 
 ### パック開封のキーボード操作
@@ -208,13 +209,13 @@ CSV のヘッダーを唯一のスキーマとする。以下は各列の説明�
 
 ## 9. 実装インターフェース
 
-UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。サーバーから受けた確定状態は `authoritativeState` として直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeState` と照合し、差分があれば 150 ms フェードで同期する。
+UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。完全な engine `BattleState`（全手札・山札・墓地・seed を含む）はサーバーだけに保持し、ブラウザには viewer-safe な `authoritativeViewerState` だけを送る。クライアントはそれを直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeViewerState` と照合し、差分があれば 150 ms フェードで同期する。
 
-キューはグローバルな `GameEvent.sequence` ではなく、viewer ごとに連続する `viewSequence` をキーにした保留バッファを持つ。プライベート情報を隠す global event は viewer projection で ID やカード定義を含まない `REDACTED` marker となる。marker も viewer に観測可能な集計値（例: `handCountByPlayer`、`drawPileCountByPlayer`、`discardCountByPlayer`）の before / after transition を持ち、非公開のカード内容を出さずにカウンタを正しく進める。最初に表示するスナップショットの `lastViewSequence + 1` で `nextExpectedViewSequence` を初期化し、一致する event / marker だけを取り出す。これにより相手の非公開ドローによる global sequence の穴を待たない。`nextExpectedViewSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせず viewer-scoped event 履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、`lastViewSequence + 1` から再開する。
+キューはグローバルな `GameEvent.sequence` ではなく、viewer ごとに連続する `viewSequence` をキーにした保留バッファを持つ。プライベート情報を隠す global event は viewer projection で ID やカード定義を含まない `REDACTED` marker となる。marker は非機密な `sourceSequence` と `sourceEventType` を保持するため、visual replay verifier は対応する engine event が 1 件だけ投影され、欠落・重複していないことを確認できる。marker も viewer に観測可能な集計値（例: `handCountByPlayer`、`drawPileCountByPlayer`、`discardCountByPlayer`）の before / after transition を持ち、非公開のカード内容を出さずにカウンタを正しく進める。最初に表示するスナップショットの `lastViewSequence + 1` で `nextExpectedViewSequence` を初期化し、一致する event / marker だけを取り出す。これにより相手の非公開ドローによる global sequence の穴を待たない。`nextExpectedViewSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせず viewer-scoped event 履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、`lastViewSequence + 1` から再開する。
 
-受信時は wire payload を decoder で検証してからキューへ入れる。未知 payload は `sequence` の有無にかかわらずキューへ進めない。現在の演出を 150 ms で安全にフェードして、イベント履歴と最新スナップショットを再取得する resync barrier とする。診断ログには schema error、`viewSequence`、イベント種別、不可逆ハッシュだけを記録し、raw payload、カード ID、手札、ユーザー識別子は記録しない。スナップショットを受け取るまで `presentationState` を進めず、後続 event も再生しないため、不明な状態変化をまたいで古い表示値から演出することはない。各キュー項目は元の `GameEvent` を保持する。カード ID、効果 ID、状態オブジェクト、結果などの契約上の payload を `amount` だけに縮約しない。演出種別は UI 用の派生情報であり、ゲームイベントを置き換えない。
+受信時は wire payload を decoder で検証してからキューへ入れる。未知 payload は `viewSequence` の有無にかかわらずキューへ進めない。現在の演出を 150 ms で安全にフェードして、イベント履歴と最新スナップショットを再取得する resync barrier とする。診断ログには schema error、`viewSequence`、イベント種別、不可逆ハッシュだけを記録し、raw payload、カード ID、手札、ユーザー識別子は記録しない。スナップショットを受け取るまで `presentationState` を進めず、後続 event も再生しないため、不明な状態変化をまたいで古い表示値から演出することはない。各キュー項目は元の `GameEvent` ではなく、server whitelist を通過した `ViewerSafeEvent` または `RedactedMarker` だけを保持する。演出種別は UI 用の派生情報であり、viewer projection を置き換えない。
 
-`EFFECT_STARTED.effectId` は opaque であり、クライアントは文字列を解析しない。サーバーは action result、viewer-scoped event 履歴、リプレイに、対象 event の `viewSequence` と `effectId` をキーとした `EffectPresentationMetadata` を必ず同梱する。metadata 内のカード参照は engine の `cardInstanceId` ではなく viewer ごとの不透明な `presentationCardRef` とし、非公開カードの ID を投影しない。`effectIndex` はカード定義の `effects` 配列と同じ **0 始まり**、`effectType` はその要素の type とする。`CUSTOM` を含む全 type は server-provided `presentationTone` を使い、`CUSTOM` の既定値は中立 tone とする。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata を同じレスポンスに含める。metadata がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
+engine の `EFFECT_STARTED.effectId` はサーバー内でだけ扱う opaque 値であり、ブラウザは受け取らず解析もしない。サーバーは action result、viewer-scoped event 履歴、リプレイに、対象 event の `viewSequence` と viewer ごとの `presentationEffectRef` をキーとした `EffectPresentationMetadata` を必ず同梱する。decoder は event と metadata の `viewSequence` および `presentationEffectRef` が一致しなければ resync barrier を起動する。metadata 内のカード参照も engine の `cardInstanceId` ではなく viewer ごとの不透明な `presentationCardRef` とし、非公開カードの ID を投影しない。`effectIndex` はカード定義の `effects` 配列と同じ **0 始まり**、`effectType` はその要素の type とする。`CUSTOM` を含む全 type は server-provided `presentationTone` を使い、`CUSTOM` の既定値は中立 tone とする。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata を同じレスポンスに含める。metadata がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
 
 ```ts
 type AnimationKind =
@@ -230,11 +231,12 @@ type AnimationKind =
   | 'status-apply'
   | 'status-remove'
   | 'turn-change'
-  | 'match-result';
+  | 'match-result'
+  | 'redacted';
 
 interface EffectPresentationMetadata {
   readonly viewSequence: number;
-  readonly effectId: string;
+  readonly presentationEffectRef: string;
   readonly presentationCardRef: string;
   /** Zero-based index in CardDefinition.effects. */
   readonly effectIndex: number;
@@ -263,20 +265,65 @@ interface PresentationTransition {
   readonly after: BattlePresentationState;
 }
 
+/** A browser-only DTO. Never send a raw GameEvent or engine card instance ID to the viewer. */
+type ViewerSafeEvent =
+  | { readonly sourceSequence: number; readonly type: 'CARD_PLAYED'; readonly playerId: string; readonly presentationCardRef: string }
+  | { readonly sourceSequence: number; readonly type: 'EFFECT_STARTED'; readonly presentationEffectRef: string }
+  | { readonly sourceSequence: number; readonly type: 'DAMAGE_DEALT'; readonly sourceId: string; readonly targetId: string; readonly amount: number }
+  | { readonly sourceSequence: number; readonly type: 'BLOCK_REDUCED'; readonly targetId: string; readonly amount: number }
+  | { readonly sourceSequence: number; readonly type: 'ENTITY_DAMAGED'; readonly targetId: string; readonly amount: number }
+  | { readonly sourceSequence: number; readonly type: 'HEALED'; readonly targetId: string; readonly amount: number }
+  | { readonly sourceSequence: number; readonly type: 'BLOCK_GAINED'; readonly targetId: string; readonly amount: number }
+  | { readonly sourceSequence: number; readonly type: 'CARDS_DRAWN'; readonly playerId: string; readonly presentationCardRefs: readonly string[] }
+  | { readonly sourceSequence: number; readonly type: 'CARD_DRAWN'; readonly playerId: string; readonly presentationCardRef: string }
+  | { readonly sourceSequence: number; readonly type: 'CARD_DISCARDED'; readonly playerId: string; readonly presentationCardRef?: string }
+  | { readonly sourceSequence: number; readonly type: 'STATUS_APPLIED'; readonly targetId: string; readonly status: Status }
+  | { readonly sourceSequence: number; readonly type: 'STATUS_REMOVED'; readonly targetId: string; readonly statusId: string }
+  | { readonly sourceSequence: number; readonly type: 'TURN_STARTED'; readonly playerId: string }
+  | { readonly sourceSequence: number; readonly type: 'TURN_ENDED'; readonly playerId: string }
+  | { readonly sourceSequence: number; readonly type: 'MATCH_FINISHED'; readonly result: TerminalBattleResult };
+
+interface RedactedMarker {
+  readonly sourceSequence: number;
+  readonly sourceEventType: 'CARD_DRAWN' | 'CARDS_DRAWN' | 'CARD_DISCARDED';
+  readonly reason: 'PRIVATE_CARD';
+}
+
 type ProjectedBattleEntry =
   | {
       readonly viewSequence: number;
-      readonly event: GameEvent;
+      readonly event: Extract<ViewerSafeEvent, { readonly type: 'EFFECT_STARTED' }>;
       readonly transition: PresentationTransition;
-      readonly effectMetadata?: EffectPresentationMetadata;
+      readonly effectMetadata: EffectPresentationMetadata;
     }
   | {
       readonly viewSequence: number;
-      readonly type: 'REDACTED';
+      readonly event: Exclude<ViewerSafeEvent, { readonly type: 'EFFECT_STARTED' }>;
+      readonly transition: PresentationTransition;
+      readonly effectMetadata?: never;
+    }
+  | {
+      readonly viewSequence: number;
+      readonly marker: RedactedMarker;
       readonly transition: PresentationTransition;
     };
 
-interface BaseBattleAnimation<Event extends GameEvent> {
+type AnimationKindForEvent<Event extends ViewerSafeEvent> =
+  Event extends { readonly type: 'CARD_PLAYED' } ? 'card-play'
+  : Event extends { readonly type: 'EFFECT_STARTED' } ? 'effect-start'
+  : Event extends { readonly type: 'DAMAGE_DEALT' } ? 'attack-intent'
+  : Event extends { readonly type: 'BLOCK_REDUCED' } ? 'block-break'
+  : Event extends { readonly type: 'ENTITY_DAMAGED' } ? 'damage'
+  : Event extends { readonly type: 'HEALED' } ? 'heal'
+  : Event extends { readonly type: 'BLOCK_GAINED' } ? 'block-gain'
+  : Event extends { readonly type: 'CARDS_DRAWN' | 'CARD_DRAWN' } ? 'draw'
+  : Event extends { readonly type: 'CARD_DISCARDED' } ? 'discard'
+  : Event extends { readonly type: 'STATUS_APPLIED' } ? 'status-apply'
+  : Event extends { readonly type: 'STATUS_REMOVED' } ? 'status-remove'
+  : Event extends { readonly type: 'TURN_STARTED' | 'TURN_ENDED' } ? 'turn-change'
+  : 'match-result';
+
+interface BaseBattleAnimation<Event extends ViewerSafeEvent> {
   readonly viewSequence: number;
   readonly event: Event;
   readonly transition: PresentationTransition;
@@ -284,18 +331,36 @@ interface BaseBattleAnimation<Event extends GameEvent> {
   readonly reducedMotion: boolean;
 }
 
-type BattleAnimation =
-  | (BaseBattleAnimation<Extract<GameEvent, { readonly type: 'EFFECT_STARTED' }>> & {
+type EffectStartAnimation =
+  BaseBattleAnimation<Extract<ViewerSafeEvent, { readonly type: 'EFFECT_STARTED' }>> & {
       readonly kind: 'effect-start';
       readonly effectMetadata: EffectPresentationMetadata;
-    })
-  | (BaseBattleAnimation<Exclude<GameEvent, { readonly type: 'EFFECT_STARTED' }>> & {
-      readonly kind: Exclude<AnimationKind, 'effect-start'>;
+    };
+
+type NonEffectAnimation<Event extends Exclude<ViewerSafeEvent, { readonly type: 'EFFECT_STARTED' }>> =
+  Event extends ViewerSafeEvent
+    ? BaseBattleAnimation<Event> & {
+        readonly kind: AnimationKindForEvent<Event>;
       readonly effectMetadata?: never;
-    });
+      }
+    : never;
+
+type RedactedAnimation = {
+  readonly viewSequence: number;
+  readonly kind: 'redacted';
+  readonly marker: RedactedMarker;
+  readonly transition: PresentationTransition;
+  readonly startedAt: number;
+  readonly reducedMotion: boolean;
+};
+
+type BattleAnimation =
+  | EffectStartAnimation
+  | NonEffectAnimation<Exclude<ViewerSafeEvent, { readonly type: 'EFFECT_STARTED' }>>
+  | RedactedAnimation;
 ```
 
-`GameEvent` の全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。テストでは、順不同・重複・欠番・再接続時に、連続した `viewSequence` 以外を先行再生しないこと、`REDACTED` marker が非公開 global event を待たせず、手札・山札・墓地の公開カウンタだけを transition どおり進め、カード ID を含まないこと、server-provided transition と metadata が保持されること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。`EFFECT_STARTED` の metadata 欠落および将来追加される未知イベントは、秘密情報を含まない診断情報だけを記録して resync barrier を起動し、スナップショット受領後に再開することを確認する。リプレイは engine checksum と visual envelope checksum、および event / metadata の key 関係を検証する。
+`GameEvent` の全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。テストでは、順不同・重複・欠番・再接続時に、連続した `viewSequence` 以外を先行再生しないこと、`REDACTED` marker が非公開 global event を待たせず、手札・山札・墓地の公開カウンタだけを transition どおり進め、カード ID を含まないこと、server-provided transition と metadata が保持されること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。`EFFECT_STARTED` の metadata 欠落および将来追加される未知イベントは、秘密情報を含まない診断情報だけを記録して resync barrier を起動し、スナップショット受領後に再開することを確認する。リプレイは engine checksum と visual envelope checksum、event / metadata の key 関係、全 source sequence が viewer-safe event または source sequence / type 付き redacted marker に一対一対応することを検証する。
 
 ## 10. 完成判定
 
