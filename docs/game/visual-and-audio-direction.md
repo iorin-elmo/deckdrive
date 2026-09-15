@@ -15,7 +15,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 1. **意味が先、派手さは後。** ダメージ・防御・回復・ドローを色、軌道、音で区別する。
 2. **入力に即応する。** ホバーは 80 ms 以内、押下は即時、結果はネットワーク待ちでも予告表示する。
 3. **勝敗に関わる演出は必ず最後まで読める。** HP、ブロック、エネルギーの変化を画面外で済ませない。
-4. **演出を短縮可能にする。** 対戦のテンポを損なう長尺ムービーは作らず、パック開封以外は原則 1.2 秒以内に収める。短縮は確定済みイベントを捨てず、現在の演出と保留キューを sequence 順に 100 ms の状態遷移へ畳む操作とする。
+4. **演出を短縮可能にする。** 対戦のテンポを損なう長尺ムービーは作らず、パック開封以外は原則 1.2 秒以内に収める。致死から結果表示までの終局シーケンスだけは最大 2.1 秒の例外とする。短縮は確定済みイベントを捨てず、現在の演出と保留キューを sequence 順に 100 ms の状態遷移へ畳む操作とする。
 5. **再現性を守る。** 対戦結果は game-engine のイベント列が唯一の正。クライアントの演出はイベントを再生するだけで、ゲーム状態を変更しない。
 
 ## 2. アートディレクション
@@ -91,8 +91,8 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。対象は 6 px 横揺れ、赤橙の衝撃波 | 被弾音。amount が大きいほど低音を追加 | 240 ms |
 | `BLOCK_GAINED` | 自分を囲む半透明の六角シールドが組み上がり、`+N BLOCK` | 上昇するガラス音 | 360 ms |
 | `HEALED` | 黄緑の粒子が下から上へ流れ、HP バーを満たす | 柔らかな上昇音 | 360 ms |
-| `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | 220 ms + 90 ms / 枚（最大 580 ms） |
-| `CARD_DRAWN` | 現行 resolver のドローイベント。同一 action response 内で連続し、同じ `playerId` を持つものは一つのドロー演出へ合成する。各 event と `cardInstanceId` は保持し、表示だけを 90 ms 間隔で束ねる | 紙をめくる音 | 220 ms + 90 ms / 枚（最大 580 ms） |
+| `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(n) = min(220 + 90 × (n - 1), 580)` ms |
+| `CARD_DRAWN` | 現行 resolver のドローイベント。同一 action response 内で連続し、同じ `playerId` を持つものは一つのドロー演出へ合成する。各 event と `cardInstanceId` は保持し、表示だけを 90 ms 間隔で束ねる | 紙をめくる音 | `D(n) = min(220 + 90 × (n - 1), 580)` ms |
 | `CARD_DISCARDED` | 解決済みカードが縮み、墓地カウンタへ吸い込まれる | 小さな紙音 | 180 ms |
 | `STATUS_APPLIED` | `status` のアイコンを対象のステータス列に 0.18 秒で追加し、輪郭を一度だけ発光 | 小さな付与音 | 180 ms |
 | `STATUS_REMOVED` | `statusId` に対応するアイコンを対象のステータス列から淡く消す。不明な ID は表示を変えずログに記録 | 柔らかな解除音 | 150 ms |
@@ -112,8 +112,9 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
 2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. 290 ms: `CARD_DRAWN` を同一 action response 内で player ごとにまとめて再生し、`TURN_STARTED` でエネルギーを満たす。ドロー演出時間は `D(n) = min(220 + 90 × (n - 1), 580)` ms（`n` はそのターンのドロー枚数）。
-4. `max(530, 290 + D(n))` ms: 自分の番だけ手札を 6 px せり上げ、主ボタンを有効化する（120 ms）。よって遷移の総時間は `max(650, 410 + D(n))` ms となり、ドロー中に操作を可能にしない。
+3. 290 ms: `CARD_DRAWN` を同一 action response 内で player ごとにまとめて再生する。ドロー演出時間は `D(n) = min(220 + 90 × (n - 1), 580)` ms（`n` はそのターンのドロー枚数）。
+4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
+5. `max(650, 410 + D(n))` ms: 主ボタンを有効化する。よって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは 650 ms、2 枚以上では枚数に応じて延長される。
 
 通常の対戦画面には「演出を短縮」トグルを用意する。オンにすると、現在の演出と保留中の各 event を sequence 順に 100 ms の最終状態表示へ遷移し、効果音は再生しない。ゲーム状態・イベント・ドロー枚数は変えず、入力の有効化は短縮後のキュー完了時だけに行う。
 
@@ -176,15 +177,15 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 ### 素材台帳（必須）
 
-| assetId | cardId | 素材名 / URL | 取得日 | 加工 | 商用カウント | 確認者 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `irasutoya_sword_001` | `sword_strike` | 公式 URL を記入 | YYYY-MM-DD | トリミング、色調整 | 1 | 担当者 |
+| assetId | cardIds | 素材名 / URL | 用途確認の証跡 | 規約確認 | 加工 | 素材点数 | 確認者 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `irasutoya_sword_001` | `sword_strike; sword_combo` | 公式 URL を記入 | 回答の保存先 / 受領日 | 規約 URL / 確認日 / 版 | トリミング | 1 | 担当者 |
 
-台帳は `docs/game/assets/irasutoya-register.csv` として管理し、素材を追加・交換したプルリクエストでは必ず更新する。`CardDefinition.artwork` には直接の外部 URL ではなく、検証済みローカルアセットのパスを設定する。
+台帳は [irasutoya-register.csv](assets/irasutoya-register.csv) として管理し、素材を追加・交換したプルリクエストでは必ず更新する。1 行は 1 素材（または色替えなどの 1 派生素材）であり、複数カードで再利用する場合は `card_ids` に列挙する。用途確認の回答と規約確認の証跡を同じ行へ記録するため、素材点数を重複行で水増し・過少計上しない。`CardDefinition.artwork` には直接の外部 URL ではなく、検証済みローカルアセットのパスを設定する。
 
 ## 9. 実装インターフェース
 
-UI は engine のイベントを受け取る `BattleAnimationQueue` を持つ。状態の反映はサーバーから受けた確定状態で行い、アニメーション終了を待ってゲームロジックを進めない。
+UI は engine のイベントを受け取る `BattleAnimationQueue` を持つ。サーバーから受けた確定状態は `authoritativeState` として直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、エネルギーは `presentationState` に保持する。各キュー項目は直前の `presentationState` を開始値、イベント適用後の値を終了値として持ち、演出完了時だけ `presentationState` を終了値へ進める。これにより、確定状態が先に届いても HP やブロックが最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeState` と照合し、差分があれば 150 ms フェードで同期する。
 
 キューは `sequence` をキーにした保留バッファを持ち、最初に表示するスナップショットの最終再生 sequence + 1 で `nextExpectedSequence` を初期化する。`nextExpectedSequence` と一致するイベントだけを取り出すため、到着済みの大きい sequence は先に再生しない。`nextExpectedSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせずイベント履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、スナップショットの最終 sequence の次から再開する。このため、遅延・重複・順不同の配信でも視覚上の因果関係を崩さない。
 
@@ -214,10 +215,23 @@ interface UnrecognizedBattleEvent {
 
 type DecodedBattleEvent = GameEvent | UnrecognizedBattleEvent;
 
+interface BattlePresentationState {
+  readonly hpByEntity: Readonly<Record<string, number>>;
+  readonly blockByEntity: Readonly<Record<string, number>>;
+  readonly energyByPlayer: Readonly<Record<string, number>>;
+  readonly handCardIdsByPlayer: Readonly<Record<string, readonly string[]>>;
+}
+
+interface PresentationTransition {
+  readonly before: BattlePresentationState;
+  readonly after: BattlePresentationState;
+}
+
 interface BattleAnimation {
   readonly sequence: number;
   readonly kind: AnimationKind;
   readonly event: DecodedBattleEvent;
+  readonly transition: PresentationTransition;
   readonly startedAt: number;
   readonly reducedMotion: boolean;
 }
