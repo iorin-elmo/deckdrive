@@ -396,6 +396,19 @@ describe('Replay recording', () => {
     });
   });
 
+  it('rejects unsafe event sequence numbers', () => {
+    const replay = zeroActionReplay();
+    const corrupt = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      events: replay.initialState.events.map((event) => ({ ...event, sequence: 1e100 })),
+    });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('verifies a replay restored from a non-zero event sequence', () => {
     const state = initialState();
     const restoredState = {
