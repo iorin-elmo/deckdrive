@@ -1,5 +1,11 @@
 import { applyAction } from './index.js';
-import type { BattleState, CardDefinitionSource, GameAction, GameEvent } from './index.js';
+import type {
+  BattleState,
+  CardDefinitionSource,
+  GameAction,
+  GameEvent,
+  TerminalBattleResult,
+} from './index.js';
 
 /** The persisted, JSON-compatible replay format supported by this engine. */
 export const replayFormatVersion = 1 as const;
@@ -273,7 +279,8 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     (includesEvents
       ? Array.isArray(value.events) &&
         hasValidArrayEntries(value.events, isGameEvent) &&
-        hasContiguousEventSequences(value.events)
+        hasContiguousEventSequences(value.events) &&
+        hasTerminalEventConsistentWithBattleState(value.phase, value.players, value.events)
       : !('events' in value))
   );
 }
@@ -345,6 +352,36 @@ function hasContiguousEventSequences(events: readonly unknown[]): boolean {
     expected = event.sequence + 1;
     return true;
   });
+}
+
+function hasTerminalEventConsistentWithBattleState(
+  phase: unknown,
+  players: readonly unknown[],
+  events: readonly unknown[],
+): boolean {
+  const terminalEvents = events.filter(
+    (event) => isRecord(event) && event.type === 'MATCH_FINISHED',
+  );
+  if (phase === 'PLAYER_TURN') return terminalEvents.length === 0;
+  if (phase !== 'MATCH_END' || terminalEvents.length !== 1 || events.at(-1) !== terminalEvents[0]) {
+    return false;
+  }
+
+  const terminalEvent = terminalEvents[0];
+  if (!isRecord(terminalEvent)) return false;
+  const result = terminalEvent.result;
+  if (!isTerminalBattleResult(result)) return false;
+  const livingPlayerIds = players.flatMap((player) =>
+    isRecord(player) &&
+    typeof player.id === 'string' &&
+    typeof player.hp === 'number' &&
+    player.hp > 0
+      ? [player.id]
+      : [],
+  );
+  return result.status === 'DRAW'
+    ? livingPlayerIds.length === 0
+    : livingPlayerIds.length === 1 && result.winnerId === livingPlayerIds[0];
 }
 
 function isBattlePlayerState(value: unknown): boolean {
@@ -436,7 +473,7 @@ function isGameEvent(value: unknown): value is GameEvent {
   }
 }
 
-function isTerminalBattleResult(value: unknown): boolean {
+function isTerminalBattleResult(value: unknown): value is TerminalBattleResult {
   if (!isRecord(value)) return false;
   return value.status === 'DRAW' || (value.status === 'WIN' && typeof value.winnerId === 'string');
 }

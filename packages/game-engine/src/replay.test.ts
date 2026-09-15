@@ -331,6 +331,41 @@ describe('Replay recording', () => {
     }
   });
 
+  it('rejects terminal events that are misplaced or disagree with the battle result', () => {
+    const replay = zeroActionReplay();
+    const [firstPlayer, secondPlayer] = replay.initialState.players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error('Replay fixture must have two players.');
+    }
+    const misplacedTerminalEvent = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      events: [
+        ...replay.initialState.events,
+        { type: 'MATCH_FINISHED', sequence: 3, result: { status: 'DRAW' } },
+      ],
+    });
+    const wrongWinner = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      phase: 'MATCH_END',
+      players: [firstPlayer, { ...secondPlayer, hp: 0 }],
+      events: [
+        ...replay.initialState.events,
+        {
+          type: 'MATCH_FINISHED',
+          sequence: 3,
+          result: { status: 'WIN', winnerId: secondPlayer.id },
+        },
+      ],
+    });
+
+    for (const corrupt of [misplacedTerminalEvent, wrongWinner]) {
+      expect(verifyReplay(corrupt, definitions)).toMatchObject({
+        ok: false,
+        error: { code: 'REPLAY_MISMATCH' },
+      });
+    }
+  });
+
   it('rejects an out-of-order persisted event stream with a recalculated checksum', () => {
     const replay = zeroActionReplay();
     const reorderedState = {
