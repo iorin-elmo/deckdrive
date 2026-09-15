@@ -52,5 +52,8 @@ jobs:
       - name: Run unit tests
         run: pnpm test
 
+      - name: Run replay regression
+        run: pnpm test:replay
+
       - name: Build
         run: pnpm build

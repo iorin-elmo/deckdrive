@@ -1,87 +1,20 @@
-import { readFileSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
 import {
   calculateReplayChecksum,
-  createInitialBattleState,
   recordReplay,
   restoreReplaySnapshot,
   verifyReplay,
 } from './index.js';
-import type {
-  CardDefinition,
-  CardInstance,
-  CardInstanceId,
-  GameAction,
-  MatchId,
-  PlayerId,
-  Replay,
-} from './index.js';
-
-interface ReplayFixture {
-  readonly matchId: string;
-  readonly seed: string;
-  readonly engineVersion: string;
-  readonly rulesVersion: string;
-  readonly cardDataVersion: string;
-  readonly initialDrawCount: number;
-  readonly turnDrawCount: number;
-  readonly players: readonly {
-    readonly id: string;
-    readonly cards: readonly { readonly id: string; readonly definitionId: string }[];
-  }[];
-  readonly actions: readonly GameAction[];
-  readonly expectedReplay: {
-    readonly checksum: string;
-    readonly events: readonly unknown[];
-    readonly snapshots: readonly unknown[];
-    readonly finalState: unknown;
-  };
-}
-
-const fixturePath = new URL(
-  '../../../tests/fixtures/replays/phase-2-recording.json',
-  import.meta.url,
-);
-const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as ReplayFixture;
-const definitions: readonly CardDefinition[] = [
-  { id: 'strike', cost: 1, effects: [{ type: 'DAMAGE', amount: 6, target: 'ENEMY' }] },
-  { id: 'guard', cost: 1, effects: [{ type: 'GAIN_BLOCK', amount: 5, target: 'SELF' }] },
-];
-
-function initialState() {
-  return createInitialBattleState({
-    matchId: fixture.matchId as MatchId,
-    seed: fixture.seed,
-    engineVersion: fixture.engineVersion,
-    rulesVersion: fixture.rulesVersion,
-    cardDataVersion: fixture.cardDataVersion,
-    initialDrawCount: fixture.initialDrawCount,
-    turnDrawCount: fixture.turnDrawCount,
-    players: fixture.players.map((player) => ({
-      id: player.id as PlayerId,
-      drawPile: player.cards.map((card): CardInstance => ({
-        id: card.id as CardInstanceId,
-        definitionId: card.definitionId,
-      })),
-    })),
-  });
-}
-
-function successfulReplay(): Replay {
-  const result = recordReplay(initialState(), fixture.actions, definitions, {
-    snapshotInterval: 2,
-  });
-  if (!result.ok) throw new Error(result.error.message);
-  return result.replay;
-}
-
-function zeroActionReplay(): Replay {
-  const result = recordReplay(initialState(), [], definitions);
-  if (!result.ok) throw new Error(result.error.message);
-  return result.replay;
-}
+import type { CardInstanceId, GameAction, MatchId, PlayerId, Replay } from './index.js';
+import {
+  definitions,
+  expectedReplay,
+  fixture,
+  initialState,
+  successfulReplay,
+  zeroActionReplay,
+} from './replay.test-support.js';
 
 function withChecksum(content: Omit<Replay, 'checksum'>): Replay {
   return { ...content, checksum: calculateReplayChecksum(content) };
@@ -117,12 +50,7 @@ describe('Replay recording', () => {
       cardDataVersion: fixture.cardDataVersion,
       actions: fixture.actions,
     });
-    expect({
-      checksum: replay.checksum,
-      events: replay.events,
-      snapshots: replay.snapshots,
-      finalState: replay.finalState,
-    }).toEqual(fixture.expectedReplay);
+    expect(replay).toEqual(expectedReplay());
     expect(replay.events).toEqual(replay.finalState.events);
     expect(replay.snapshots.map((entry) => entry.actionIndex)).toEqual([0, 2, 3]);
     expect(replay.snapshots.every((entry) => !('events' in entry.state))).toBe(true);

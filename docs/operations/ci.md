@@ -17,6 +17,7 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm test:replay
 pnpm build
 ```
 
@@ -38,7 +39,7 @@ workflow job or made a required check.
 | Unit tests | Required in `quality` | Vitest has a real configuration-validation test from F01. |
 | Build | Required in `quality` | F01 workspace packages provide build commands. |
 | Integration tests | Not introduced | Add a failing-capable command and CI job when a service integration test exists (D00/D01 and later). |
-| Engine replay regression | Not introduced | Add after replay fixtures and the regression suite exist (R00/R02). |
+| Engine replay regression | Required in `quality` | `pnpm test:replay` reproduces the known replay fixture and rejects a deliberately changed golden result. |
 | E2E | Not introduced | Add after the user-facing flows and Playwright suite exist (W00 and later). |
 | Docker image build | Not introduced | Add once app Dockerfiles exist; F02 supplies only PostgreSQL and Mailpit runtime services. |
 
@@ -60,6 +61,7 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm test:replay
 pnpm build
 ```
 
