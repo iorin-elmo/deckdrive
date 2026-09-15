@@ -31,6 +31,23 @@ interface ReplayFixture {
     readonly cards: readonly { readonly id: string; readonly definitionId: string }[];
   }[];
   readonly actions: readonly GameAction[];
+  readonly expectedChecksum: string;
+  readonly expectedEventTypes: readonly string[];
+  readonly expectedSnapshots: readonly {
+    readonly actionIndex: number;
+    readonly eventSequence: number;
+  }[];
+  readonly expectedFinalState: {
+    readonly activePlayerId: string;
+    readonly phase: string;
+    readonly turn: number;
+    readonly players: readonly {
+      readonly id: string;
+      readonly hp: number;
+      readonly energy: number;
+      readonly block: number;
+    }[];
+  };
 }
 
 const fixturePath = new URL(
@@ -87,6 +104,12 @@ describe('Replay recording', () => {
       cardDataVersion: fixture.cardDataVersion,
       actions: fixture.actions,
     });
+    expect(replay.checksum).toBe(fixture.expectedChecksum);
+    expect(replay.events.map((event) => event.type)).toEqual(fixture.expectedEventTypes);
+    expect(
+      replay.snapshots.map(({ actionIndex, eventSequence }) => ({ actionIndex, eventSequence })),
+    ).toEqual(fixture.expectedSnapshots);
+    expect(replay.finalState).toMatchObject(fixture.expectedFinalState);
     expect(replay.events).toEqual(replay.finalState.events);
     expect(replay.snapshots.map((entry) => entry.actionIndex)).toEqual([0, 2, 3]);
     expect(replay.snapshots.at(-1)?.state).toEqual(replay.finalState);
@@ -140,5 +163,19 @@ describe('Replay recording', () => {
       ok: false,
       error: { code: 'REPLAY_MISMATCH' },
     });
+  });
+
+  it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
+    const state = initialState();
+    const result = recordReplay(
+      { ...state, matchId: '試合-一' as MatchId, seed: 'シード' },
+      fixture.actions,
+      definitions,
+      { snapshotInterval: 2 },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.replay.checksum).toBe('fnv1a-32:7a33e0d9');
   });
 });

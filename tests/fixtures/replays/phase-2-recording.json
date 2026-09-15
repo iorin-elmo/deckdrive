@@ -26,5 +26,36 @@
     { "type": "PLAY_CARD", "playerId": "player-1", "cardInstanceId": "player-1-strike" },
     { "type": "END_TURN", "playerId": "player-1" },
     { "type": "PLAY_CARD", "playerId": "player-2", "cardInstanceId": "player-2-guard" }
-  ]
+  ],
+  "expectedChecksum": "fnv1a-32:0c6c1d75",
+  "expectedEventTypes": [
+    "CARD_DRAWN",
+    "CARD_DRAWN",
+    "CARD_PLAYED",
+    "EFFECT_STARTED",
+    "DAMAGE_DEALT",
+    "ENTITY_DAMAGED",
+    "CARD_DISCARDED",
+    "TURN_ENDED",
+    "CARD_DRAWN",
+    "TURN_STARTED",
+    "CARD_PLAYED",
+    "EFFECT_STARTED",
+    "BLOCK_GAINED",
+    "CARD_DISCARDED"
+  ],
+  "expectedSnapshots": [
+    { "actionIndex": 0, "eventSequence": 2 },
+    { "actionIndex": 2, "eventSequence": 10 },
+    { "actionIndex": 3, "eventSequence": 14 }
+  ],
+  "expectedFinalState": {
+    "activePlayerId": "player-2",
+    "phase": "PLAYER_TURN",
+    "turn": 1,
+    "players": [
+      { "id": "player-1", "hp": 30, "energy": 2, "block": 0 },
+      { "id": "player-2", "hp": 24, "energy": 2, "block": 5 }
+    ]
+  }
 }

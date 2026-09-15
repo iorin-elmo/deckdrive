@@ -190,11 +190,40 @@ function isPositiveInteger(value: number): boolean {
 
 function checksum(value: unknown): string {
   let hash = 0x811c_9dc5;
-  for (const character of canonicalJson(value)) {
-    hash ^= character.codePointAt(0) ?? 0;
+  for (const byte of utf8Bytes(canonicalJson(value))) {
+    hash ^= byte;
     hash = Math.imul(hash, 0x0100_0193);
   }
   return `fnv1a-32:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/** FNV-1a is defined over bytes, so encode canonical JSON as UTF-8 explicitly. */
+function* utf8Bytes(value: string): Iterable<number> {
+  for (let index = 0; index < value.length; index += 1) {
+    let codePoint = value.codePointAt(index) ?? 0;
+    if (codePoint > 0xffff) {
+      index += 1;
+    } else if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+      // Match standard UTF-8 encoders for a lone surrogate.
+      codePoint = 0xfffd;
+    }
+
+    if (codePoint <= 0x7f) {
+      yield codePoint;
+    } else if (codePoint <= 0x7ff) {
+      yield 0xc0 | (codePoint >> 6);
+      yield 0x80 | (codePoint & 0x3f);
+    } else if (codePoint <= 0xffff) {
+      yield 0xe0 | (codePoint >> 12);
+      yield 0x80 | ((codePoint >> 6) & 0x3f);
+      yield 0x80 | (codePoint & 0x3f);
+    } else {
+      yield 0xf0 | (codePoint >> 18);
+      yield 0x80 | ((codePoint >> 12) & 0x3f);
+      yield 0x80 | ((codePoint >> 6) & 0x3f);
+      yield 0x80 | (codePoint & 0x3f);
+    }
+  }
 }
 
 function canonicalJson(value: unknown): string {

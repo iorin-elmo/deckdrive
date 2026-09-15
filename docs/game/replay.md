@@ -38,8 +38,10 @@ may be added as explicit migrations without rewriting old fixtures.
 
 `packages/game-engine/src/replay.test.ts` loads
 `tests/fixtures/replays/phase-2-recording.json` and verifies successful replay
-equality, invalid-action rejection, checksum mismatch detection, and
-recalculated-checksum consistency detection.
+equality against golden event types, snapshot boundaries, final state, and a
+full-record checksum. It also verifies invalid-action rejection, checksum
+mismatch detection, recalculated-checksum consistency detection, and UTF-8
+handling for non-ASCII metadata.
 
 Applicable Definition of Done: implementation, typecheck, unit test,
 determinism/replay regression, error state, security consideration, and
