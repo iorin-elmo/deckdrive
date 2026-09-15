@@ -10,6 +10,7 @@ import type { CardDefinitionSource } from './rules.js';
 export const packageName = '@deck-drive/game-engine' as const;
 
 export * from './random/index.js';
+export * from './replay.js';
 export { createInitialBattleState, initialHp, initialMaxEnergy } from './rules.js';
 export type {
   CardDefinition,
