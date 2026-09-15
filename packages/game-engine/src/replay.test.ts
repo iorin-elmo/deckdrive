@@ -266,6 +266,19 @@ describe('Replay recording', () => {
     }
   });
 
+  it('rejects a replay state whose active player is not present', () => {
+    const replay = zeroActionReplay();
+    const corrupt = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      activePlayerId: 'missing-player' as PlayerId,
+    });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('rejects an out-of-order persisted event stream with a recalculated checksum', () => {
     const replay = zeroActionReplay();
     const reorderedState = {

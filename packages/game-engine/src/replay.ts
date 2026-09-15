@@ -266,6 +266,7 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     value.players.length === 2 &&
     value.players.every(isBattlePlayerState) &&
     hasUniqueBattleStateIds(value.players) &&
+    hasActivePlayer(value.activePlayerId, value.players) &&
     Array.isArray(value.stack) &&
     value.stack.every(isEffectStackItem) &&
     (includesEvents
@@ -288,6 +289,13 @@ function hasUniqueBattleStateIds(players: readonly unknown[]): boolean {
     });
   });
   return hasUniqueStrings(playerIds) && hasUniqueStrings(cardIds);
+}
+
+function hasActivePlayer(activePlayerId: unknown, players: readonly unknown[]): boolean {
+  return (
+    typeof activePlayerId === 'string' &&
+    players.some((player) => isRecord(player) && player.id === activePlayerId)
+  );
 }
 
 function hasUniqueStrings(values: readonly unknown[]): boolean {
