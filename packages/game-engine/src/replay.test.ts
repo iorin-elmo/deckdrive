@@ -308,6 +308,29 @@ describe('Replay recording', () => {
     }
   });
 
+  it('rejects persisted phase and active-player state inconsistent with battle result', () => {
+    const replay = zeroActionReplay();
+    const [firstPlayer, secondPlayer] = replay.initialState.players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error('Replay fixture must have two players.');
+    }
+    const prematureMatchEnd = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      phase: 'MATCH_END',
+    });
+    const defeatedActivePlayer = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      players: [{ ...firstPlayer, hp: 0 }, secondPlayer],
+    });
+
+    for (const corrupt of [prematureMatchEnd, defeatedActivePlayer]) {
+      expect(verifyReplay(corrupt, definitions)).toMatchObject({
+        ok: false,
+        error: { code: 'REPLAY_MISMATCH' },
+      });
+    }
+  });
+
   it('rejects an out-of-order persisted event stream with a recalculated checksum', () => {
     const replay = zeroActionReplay();
     const reorderedState = {

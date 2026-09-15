@@ -267,6 +267,7 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     hasValidArrayEntries(value.players, isBattlePlayerState) &&
     hasUniqueBattleStateIds(value.players) &&
     hasActivePlayer(value.activePlayerId, value.players) &&
+    hasConsistentBattlePhase(value.phase, value.activePlayerId, value.players) &&
     Array.isArray(value.stack) &&
     hasValidArrayEntries(value.stack, isEffectStackItem) &&
     (includesEvents
@@ -295,6 +296,32 @@ function hasActivePlayer(activePlayerId: unknown, players: readonly unknown[]): 
   return (
     typeof activePlayerId === 'string' &&
     players.some((player) => isRecord(player) && player.id === activePlayerId)
+  );
+}
+
+function hasConsistentBattlePhase(
+  phase: unknown,
+  activePlayerId: unknown,
+  players: readonly unknown[],
+): boolean {
+  if (typeof activePlayerId !== 'string') return false;
+  const playerHealth = players.map((player) => {
+    if (!isRecord(player) || typeof player.id !== 'string' || typeof player.hp !== 'number') {
+      return undefined;
+    }
+    return { id: player.id, hp: player.hp };
+  });
+  if (playerHealth.some((player) => player === undefined)) return false;
+
+  const livingPlayers = playerHealth.filter(
+    (player): player is { readonly id: string; readonly hp: number } =>
+      player !== undefined && player.hp > 0,
+  );
+  if (phase === 'MATCH_END') return livingPlayers.length < 2;
+  return (
+    phase === 'PLAYER_TURN' &&
+    livingPlayers.length === 2 &&
+    livingPlayers.some((player) => player.id === activePlayerId)
   );
 }
 
