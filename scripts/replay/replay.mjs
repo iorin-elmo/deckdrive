@@ -20,36 +20,43 @@ const supportedFixtureVersions = {
   rulesVersion: new Set(['1.0.0']),
   cardDataVersion: new Set(['1.0.0']),
 };
+const cliErrorCodes = new Set([
+  'REPLAY_NOT_FOUND',
+  'UNSUPPORTED_REPLAY_FORMAT',
+  'UNSUPPORTED_REPLAY_VERSION',
+  'REPLAY_MISMATCH',
+  'USAGE',
+]);
 
 export async function runReplayCli(argv, environment = process.env, io = console) {
   const matchId = parseMatchId(argv);
   const fixturesDirectory = environment.REPLAY_FIXTURES_DIR ?? defaultFixturesDirectory;
   const fixture = await loadFixture(fixturesDirectory, matchId);
 
-  if (fixture.formatVersion !== replayFormatVersion) {
-    fail(
-      'UNSUPPORTED_REPLAY_FORMAT',
-      `Fixture format ${String(fixture.formatVersion)} is not supported.`,
-    );
-  }
-  validateSupportedVersions(fixture);
-
-  const initialState = createInitialBattleState({
-    matchId: fixture.matchId,
-    seed: fixture.seed,
-    engineVersion: fixture.engineVersion,
-    rulesVersion: fixture.rulesVersion,
-    cardDataVersion: fixture.cardDataVersion,
-    initialDrawCount: fixture.initialDrawCount,
-    turnDrawCount: fixture.turnDrawCount,
-    players: fixture.players.map((player) => ({ id: player.id, drawPile: player.cards })),
-  });
-  const recorded = recordReplay(initialState, fixture.actions, fixture.definitions, {
-    snapshotInterval: fixture.snapshotInterval,
-  });
-  if (!recorded.ok) fail('REPLAY_MISMATCH', recorded.error.message);
-
   try {
+    if (fixture.formatVersion !== replayFormatVersion) {
+      fail(
+        'UNSUPPORTED_REPLAY_FORMAT',
+        `Fixture format ${String(fixture.formatVersion)} is not supported.`,
+      );
+    }
+    validateSupportedVersions(fixture);
+
+    const initialState = createInitialBattleState({
+      matchId: fixture.matchId,
+      seed: fixture.seed,
+      engineVersion: fixture.engineVersion,
+      rulesVersion: fixture.rulesVersion,
+      cardDataVersion: fixture.cardDataVersion,
+      initialDrawCount: fixture.initialDrawCount,
+      turnDrawCount: fixture.turnDrawCount,
+      players: fixture.players.map((player) => ({ id: player.id, drawPile: player.cards })),
+    });
+    const recorded = recordReplay(initialState, fixture.actions, fixture.definitions, {
+      snapshotInterval: fixture.snapshotInterval,
+    });
+    if (!recorded.ok) fail('REPLAY_MISMATCH', recorded.error.message);
+
     assert.deepStrictEqual(
       {
         checksum: recorded.replay.checksum,
@@ -59,12 +66,12 @@ export async function runReplayCli(argv, environment = process.env, io = console
       },
       fixture.expectedReplay,
     );
-  } catch {
-    fail('REPLAY_MISMATCH', `Fixture ${matchId} does not match its recorded replay output.`);
+    const verification = verifyReplay(recorded.replay, fixture.definitions);
+    if (!verification.ok) fail(verification.error.code, verification.error.message);
+  } catch (error) {
+    if (isCliError(error)) throw error;
+    fail('REPLAY_MISMATCH', `Fixture ${matchId} is malformed or does not match its replay output.`);
   }
-
-  const verification = verifyReplay(recorded.replay, fixture.definitions);
-  if (!verification.ok) fail(verification.error.code, verification.error.message);
   io.log(`Replay ${matchId} verified.`);
 }
 
@@ -107,6 +114,10 @@ async function loadFixture(fixturesDirectory, matchId) {
 
 function fail(code, message) {
   throw Object.assign(new Error(`${code}: ${message}`), { code });
+}
+
+function isCliError(error) {
+  return error !== null && typeof error === 'object' && cliErrorCodes.has(error.code);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

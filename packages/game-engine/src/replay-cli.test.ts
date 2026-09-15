@@ -98,4 +98,19 @@ describe('replay CLI', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('REPLAY_MISMATCH');
   });
+
+  it.each([
+    ['missing players', (fixture: Record<string, unknown>) => delete fixture.players],
+    [
+      'invalid snapshot interval',
+      (fixture: Record<string, unknown>) => {
+        fixture.snapshotInterval = 0;
+      },
+    ],
+  ])('maps malformed fixture input (%s) to REPLAY_MISMATCH', (_name, mutate) => {
+    const result = run('phase-2-recording', copiedFixtures(mutate));
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('REPLAY_MISMATCH');
+  });
 });

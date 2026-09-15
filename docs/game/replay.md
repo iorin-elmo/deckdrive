@@ -11,7 +11,8 @@ the deterministic initial state, and verify its golden replay output. The CLI
 accepts the Phase 2 `1.0.0` engine, rules, and card-data adapters only; it
 reports `REPLAY_NOT_FOUND`, `UNSUPPORTED_REPLAY_FORMAT`,
 `UNSUPPORTED_REPLAY_VERSION`, or `REPLAY_MISMATCH` as explicit non-zero error
-states. It reads fixture files only; it does not connect to a database.
+states. Malformed fixture input is also reported as `REPLAY_MISMATCH`. It reads
+fixture files only; it does not connect to a database.
 
 ## Record format
 
