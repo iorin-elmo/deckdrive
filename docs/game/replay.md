@@ -46,6 +46,28 @@ and card-data versions used. It never silently substitutes a version. R01's
 loader must reject an unavailable version explicitly; future version adapters
 may be added as explicit migrations without rewriting old fixtures.
 
+## Visual replay envelope (required before battle-replay UI)
+
+R00's engine replay is an authoritative rules record, not a complete
+presentation record: `EFFECT_STARTED` contains an opaque effect ID and R00
+does not persist presentation metadata. A battle-replay UI must therefore not
+attempt to reconstruct effect colors by parsing that ID.
+
+Before shipping the visual replay UI, introduce a versioned visual replay
+envelope alongside the engine replay. For each viewer it must persist:
+
+- contiguous `viewSequence` projected events, including `REDACTED` markers;
+- the per-event before/after presentation transitions;
+- `EffectPresentationMetadata` keyed by `viewSequence` and `effectId`, with
+  the zero-based effect index and presentation tone;
+- the source engine replay checksum, the envelope format version, and a
+  checksum over the envelope itself.
+
+The visual-replay verifier must validate both checksums and the metadata/event
+key relationship before playback. R00 format version 1 remains readable as a
+rules-only replay; it must use a non-animated fallback until a compatible
+visual envelope is available.
+
 ## Validation evidence
 
 `packages/game-engine/src/replay.test.ts` loads

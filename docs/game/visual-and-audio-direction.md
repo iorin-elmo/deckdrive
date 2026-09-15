@@ -15,7 +15,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 1. **意味が先、派手さは後。** ダメージ・防御・回復・ドローを色、軌道、音で区別する。
 2. **入力に即応する。** ホバーは 80 ms 以内、押下は即時、結果はネットワーク待ちでも予告表示する。
 3. **勝敗に関わる演出は必ず最後まで読める。** HP、ブロック、エネルギーの変化を画面外で済ませない。
-4. **演出を短縮可能にする。** 対戦のテンポを損なう長尺ムービーは作らず、パック開封以外は原則 1.2 秒以内に収める。致死から結果表示までの終局シーケンスだけは最大 2.1 秒の例外とする。短縮は確定済みイベントを捨てず、現在の演出と保留キューを sequence 順に 100 ms の状態遷移へ畳む操作とする。
+4. **演出を短縮可能にする。** 対戦のテンポを損なう長尺ムービーは作らず、パック開封以外の**各イベント演出**は原則 1.2 秒以内に収める。複数イベントからなる action は sequence 順に連結するため、この上限を超え得る。致死から結果表示までの終局シーケンスだけは最大 2.1 秒の例外とする。短縮は確定済みイベントを捨てず、現在の演出と保留キューを sequence 順に 100 ms の状態遷移へ畳む操作とする。
 5. **再現性を守る。** 対戦結果は game-engine のイベント列が唯一の正。クライアントの演出はイベントを再生するだけで、ゲーム状態を変更しない。
 
 ## 2. アートディレクション
@@ -84,7 +84,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 | engine event | 視覚演出 | 音 | 標準時間 |
 | --- | --- | --- | --- |
-| `CARD_PLAYED` | 手札から中央プレイレーンへカードが弧を描いて飛び、カード名を 0.5 秒だけ表示 | 紙のスワイプ + 小さな決定音 | 280 ms |
+| `CARD_PLAYED` | 手札から中央プレイレーンへカードが弧を描いて飛ぶ（280 ms）。カード名の 0.5 秒表示は後続 event を止めない独立 overlay とする | 紙のスワイプ + 小さな決定音 | 280 ms |
 | `EFFECT_STARTED` | `effectId` は opaque として扱う。後述の server-provided presentation metadata にある effect type の色でカード枠をフラッシュ。複数効果では effect ごとに一拍置く | 短いチャージ音 | 120 ms |
 | `DAMAGE_DEALT` | `sourceId` から `targetId` へ中立色の軌跡を飛ばす「攻撃予告」。自己ダメージでは自分のパネル内へ短く収束させる。対象はまだ揺らさず、HP ダメージ色も使わない | 斬撃 / 打撃の導入音 | 180–260 ms |
 | `BLOCK_REDUCED` | 盾の六角形が前面に出て、ひび割れて消える。実 HP の減少より先に再生 | 金属の軽い反響 | 180 ms |
@@ -123,6 +123,8 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 ## 6. パック開封
 
 パック開封は収集体験の見せ場だが、結果を隠して不安を煽る賭博的な表現は避ける。サーバーで確定した内容だけを受信し、演出はその結果を順に見せる。
+
+以下の基本フローは **Normal Pack / Rare Pack の 1 パック（5 枚）** に適用する。Box は 10 パック・50 枚であり、各パックに基本フローを適用する。Box 開封では、パック 1/10 の進捗、各パックの保証、Box 全体の最低保証を表示し、`残りを短縮して開封` で未開封パックを順に確定表示へ畳める。キーボード操作も各パックごとに同じカード確認フローを繰り返し、最後のパック後に Box 全体の結果へフォーカスを移す。
 
 ### フロー
 
@@ -184,21 +186,31 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 ### 素材台帳（必須）
 
-| assetId | localAssetPath | cardIds | 素材名 / URL | 用途確認の証跡 | 規約確認 | 加工 | 素材点数 | 確認者 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `irasutoya_sword_001` | `apps/web/public/art/irasutoya_sword_001.png` | `sword_strike; sword_combo` | 公式 URL を記入 | 回答の保存先 / 受領日 | 規約 URL / 確認日 / 版 | トリミング | 1 | 担当者 |
+CSV のヘッダーを唯一のスキーマとする。以下は各列の説明であり、台帳行の別表現ではない。
+
+| CSV field | 内容 |
+| --- | --- |
+| `asset_id` | 一意の素材 ID |
+| `local_asset_path` | 実際に配布する repository-relative path |
+| `source_url` / `acquired_on` | 公式取得元と取得日 |
+| `card_ids` | 再利用を含むカード ID のセミコロン区切り一覧 |
+| `derivative_variant_id` / `modifications` | 派生素材 ID と加工内容 |
+| `material_count` | この行が表す素材点数（派生色は別行） |
+| `official_use_confirmation_reference` / `confirmation_received_on` | 用途確認の証跡と受領日 |
+| `terms_url` / `terms_checked_on` / `terms_revision_reference` | 規約 URL、確認日、確認した版または保存先 |
+| `reviewer` / `status` | 責任者と `PENDING` / `APPROVED` / `REJECTED` の公開可否 |
 
 台帳は [irasutoya-register.csv](assets/irasutoya-register.csv) として管理し、素材を追加・交換したプルリクエストでは必ず更新する。1 行は 1 素材（または色替えなどの 1 派生素材）であり、複数カードで再利用する場合は `card_ids` に列挙する。`local_asset_path` は実際に配布するファイルの repository-relative path とし、`CardDefinition.artwork` はこの値と完全一致させる。用途確認の回答と規約確認の証跡を同じ行へ記録するため、素材点数を重複行で水増し・過少計上しない。
 
 ## 9. 実装インターフェース
 
-UI は engine のイベントを受け取る `BattleAnimationQueue` を持つ。サーバーから受けた確定状態は `authoritativeState` として直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、エネルギーは `presentationState` に保持する。各キュー項目は直前の `presentationState` を開始値、イベント適用後の値を終了値として持ち、演出完了時だけ `presentationState` を終了値へ進める。これにより、確定状態が先に届いても HP やブロックが最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeState` と照合し、差分があれば 150 ms フェードで同期する。
+UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。サーバーから受けた確定状態は `authoritativeState` として直ちに更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。キューが空になった時点で `presentationState` を `authoritativeState` と照合し、差分があれば 150 ms フェードで同期する。
 
-キューは `sequence` をキーにした保留バッファを持ち、最初に表示するスナップショットの最終再生 sequence + 1 で `nextExpectedSequence` を初期化する。`nextExpectedSequence` と一致するイベントだけを取り出すため、到着済みの大きい sequence は先に再生しない。`nextExpectedSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせずイベント履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、スナップショットの最終 sequence の次から再開する。このため、遅延・重複・順不同の配信でも視覚上の因果関係を崩さない。
+キューはグローバルな `GameEvent.sequence` ではなく、viewer ごとに連続する `viewSequence` をキーにした保留バッファを持つ。プライベート情報を隠す global event は viewer projection で `REDACTED` marker となり、visible state を変えない transition と連続した `viewSequence` を持つ。最初に表示するスナップショットの `lastViewSequence + 1` で `nextExpectedViewSequence` を初期化し、一致する event / marker だけを取り出す。これにより相手の非公開ドローによる global sequence の穴を待たない。`nextExpectedViewSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせず viewer-scoped event 履歴または最新スナップショットを再取得する。最新スナップショットへ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、`lastViewSequence + 1` から再開する。
 
 受信時は wire payload を decoder で検証してからキューへ入れる。未知 payload は `sequence` の有無にかかわらずキューへ進めない。raw payload をログに残し、現在の演出を 150 ms で安全にフェードして、イベント履歴と最新スナップショットを再取得する resync barrier とする。スナップショットを受け取るまで `presentationState` を進めず、後続 event も再生しないため、不明な状態変化をまたいで古い表示値から演出することはない。各キュー項目は元の `GameEvent` を保持する。カード ID、効果 ID、状態オブジェクト、結果などの契約上の payload を `amount` だけに縮約しない。演出種別は UI 用の派生情報であり、ゲームイベントを置き換えない。
 
-`EFFECT_STARTED.effectId` は opaque であり、クライアントは文字列を解析しない。サーバーは action result とイベント履歴レスポンスに、対象 event の `sequence` と `effectId` をキーとした `EffectPresentationMetadata` を必ず同梱する。これには `cardInstanceId`、`effectIndex`、`effectType` を含める。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata を同じレスポンスに含める。metadata がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
+`EFFECT_STARTED.effectId` は opaque であり、クライアントは文字列を解析しない。サーバーは action result、viewer-scoped event 履歴、リプレイに、対象 event の `viewSequence` と `effectId` をキーとした `EffectPresentationMetadata` を必ず同梱する。`effectIndex` はカード定義の `effects` 配列と同じ **0 始まり**、`effectType` はその要素の type とする。`CUSTOM` を含む全 type は server-provided `presentationTone` を使い、`CUSTOM` の既定値は中立 tone とする。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata を同じレスポンスに含める。metadata がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
 
 ```ts
 type AnimationKind =
@@ -217,11 +229,13 @@ type AnimationKind =
   | 'match-result';
 
 interface EffectPresentationMetadata {
-  readonly sequence: number;
+  readonly viewSequence: number;
   readonly effectId: string;
   readonly cardInstanceId: string;
+  /** Zero-based index in CardDefinition.effects. */
   readonly effectIndex: number;
   readonly effectType: 'DAMAGE' | 'HEAL' | 'GAIN_BLOCK' | 'DRAW' | 'CUSTOM';
+  readonly presentationTone: 'attack' | 'defense' | 'recovery' | 'draw' | 'neutral';
 }
 
 interface BattlePresentationState {
@@ -229,6 +243,8 @@ interface BattlePresentationState {
   readonly blockByEntity: Readonly<Record<string, number>>;
   readonly energyByPlayer: Readonly<Record<string, number>>;
   readonly handCardIdsByPlayer: Readonly<Record<string, readonly string[]>>;
+  readonly drawPileCountByPlayer: Readonly<Record<string, number>>;
+  readonly discardCardIdsByPlayer: Readonly<Record<string, readonly string[]>>;
   readonly statusesByEntity: Readonly<Record<string, readonly Status[]>>;
 }
 
@@ -237,8 +253,20 @@ interface PresentationTransition {
   readonly after: BattlePresentationState;
 }
 
+type ProjectedBattleEntry =
+  | {
+      readonly viewSequence: number;
+      readonly event: GameEvent;
+      readonly transition: PresentationTransition;
+    }
+  | {
+      readonly viewSequence: number;
+      readonly type: 'REDACTED';
+      readonly transition: PresentationTransition;
+    };
+
 interface BattleAnimation {
-  readonly sequence: number;
+  readonly viewSequence: number;
   readonly kind: AnimationKind;
   readonly event: GameEvent;
   readonly transition: PresentationTransition;
@@ -247,7 +275,7 @@ interface BattleAnimation {
 }
 ```
 
-`GameEvent` の全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。テストでは、順不同・重複・欠番・再接続時に、連続した sequence 以外を先行再生しないこと、元イベントの payload が保持されること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。`EFFECT_STARTED` の metadata 欠落および将来追加される未知イベントは、raw payload をログに記録して resync barrier を起動し、スナップショット受領後に再開することを確認する。
+`GameEvent` の全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。テストでは、順不同・重複・欠番・再接続時に、連続した `viewSequence` 以外を先行再生しないこと、`REDACTED` marker が非公開 global event を待たせないこと、server-provided transition と metadata が保持されること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。`EFFECT_STARTED` の metadata 欠落および将来追加される未知イベントは、raw payload をログに記録して resync barrier を起動し、スナップショット受領後に再開することを確認する。リプレイは engine checksum と visual envelope checksum、および event / metadata の key 関係を検証する。
 
 ## 10. 完成判定
 
