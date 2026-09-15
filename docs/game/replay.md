@@ -56,9 +56,14 @@ attempt to reconstruct effect colors by parsing that ID.
 Before shipping the visual replay UI, introduce a versioned visual replay
 envelope alongside the engine replay. For each viewer it must persist:
 
+- a viewer-scoped presentation snapshot containing the safe battle state and
+  `lastViewSequence`, so replay resume starts from a known projection boundary;
 - contiguous `viewSequence` projected events, including `REDACTED` markers
   that retain non-secret `sourceSequence` and `sourceEventType` values;
 - the per-event before/after presentation transitions;
+- a catalog keyed by opaque `presentationCardRef`, containing display fields
+  only for the viewer's own or otherwise public cards; hidden opponent cards
+  and redacted markers have no catalog entry;
 - `EffectPresentationMetadata` keyed by `viewSequence` and the viewer-safe
   `presentationEffectRef`, with
   the zero-based effect index and presentation tone;
@@ -66,11 +71,11 @@ envelope alongside the engine replay. For each viewer it must persist:
   checksum over the envelope itself.
 
 The visual-replay verifier must validate both checksums, the metadata/event
-key relationship, and a one-to-one mapping from each source event sequence to
-either a viewer-safe projected event or a matching redacted marker before
-playback. R00 format version 1 remains readable as a rules-only replay; it
-must use a non-animated fallback until a compatible visual envelope is
-available.
+key relationship, the catalog coverage of every visible card reference, and a
+one-to-one mapping from each source event sequence to either a viewer-safe
+projected event or a matching redacted marker before playback. R00 format
+version 1 remains readable as a rules-only replay; it must use a non-animated
+fallback until a compatible visual envelope is available.
 
 ## Validation evidence
 
