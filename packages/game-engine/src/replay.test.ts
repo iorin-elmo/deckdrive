@@ -344,4 +344,14 @@ describe('Replay recording', () => {
 
     expect(calculateReplayChecksum(sparseReplay)).toBe(calculateReplayChecksum(parsedReplay));
   });
+
+  it('rejects a sparse persisted action array as malformed replay content', () => {
+    const replay = successfulReplay();
+    const corrupt = withChecksum({ ...replay, actions: new Array<GameAction>(1) });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
 });

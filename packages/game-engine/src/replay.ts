@@ -227,11 +227,11 @@ function isReplayShape(value: unknown): value is Replay {
     typeof value.seed === 'string' &&
     isBattleState(value.initialState) &&
     Array.isArray(value.actions) &&
-    value.actions.every(isGameAction) &&
+    hasValidArrayEntries(value.actions, isGameAction) &&
     Array.isArray(value.events) &&
-    value.events.every(isGameEvent) &&
+    hasValidArrayEntries(value.events, isGameEvent) &&
     Array.isArray(value.snapshots) &&
-    value.snapshots.every(isReplaySnapshot) &&
+    hasValidArrayEntries(value.snapshots, isReplaySnapshot) &&
     isBattleState(value.finalState) &&
     typeof value.snapshotInterval === 'number'
   );
@@ -264,14 +264,14 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     isNonNegativeInteger(value.initialDrawCount) &&
     Array.isArray(value.players) &&
     value.players.length === 2 &&
-    value.players.every(isBattlePlayerState) &&
+    hasValidArrayEntries(value.players, isBattlePlayerState) &&
     hasUniqueBattleStateIds(value.players) &&
     hasActivePlayer(value.activePlayerId, value.players) &&
     Array.isArray(value.stack) &&
-    value.stack.every(isEffectStackItem) &&
+    hasValidArrayEntries(value.stack, isEffectStackItem) &&
     (includesEvents
       ? Array.isArray(value.events) &&
-        value.events.every(isGameEvent) &&
+        hasValidArrayEntries(value.events, isGameEvent) &&
         hasStrictlyIncreasingEventSequences(value.events)
       : !('events' in value))
   );
@@ -300,13 +300,14 @@ function hasActivePlayer(activePlayerId: unknown, players: readonly unknown[]): 
 
 function hasUniqueStrings(values: readonly unknown[]): boolean {
   return (
-    values.every((value) => typeof value === 'string') && new Set(values).size === values.length
+    hasValidArrayEntries(values, (value) => typeof value === 'string') &&
+    new Set(values).size === values.length
   );
 }
 
 function hasStrictlyIncreasingEventSequences(events: readonly unknown[]): boolean {
   let previous = 0;
-  return events.every((event) => {
+  return hasValidArrayEntries(events, (event) => {
     if (!isRecord(event) || !isPositiveInteger(event.sequence) || event.sequence <= previous) {
       return false;
     }
@@ -327,13 +328,13 @@ function isBattlePlayerState(value: unknown): boolean {
     value.energy <= value.maxEnergy &&
     isNonNegativeInteger(value.block) &&
     Array.isArray(value.drawPile) &&
-    value.drawPile.every(isCardInstance) &&
+    hasValidArrayEntries(value.drawPile, isCardInstance) &&
     Array.isArray(value.hand) &&
-    value.hand.every(isCardInstance) &&
+    hasValidArrayEntries(value.hand, isCardInstance) &&
     Array.isArray(value.discard) &&
-    value.discard.every(isCardInstance) &&
+    hasValidArrayEntries(value.discard, isCardInstance) &&
     Array.isArray(value.statuses) &&
-    value.statuses.every(isStatus)
+    hasValidArrayEntries(value.statuses, isStatus)
   );
 }
 
@@ -388,7 +389,7 @@ function isGameEvent(value: unknown): value is GameEvent {
       return (
         typeof value.playerId === 'string' &&
         Array.isArray(value.cardInstanceIds) &&
-        value.cardInstanceIds.every((id) => typeof id === 'string')
+        hasValidArrayEntries(value.cardInstanceIds, (id) => typeof id === 'string')
       );
     case 'STATUS_APPLIED':
       return typeof value.targetId === 'string' && isStatus(value.status);
@@ -416,6 +417,14 @@ function isReplaySnapshot(value: unknown): value is ReplaySnapshot {
     isNonNegativeInteger(value.eventSequence) &&
     isSnapshotState(value.state)
   );
+}
+
+/** Array.from materializes holes as undefined, unlike Array.prototype.every. */
+function hasValidArrayEntries(
+  values: readonly unknown[],
+  predicate: (value: unknown) => boolean,
+): boolean {
+  return Array.from(values).every(predicate);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
