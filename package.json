@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "replay": "pnpm --filter @deck-drive/game-engine run build && node scripts/replay/replay.mjs",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
     "test": "vitest run"

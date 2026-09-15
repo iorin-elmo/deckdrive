@@ -1,8 +1,18 @@
 # Replay format and recording
 
 R00 introduces a dependency-free, JSON-compatible replay format in
-`@deck-drive/game-engine`. The engine neither reads nor writes files; R01 will
-own CLI and fixture loading, while Phase 3 will provide database adapters.
+`@deck-drive/game-engine`. R01 owns fixture loading through the replay CLI;
+Phase 3 will provide database adapters.
+
+## Replay CLI
+
+Run `pnpm replay --match phase-2-recording` to locate a Phase 2 fixture, build
+the deterministic initial state, and verify its golden replay output. The CLI
+accepts the Phase 2 `1.0.0` engine, rules, and card-data adapters only; it
+reports `REPLAY_NOT_FOUND`, `UNSUPPORTED_REPLAY_FORMAT`,
+`UNSUPPORTED_REPLAY_VERSION`, or `REPLAY_MISMATCH` as explicit non-zero error
+states. Malformed fixture input is also reported as `REPLAY_MISMATCH`. It reads
+fixture files only; it does not connect to a database.
 
 ## Record format
 
@@ -58,7 +68,7 @@ detection, recalculated-checksum consistency detection, malformed persisted
 content, optional properties set to `undefined`, and UTF-8 handling for
 non-ASCII metadata.
 
-Applicable Definition of Done: implementation, typecheck, unit test,
-determinism/replay regression, error state, security consideration, and
-documentation. Integration, E2E, loading/empty/a11y/responsive checks are not
-applicable because this task exposes no UI, CLI, database, or filesystem I/O.
+R01 validates the CLI success path plus missing fixture, unsupported format,
+and golden-output mismatch error paths. Database integration remains D01 work;
+E2E, loading/empty/a11y/responsive checks are not applicable because this task
+exposes no UI.

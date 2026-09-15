@@ -1,0 +1,128 @@
+#!/usr/bin/env node
+
+import assert from 'node:assert/strict';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+import {
+  createInitialBattleState,
+  recordReplay,
+  replayFormatVersion,
+  verifyReplay,
+} from '../../packages/game-engine/dist/index.js';
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const defaultFixturesDirectory = path.resolve(scriptDirectory, '../../tests/fixtures/replays');
+const supportedFixtureVersions = {
+  engineVersion: new Set(['1.0.0']),
+  rulesVersion: new Set(['1.0.0']),
+  cardDataVersion: new Set(['1.0.0']),
+};
+const cliErrorCodes = new Set([
+  'REPLAY_NOT_FOUND',
+  'UNSUPPORTED_REPLAY_FORMAT',
+  'UNSUPPORTED_REPLAY_VERSION',
+  'REPLAY_MISMATCH',
+  'USAGE',
+]);
+
+export async function runReplayCli(argv, environment = process.env, io = console) {
+  const matchId = parseMatchId(argv);
+  const fixturesDirectory = environment.REPLAY_FIXTURES_DIR ?? defaultFixturesDirectory;
+  const fixture = await loadFixture(fixturesDirectory, matchId);
+
+  try {
+    if (fixture.formatVersion !== replayFormatVersion) {
+      fail(
+        'UNSUPPORTED_REPLAY_FORMAT',
+        `Fixture format ${String(fixture.formatVersion)} is not supported.`,
+      );
+    }
+    validateSupportedVersions(fixture);
+
+    const initialState = createInitialBattleState({
+      matchId: fixture.matchId,
+      seed: fixture.seed,
+      engineVersion: fixture.engineVersion,
+      rulesVersion: fixture.rulesVersion,
+      cardDataVersion: fixture.cardDataVersion,
+      initialDrawCount: fixture.initialDrawCount,
+      turnDrawCount: fixture.turnDrawCount,
+      players: fixture.players.map((player) => ({ id: player.id, drawPile: player.cards })),
+    });
+    const recorded = recordReplay(initialState, fixture.actions, fixture.definitions, {
+      snapshotInterval: fixture.snapshotInterval,
+    });
+    if (!recorded.ok) fail('REPLAY_MISMATCH', recorded.error.message);
+
+    assert.deepStrictEqual(
+      {
+        checksum: recorded.replay.checksum,
+        events: recorded.replay.events,
+        snapshots: recorded.replay.snapshots,
+        finalState: recorded.replay.finalState,
+      },
+      fixture.expectedReplay,
+    );
+    const verification = verifyReplay(recorded.replay, fixture.definitions);
+    if (!verification.ok) fail(verification.error.code, verification.error.message);
+  } catch (error) {
+    if (isCliError(error)) throw error;
+    fail('REPLAY_MISMATCH', `Fixture ${matchId} is malformed or does not match its replay output.`);
+  }
+  io.log(`Replay ${matchId} verified.`);
+}
+
+function validateSupportedVersions(fixture) {
+  for (const [field, supported] of Object.entries(supportedFixtureVersions)) {
+    if (!supported.has(fixture[field])) {
+      fail(
+        'UNSUPPORTED_REPLAY_VERSION',
+        `Fixture ${field} ${String(fixture[field])} has no supported adapter.`,
+      );
+    }
+  }
+}
+
+function parseMatchId(argv) {
+  if (argv.length !== 2 || argv[0] !== '--match' || argv[1] === undefined || argv[1] === '') {
+    fail('USAGE', 'Usage: pnpm replay --match <matchId>');
+  }
+  return argv[1];
+}
+
+async function loadFixture(fixturesDirectory, matchId) {
+  let names;
+  try {
+    names = await readdir(fixturesDirectory);
+  } catch {
+    fail('REPLAY_NOT_FOUND', `No replay fixture exists for match ${matchId}.`);
+  }
+  for (const name of names.filter((entry) => entry.endsWith('.json'))) {
+    const file = path.join(fixturesDirectory, name);
+    try {
+      const fixture = JSON.parse(await readFile(file, 'utf8'));
+      if (fixture.matchId === matchId) return fixture;
+    } catch {
+      // A malformed unrelated fixture must not prevent a match lookup.
+    }
+  }
+  fail('REPLAY_NOT_FOUND', `No replay fixture exists for match ${matchId}.`);
+}
+
+function fail(code, message) {
+  throw Object.assign(new Error(`${code}: ${message}`), { code });
+}
+
+function isCliError(error) {
+  return error !== null && typeof error === 'object' && cliErrorCodes.has(error.code);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  runReplayCli(process.argv.slice(2)).catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

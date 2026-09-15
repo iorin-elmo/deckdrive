@@ -4,6 +4,20 @@
   "engineVersion": "1.0.0",
   "rulesVersion": "1.0.0",
   "cardDataVersion": "1.0.0",
+  "formatVersion": 1,
+  "snapshotInterval": 2,
+  "definitions": [
+    {
+      "id": "strike",
+      "cost": 1,
+      "effects": [{ "type": "DAMAGE", "amount": 6, "target": "ENEMY" }]
+    },
+    {
+      "id": "guard",
+      "cost": 1,
+      "effects": [{ "type": "GAIN_BLOCK", "amount": 5, "target": "SELF" }]
+    }
+  ],
   "initialDrawCount": 1,
   "turnDrawCount": 1,
   "players": [
