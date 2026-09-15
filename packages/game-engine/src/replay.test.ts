@@ -129,6 +129,12 @@ describe('Replay recording', () => {
     expect(restoreReplaySnapshot(replay.snapshots.at(-1)!, replay.events)).toEqual(
       replay.finalState,
     );
+    const middleSnapshot = replay.snapshots[1];
+    if (middleSnapshot === undefined) throw new Error('Expected a middle replay snapshot.');
+    expect(restoreReplaySnapshot(middleSnapshot, replay.events)).toEqual({
+      ...middleSnapshot.state,
+      events: replay.events.slice(0, 10),
+    });
     expect(verifyReplay(replay, definitions)).toEqual({ ok: true });
   });
 
@@ -279,6 +285,29 @@ describe('Replay recording', () => {
     });
   });
 
+  it('rejects player state with hp or energy beyond its maximum', () => {
+    const replay = zeroActionReplay();
+    const [firstPlayer, secondPlayer] = replay.initialState.players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error('Replay fixture must have two players.');
+    }
+    const excessiveHp = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      players: [{ ...firstPlayer, hp: firstPlayer.maxHp + 1 }, secondPlayer],
+    });
+    const excessiveEnergy = rebuildZeroActionReplay(replay, {
+      ...replay.initialState,
+      players: [{ ...firstPlayer, energy: firstPlayer.maxEnergy + 1 }, secondPlayer],
+    });
+
+    for (const corrupt of [excessiveHp, excessiveEnergy]) {
+      expect(verifyReplay(corrupt, definitions)).toMatchObject({
+        ok: false,
+        error: { code: 'REPLAY_MISMATCH' },
+      });
+    }
+  });
+
   it('rejects an out-of-order persisted event stream with a recalculated checksum', () => {
     const replay = zeroActionReplay();
     const reorderedState = {
@@ -305,5 +334,14 @@ describe('Replay recording', () => {
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) return;
     expect(result.replay.checksum).toBe('fnv1a-32:dbdded95');
+  });
+
+  it('checksums sparse arrays like their JSON serialization', () => {
+    const replay = successfulReplay();
+    const sparseActions = new Array<GameAction>(1);
+    const sparseReplay = { ...replay, actions: sparseActions };
+    const parsedReplay = JSON.parse(JSON.stringify(sparseReplay)) as Replay;
+
+    expect(calculateReplayChecksum(sparseReplay)).toBe(calculateReplayChecksum(parsedReplay));
   });
 });

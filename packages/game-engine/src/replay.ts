@@ -321,8 +321,10 @@ function isBattlePlayerState(value: unknown): boolean {
     typeof value.id === 'string' &&
     isNonNegativeNumber(value.hp) &&
     isPositiveInteger(value.maxHp) &&
+    value.hp <= value.maxHp &&
     isNonNegativeInteger(value.energy) &&
     isPositiveInteger(value.maxEnergy) &&
+    value.energy <= value.maxEnergy &&
     isNonNegativeInteger(value.block) &&
     Array.isArray(value.drawPile) &&
     value.drawPile.every(isCardInstance) &&
@@ -467,7 +469,9 @@ function canonicalJson(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return `[${value.map((entry) => (entry === undefined ? 'null' : canonicalJson(entry))).join(',')}]`;
+    return `[${Array.from(value, (entry) =>
+      entry === undefined ? 'null' : canonicalJson(entry),
+    ).join(',')}]`;
   }
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
