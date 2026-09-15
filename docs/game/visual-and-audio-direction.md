@@ -91,8 +91,8 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | `ENTITY_DAMAGED` | HP バーが左から減り、`-N` が上へ跳ねる。対象は 6 px 横揺れ、赤橙の衝撃波 | 被弾音。amount が大きいほど低音を追加 | 240 ms |
 | `BLOCK_GAINED` | 自分を囲む半透明の六角シールドが組み上がり、`+N BLOCK` | 上昇するガラス音 | 360 ms |
 | `HEALED` | 黄緑の粒子が下から上へ流れ、HP バーを満たす | 柔らかな上昇音 | 360 ms |
-| `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(n) = min(220 + 90 × (n - 1), 580)` ms |
-| `CARD_DRAWN` | 現行 resolver のドローイベント。同一 action response 内で連続し、同じ `playerId` を持つものは一つのドロー演出へ合成する。各 event と `cardInstanceId` は保持し、表示だけを 90 ms 間隔で束ねる | 紙をめくる音 | `D(n) = min(220 + 90 × (n - 1), 580)` ms |
+| `CARDS_DRAWN` | 将来の batch event 用。`cardInstanceIds` の枚数をカード束の移動と枚数表示でまとめて示す。現行 basic resolver は emit しないため、実装時にこの event の発火を前提にしない | 紙をめくる音を最大 3 レイヤー | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
+| `CARD_DRAWN` | 現行 resolver のドローイベント。同一 action response 内で連続し、同じ `playerId` を持つものは一つのドロー演出へ合成する。`n` は実際に emit された枚数。`n≤5` は各カードを 90 ms 間隔で表示し、`n>5` は先頭 5 枚の後に残りを一束と `+残数` で 580 ms 時点に表示する。各 event と `cardInstanceId` は保持する | 紙をめくる音 | `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms |
 | `CARD_DISCARDED` | 解決済みカードが縮み、墓地カウンタへ吸い込まれる | 小さな紙音 | 180 ms |
 | `STATUS_APPLIED` | `status` のアイコンを対象のステータス列に 0.18 秒で追加し、輪郭を一度だけ発光 | 小さな付与音 | 180 ms |
 | `STATUS_REMOVED` | `statusId` に対応するアイコンを対象のステータス列から淡く消す。不明な ID は表示を変えずログに記録 | 柔らかな解除音 | 150 ms |
@@ -112,7 +112,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
 2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. 290 ms: `CARD_DRAWN` を同一 action response 内で player ごとにまとめて再生する。ドロー演出時間は `D(n) = min(220 + 90 × (n - 1), 580)` ms（`n` はそのターンのドロー枚数）。
+3. 290 ms: `CARD_DRAWN` を同一 action response 内で player ごとにまとめて再生する。`n` は要求枚数ではなく、この response で実際に emit された `CARD_DRAWN` の枚数とする。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
 4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
 5. `max(650, 410 + D(n))` ms: 主ボタンを有効化する。よって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは 650 ms、2 枚以上では枚数に応じて延長される。
 
@@ -132,6 +132,13 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 4. **公開** — 左から順に選択して 3D 風の半回転（0.42 秒）。カード名、効果、所持済み枚数を読み上げ可能なテキストとして表示する。
 5. **ハイライト** — RARE はカードの後ろに紫のリングと紙吹雪を 0.8 秒。自動連続点滅・全画面フラッシュは行わない。
 6. **確定** — `コレクションへ` と `もう一度開封` を表示。重複カードの変換量・保存先を明示する。
+
+### パック開封のキーボード操作
+
+- パック選択中は選択中パックを roving tab stop とし、矢印キーで移動、Enter / Space で開封する。開封開始後は `演出を短縮` ボタンへフォーカスを移す。
+- カードが扇状に並んだら、先頭の未公開カードへフォーカスを移す。左右矢印で未公開・公開済みカードを移動し、Enter / Space でフォーカス中のカードを公開する。Tab はカード群を飛ばして `演出を短縮`、次に補助操作へ移動する。
+- `演出を短縮` は Enter / Space で実行でき、フォーカスを失わない。短縮後も矢印キーと Enter / Space で各カードの名称、効果、所持枚数を確認できる。
+- 全カード公開後は `コレクションへ` にフォーカスを移す。Tab で `もう一度開封` へ移動でき、Enter / Space で実行する。Esc は直前の安全な画面へ戻るが、確定済みのパック結果を破棄しない。
 
 ### パック用サウンド
 
@@ -222,6 +229,7 @@ interface BattlePresentationState {
   readonly blockByEntity: Readonly<Record<string, number>>;
   readonly energyByPlayer: Readonly<Record<string, number>>;
   readonly handCardIdsByPlayer: Readonly<Record<string, readonly string[]>>;
+  readonly statusesByEntity: Readonly<Record<string, readonly Status[]>>;
 }
 
 interface PresentationTransition {
