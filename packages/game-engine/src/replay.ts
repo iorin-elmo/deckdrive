@@ -263,7 +263,7 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     isNonNegativeInteger(value.turnDrawCount) &&
     isNonNegativeInteger(value.initialDrawCount) &&
     Array.isArray(value.players) &&
-    value.players.length > 0 &&
+    value.players.length === 2 &&
     value.players.every(isBattlePlayerState) &&
     Array.isArray(value.stack) &&
     value.stack.every(isEffectStackItem) &&

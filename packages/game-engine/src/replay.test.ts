@@ -206,6 +206,19 @@ describe('Replay recording', () => {
     });
   });
 
+  it('rejects a replay state that does not have exactly two players', () => {
+    const replay = successfulReplay();
+    const corrupt = withChecksum({
+      ...replay,
+      initialState: { ...replay.initialState, players: replay.initialState.players.slice(0, 1) },
+    });
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
     const state = initialState();
     const result = recordReplay(
