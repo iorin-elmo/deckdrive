@@ -144,7 +144,11 @@ function readImplementationSources(directory: URL): readonly string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, directory);
     if (entry.isDirectory()) return readImplementationSources(path);
-    if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
+    if (
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.test.ts') &&
+      !entry.name.endsWith('.test-support.ts')
+    ) {
       return [readFileSync(path, 'utf8')];
     }
     return [];

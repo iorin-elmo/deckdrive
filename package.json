@@ -14,7 +14,7 @@
     "test:replay": "vitest run packages/game-engine/src/replay-regression.test.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
-    "test": "vitest run"
+    "test": "vitest run --exclude packages/game-engine/src/replay-regression.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

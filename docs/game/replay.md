@@ -58,10 +58,12 @@ detection, recalculated-checksum consistency detection, malformed persisted
 content, optional properties set to `undefined`, and UTF-8 handling for
 non-ASCII metadata.
 
-R02 adds `pnpm test:replay` as the fixture regression gate. It reproduces the
-known Phase 2 replay against its full golden output and proves that a
-deliberately changed expected result fails. The `quality` workflow runs this
-gate separately from the general unit-test suite.
+R02 adds `pnpm test:replay` as the fixture regression gate. It compares the
+complete persisted `Replay` (including format and snapshot metadata) assembled
+from the known Phase 2 golden fixture, and proves that the gate matcher rejects
+a deliberately changed expected result. The `quality` workflow runs this gate
+separately from the general unit-test suite, which excludes it to avoid running
+the same checks twice.
 
 Applicable Definition of Done: implementation, typecheck, unit test,
 determinism/replay regression, error state, security consideration, and

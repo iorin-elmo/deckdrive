@@ -17,6 +17,7 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm test:replay
 pnpm build
 ```
 
@@ -60,6 +61,7 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm test:replay
 pnpm build
 ```
 
