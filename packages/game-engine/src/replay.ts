@@ -333,12 +333,16 @@ function hasUniqueStrings(values: readonly unknown[]): boolean {
 }
 
 function hasContiguousEventSequences(events: readonly unknown[]): boolean {
-  let expected = 1;
+  let expected: number | undefined;
   return hasValidArrayEntries(events, (event) => {
-    if (!isRecord(event) || !isPositiveInteger(event.sequence) || event.sequence !== expected) {
+    if (
+      !isRecord(event) ||
+      !isPositiveInteger(event.sequence) ||
+      (expected !== undefined && event.sequence !== expected)
+    ) {
       return false;
     }
-    expected += 1;
+    expected = event.sequence + 1;
     return true;
   });
 }

@@ -361,6 +361,20 @@ describe('Replay recording', () => {
     });
   });
 
+  it('verifies a replay restored from a non-zero event sequence', () => {
+    const state = initialState();
+    const restoredState = {
+      ...state,
+      events: state.events.map((event) => ({ ...event, sequence: event.sequence + 41 })),
+    };
+    const result = recordReplay(restoredState, [], definitions);
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.replay.events.map((event) => event.sequence)).toEqual([42, 43]);
+    expect(verifyReplay(result.replay, definitions)).toEqual({ ok: true });
+  });
+
   it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
     const state = initialState();
     const result = recordReplay(
