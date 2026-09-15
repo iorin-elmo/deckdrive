@@ -273,7 +273,7 @@ function hasBattleStateFields(value: unknown, includesEvents: boolean): boolean 
     (includesEvents
       ? Array.isArray(value.events) &&
         hasValidArrayEntries(value.events, isGameEvent) &&
-        hasStrictlyIncreasingEventSequences(value.events)
+        hasContiguousEventSequences(value.events)
       : !('events' in value))
   );
 }
@@ -332,13 +332,13 @@ function hasUniqueStrings(values: readonly unknown[]): boolean {
   );
 }
 
-function hasStrictlyIncreasingEventSequences(events: readonly unknown[]): boolean {
-  let previous = 0;
+function hasContiguousEventSequences(events: readonly unknown[]): boolean {
+  let expected = 1;
   return hasValidArrayEntries(events, (event) => {
-    if (!isRecord(event) || !isPositiveInteger(event.sequence) || event.sequence <= previous) {
+    if (!isRecord(event) || !isPositiveInteger(event.sequence) || event.sequence !== expected) {
       return false;
     }
-    previous = event.sequence;
+    expected += 1;
     return true;
   });
 }

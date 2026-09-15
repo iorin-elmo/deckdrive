@@ -345,6 +345,22 @@ describe('Replay recording', () => {
     });
   });
 
+  it('rejects a persisted event stream with sequence gaps', () => {
+    const replay = zeroActionReplay();
+    const gappedState = {
+      ...replay.initialState,
+      events: replay.initialState.events.map((event, index) =>
+        index === 1 ? { ...event, sequence: 3 } : event,
+      ),
+    };
+    const corrupt = rebuildZeroActionReplay(replay, gappedState);
+
+    expect(verifyReplay(corrupt, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
+
   it('uses UTF-8 bytes for checksums containing non-ASCII metadata', () => {
     const state = initialState();
     const result = recordReplay(

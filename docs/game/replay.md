@@ -36,7 +36,7 @@ Persisted data validation covers replay metadata plus nested battle states,
 actions, events, and snapshots before replay execution, including the engine's
 exact two-player battle invariant, unique player/card-instance IDs, and
 active-player membership, HP/energy bounds, and strictly ordered event
-sequences, and phase/result consistency. Malformed JSON data is reported as
+sequences starting at one without gaps, and phase/result consistency. Malformed JSON data is reported as
 `REPLAY_MISMATCH`, including when its checksum was recomputed. Canonical
 checksums use JSON-compatible handling for omitted object properties and sparse
 array slots; persisted collections reject sparse slots as malformed data.
