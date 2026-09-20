@@ -17,7 +17,7 @@
     "db:migrate:deploy": "pnpm --filter @deck-drive/api prisma:migrate:deploy",
     "db:seed": "pnpm --filter @deck-drive/api prisma:seed",
     "db:reset": "pnpm --filter @deck-drive/api prisma:reset",
-    "test:integration": "pnpm --filter @deck-drive/api test:integration",
+    "test:integration": "vitest run apps/api/src/database/persistence.integration.test.ts",
     "test:replay": "vitest run packages/game-engine/src/replay-regression.test.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
