@@ -16,6 +16,8 @@ describe('initial persistence migration', () => {
     expect(migration).toContain('CREATE TABLE "match_events"');
     expect(migration).toContain('CREATE TABLE "match_snapshots"');
     expect(migration).toContain('CREATE EXTENSION IF NOT EXISTS citext;');
+    expect(migration).toContain('"format_version" INTEGER NOT NULL DEFAULT 1');
+    expect(migration).toContain('"snapshot_interval" INTEGER NOT NULL DEFAULT 1');
     expect(migration).not.toMatch(/\bDROP\b/u);
   });
 
@@ -25,5 +27,9 @@ describe('initial persistence migration', () => {
     expect(migration).toContain('match_snapshots_match_id_action_index_key');
     expect(migration).toContain('player_cards_quantity_positive');
     expect(migration).toContain('deck_cards_position_non_negative');
+    expect(migration).toContain('match_players_seat_between_one_and_two');
+    expect(migration).toContain('matches_format_version_positive');
+    expect(migration).toContain('matches_snapshot_interval_positive');
+    expect(migration).not.toContain('card_versions_card_id_version_idx');
   });
 });

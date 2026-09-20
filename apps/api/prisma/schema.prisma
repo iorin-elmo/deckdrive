@@ -56,7 +56,6 @@ model CardVersion {
   deckCards   DeckCard[]
 
   @@unique([cardId, version])
-  @@index([cardId, version])
   @@map("card_versions")
 }
 
@@ -110,6 +109,8 @@ model Match {
   engineVersion   String          @map("engine_version")
   rulesVersion    String          @map("rules_version")
   cardDataVersion String          @map("card_data_version")
+  formatVersion   Int             @default(1) @map("format_version")
+  snapshotInterval Int             @default(1) @map("snapshot_interval")
   seed            String
   initialState    Json            @map("initial_state")
   finalState      Json?           @map("final_state")

@@ -3,5 +3,10 @@
   "compilerOptions": {
     "rootDir": "."
   },
-  "include": ["prisma/seed.ts", "src/database/seed-environment.ts", "src/generated/prisma"]
+  "include": [
+    "prisma/seed-runner.ts",
+    "prisma/seed.ts",
+    "src/database/seed-environment.ts",
+    "src/generated/prisma"
+  ]
 }

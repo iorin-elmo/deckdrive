@@ -30,8 +30,14 @@ must never use `migrate dev`, `db push`, or a direct schema edit.
 
 `db:seed` is deliberately restricted to `NODE_ENV=development`. It installs
 the fixture-backed debug user, sample cards, a deck, and a sample match, and
-refuses `production`, test, or an unset environment. Seed data is idempotent
-but is never part of a production deployment.
+refuses `production`, test, or an unset environment. It also refuses a
+non-loopback database host, so an accidentally supplied production connection
+cannot be seeded by a local `.env` development setting. Seed data is
+idempotent but is never part of a production deployment.
+
+`db:reset` has the same development and loopback-host guard before it invokes
+Prisma's destructive reset command. Do not use it for recovery; restore a
+backup or use a reviewed roll-forward migration instead.
 
 ## Recovery policy
 
@@ -46,7 +52,8 @@ the Phase 12 infrastructure deliverable.
 
 ## Validation status
 
-The schema is validated and the migration is generated from an empty schema.
-The development seed guard is unit-tested. Applying the migration and seed to
-an empty PostgreSQL instance requires a running Docker daemon and is recorded
-as an environment-dependent check until that daemon is available.
+The schema is validated and the development seed guard is unit-tested. CI
+applies the migration and seed to an empty PostgreSQL service, verifies the
+persisted Replay metadata, and checks the two-player seat constraint. Run the
+same `pnpm db:migrate:deploy`, `pnpm db:seed`, and `pnpm test:integration`
+commands locally after starting the Docker PostgreSQL service.

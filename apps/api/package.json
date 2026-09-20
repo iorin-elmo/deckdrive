@@ -12,7 +12,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "prisma:seed:check": "prisma generate && tsc -p tsconfig.seed.json --noEmit",
-    "prisma:reset": "prisma migrate reset --force"
+    "prisma:reset": "tsx src/database/reset.ts",
+    "test:integration": "vitest run src/database/persistence.integration.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

@@ -33,6 +33,8 @@ interface SeedFixture {
     readonly engineVersion: string;
     readonly rulesVersion: string;
     readonly cardDataVersion: string;
+    readonly formatVersion: number;
+    readonly snapshotInterval: number;
     readonly seed: string;
     readonly initialState: object;
     readonly finalState: object;
@@ -94,7 +96,7 @@ async function main(): Promise<void> {
       });
       const cardVersion = await prisma.cardVersion.upsert({
         where: { cardId_version: { cardId: cardFixture.id, version: cardFixture.version } },
-        update: { definition: cardFixture.definition },
+        update: {},
         create: {
           cardId: cardFixture.id,
           version: cardFixture.version,
@@ -142,28 +144,19 @@ async function main(): Promise<void> {
 
     await prisma.match.upsert({
       where: { id: fixture.match.id },
-      update: {
-        status: fixture.match.status,
-        engineVersion: fixture.match.engineVersion,
-        rulesVersion: fixture.match.rulesVersion,
-        cardDataVersion: fixture.match.cardDataVersion,
-        seed: fixture.match.seed,
-        initialState: fixture.match.initialState,
-        finalState: fixture.match.finalState,
-        checksum: fixture.match.checksum,
-        completedAt: new Date(),
-      },
+      update: {},
       create: {
         id: fixture.match.id,
         status: fixture.match.status,
         engineVersion: fixture.match.engineVersion,
         rulesVersion: fixture.match.rulesVersion,
         cardDataVersion: fixture.match.cardDataVersion,
+        formatVersion: fixture.match.formatVersion,
+        snapshotInterval: fixture.match.snapshotInterval,
         seed: fixture.match.seed,
         initialState: fixture.match.initialState,
         finalState: fixture.match.finalState,
         checksum: fixture.match.checksum,
-        completedAt: new Date(),
       },
     });
 

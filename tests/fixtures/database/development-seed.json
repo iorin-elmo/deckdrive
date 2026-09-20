@@ -57,26 +57,144 @@
     ]
   },
   "match": {
-    "id": "seed-phase-2-recording",
-    "status": "COMPLETED",
+    "id": "development-seed-replay",
+    "status": "IN_PROGRESS",
     "engineVersion": "1.0.0",
     "rulesVersion": "1.0.0",
     "cardDataVersion": "1.0.0",
-    "seed": "seed-phase-2-recording",
-    "initialState": { "phase": "PLAYER_TURN", "turn": 1 },
-    "finalState": { "phase": "MATCH_END", "turn": 3 },
-    "checksum": "seed-fixture-checksum",
+    "formatVersion": 1,
+    "snapshotInterval": 1,
+    "seed": "development-seed-replay-seed",
+    "initialState": {
+      "matchId": "development-seed-replay",
+      "engineVersion": "1.0.0",
+      "rulesVersion": "1.0.0",
+      "cardDataVersion": "1.0.0",
+      "seed": "development-seed-replay-seed",
+      "turn": 1,
+      "activePlayerId": "debug-player",
+      "phase": "PLAYER_TURN",
+      "initialDrawCount": 0,
+      "turnDrawCount": 1,
+      "stack": [],
+      "events": [],
+      "players": [
+        {
+          "id": "debug-player",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        },
+        {
+          "id": "sample-opponent",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        }
+      ]
+    },
+    "finalState": {
+      "matchId": "development-seed-replay",
+      "engineVersion": "1.0.0",
+      "rulesVersion": "1.0.0",
+      "cardDataVersion": "1.0.0",
+      "seed": "development-seed-replay-seed",
+      "turn": 1,
+      "activePlayerId": "debug-player",
+      "phase": "PLAYER_TURN",
+      "initialDrawCount": 0,
+      "turnDrawCount": 1,
+      "stack": [],
+      "events": [],
+      "players": [
+        {
+          "id": "debug-player",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        },
+        {
+          "id": "sample-opponent",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        }
+      ]
+    },
+    "checksum": "fnv1a-32:7d5974d2",
     "players": [
       { "email": "debug@deckdrive.local", "seat": 1, "deckSnapshot": { "version": "1.0.0" } },
       { "email": "opponent@deckdrive.local", "seat": 2, "deckSnapshot": { "version": "1.0.0" } }
     ],
-    "actions": [{ "sequence": 1, "action": { "type": "END_TURN" } }],
-    "events": [{ "sequence": 1, "event": { "type": "TURN_ENDED", "playerId": "debug" } }],
+    "actions": [],
+    "events": [],
     "snapshots": [
       {
         "actionIndex": 0,
         "eventSequence": 0,
-        "state": { "phase": "PLAYER_TURN", "turn": 1 }
+        "state": {
+          "matchId": "development-seed-replay",
+          "engineVersion": "1.0.0",
+          "rulesVersion": "1.0.0",
+          "cardDataVersion": "1.0.0",
+          "seed": "development-seed-replay-seed",
+          "turn": 1,
+          "activePlayerId": "debug-player",
+          "phase": "PLAYER_TURN",
+          "initialDrawCount": 0,
+          "turnDrawCount": 1,
+          "stack": [],
+          "players": [
+            {
+              "id": "debug-player",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "statuses": []
+            },
+            {
+              "id": "sample-opponent",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "statuses": []
+            }
+          ]
+        }
       }
     ]
   }

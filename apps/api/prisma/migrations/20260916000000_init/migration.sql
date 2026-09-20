@@ -73,13 +73,17 @@ CREATE TABLE "matches" (
     "engine_version" TEXT NOT NULL,
     "rules_version" TEXT NOT NULL,
     "card_data_version" TEXT NOT NULL,
+    "format_version" INTEGER NOT NULL DEFAULT 1,
+    "snapshot_interval" INTEGER NOT NULL DEFAULT 1,
     "seed" TEXT NOT NULL,
     "initial_state" JSONB NOT NULL,
     "final_state" JSONB,
     "checksum" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "completed_at" TIMESTAMPTZ(6),
-    CONSTRAINT "matches_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "matches_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "matches_format_version_positive" CHECK ("format_version" > 0),
+    CONSTRAINT "matches_snapshot_interval_positive" CHECK ("snapshot_interval" > 0)
 );
 
 CREATE TABLE "match_players" (
@@ -89,7 +93,7 @@ CREATE TABLE "match_players" (
     "seat" INTEGER NOT NULL,
     "deck_snapshot" JSONB NOT NULL,
     CONSTRAINT "match_players_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "match_players_seat_positive" CHECK ("seat" > 0)
+    CONSTRAINT "match_players_seat_between_one_and_two" CHECK ("seat" BETWEEN 1 AND 2)
 );
 
 CREATE TABLE "match_actions" (
@@ -126,7 +130,6 @@ CREATE TABLE "match_snapshots" (
 
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 CREATE UNIQUE INDEX "players_user_id_key" ON "players"("user_id");
-CREATE INDEX "card_versions_card_id_version_idx" ON "card_versions"("card_id", "version");
 CREATE UNIQUE INDEX "card_versions_card_id_version_key" ON "card_versions"("card_id", "version");
 CREATE INDEX "player_cards_player_id_idx" ON "player_cards"("player_id");
 CREATE UNIQUE INDEX "player_cards_player_id_card_version_id_key" ON "player_cards"("player_id", "card_version_id");

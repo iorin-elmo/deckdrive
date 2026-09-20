@@ -17,6 +17,9 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm db:migrate:deploy
+pnpm db:seed
+pnpm test:integration
 pnpm test:replay
 pnpm build
 ```
@@ -38,7 +41,7 @@ workflow job or made a required check.
 | Typecheck | Required in `quality` | F01 baseline is implemented. |
 | Unit tests | Required in `quality` | Vitest has a real configuration-validation test from F01. |
 | Build | Required in `quality` | F01 workspace packages provide build commands. |
-| Integration tests | Not introduced | Add a failing-capable command and CI job when a service integration test exists (D00/D01 and later). |
+| Integration tests | Required in `quality` | D00 applies the committed migration and development seed to the PostgreSQL service, then verifies persisted replay metadata and a database constraint. |
 | Engine replay regression | Required in `quality` | `pnpm test:replay` reproduces the known replay fixture and rejects a deliberately changed golden result. |
 | E2E | Not introduced | Add after the user-facing flows and Playwright suite exist (W00 and later). |
 | Docker image build | Not introduced | Add once app Dockerfiles exist; F02 supplies only PostgreSQL and Mailpit runtime services. |
@@ -61,6 +64,9 @@ pnpm lint
 pnpm format
 pnpm typecheck
 pnpm test
+pnpm db:migrate:deploy
+pnpm db:seed
+pnpm test:integration
 pnpm test:replay
 pnpm build
 ```
