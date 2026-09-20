@@ -6,12 +6,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "tsx src/database/generate.ts",
     "prisma:validate": "prisma validate",
     "prisma:migrate:dev": "tsx src/database/migrate.ts",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed",
-    "prisma:seed:check": "prisma generate && tsc -p tsconfig.seed.json --noEmit",
+    "prisma:seed": "tsx src/database/seed-command.ts",
+    "prisma:seed:check": "pnpm run prisma:generate && tsc -p tsconfig.seed.json --noEmit",
     "prisma:reset": "tsx src/database/reset.ts"
   },
   "dependencies": {
