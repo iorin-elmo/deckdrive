@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
+    "typecheck": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
     "prisma:generate": "tsx src/database/generate.ts",
     "prisma:validate": "prisma validate",
     "prisma:migrate:dev": "tsx src/database/migrate.ts",
@@ -13,7 +13,7 @@
     "prisma:seed": "tsx src/database/seed-command.ts",
     "prisma:seed:check": "pnpm run prisma:generate && tsc -p tsconfig.seed.json --noEmit",
     "prisma:reset": "tsx src/database/reset.ts",
-    "replay": "tsx ../../scripts/replay/index.ts"
+    "replay": "pnpm --filter @deck-drive/game-engine build && tsx ../../scripts/replay/index.ts"
   },
   "dependencies": {
     "@deck-drive/game-engine": "workspace:*",
