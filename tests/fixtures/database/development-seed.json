@@ -1,0 +1,83 @@
+{
+  "users": [
+    {
+      "email": "debug@deckdrive.local",
+      "displayName": "Debug Player"
+    },
+    {
+      "email": "opponent@deckdrive.local",
+      "displayName": "Sample Opponent"
+    }
+  ],
+  "cards": [
+    {
+      "id": "sword_strike",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_strike",
+        "version": "1.0.0",
+        "name": "Strike",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 6 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 6, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_guard",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_guard",
+        "version": "1.0.0",
+        "name": "Guard",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Gain 5 block.",
+        "effects": [{ "type": "GAIN_BLOCK", "amount": 5, "target": "SELF" }],
+        "keywords": ["block"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    }
+  ],
+  "deck": {
+    "id": "6e05b0c4-09cb-4e71-ae9f-18f1d4a94dfb",
+    "name": "Debug starter",
+    "cardDataVersion": "1.0.0",
+    "cards": [
+      { "cardId": "sword_strike", "version": "1.0.0", "position": 0, "quantity": 1 },
+      { "cardId": "guardian_guard", "version": "1.0.0", "position": 1, "quantity": 1 }
+    ]
+  },
+  "match": {
+    "id": "seed-phase-2-recording",
+    "status": "COMPLETED",
+    "engineVersion": "1.0.0",
+    "rulesVersion": "1.0.0",
+    "cardDataVersion": "1.0.0",
+    "seed": "seed-phase-2-recording",
+    "initialState": { "phase": "PLAYER_TURN", "turn": 1 },
+    "finalState": { "phase": "MATCH_END", "turn": 3 },
+    "checksum": "seed-fixture-checksum",
+    "players": [
+      { "email": "debug@deckdrive.local", "seat": 1, "deckSnapshot": { "version": "1.0.0" } },
+      { "email": "opponent@deckdrive.local", "seat": 2, "deckSnapshot": { "version": "1.0.0" } }
+    ],
+    "actions": [{ "sequence": 1, "action": { "type": "END_TURN" } }],
+    "events": [{ "sequence": 1, "event": { "type": "TURN_ENDED", "playerId": "debug" } }],
+    "snapshots": [
+      {
+        "actionIndex": 0,
+        "eventSequence": 0,
+        "state": { "phase": "PLAYER_TURN", "turn": 1 }
+      }
+    ]
+  }
+}

@@ -20,6 +20,9 @@ jobs:
     name: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://deckdrive:deckdrive@127.0.0.1:5432/deckdrive
+      NODE_ENV: development
 
     steps:
       - name: Check out source

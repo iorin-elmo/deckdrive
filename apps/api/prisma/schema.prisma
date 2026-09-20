@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MatchStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  email       String   @unique @db.Citext
+  displayName String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  player      Player?
+
+  @@map("users")
+}
+
+model Player {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @unique @map("user_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  cards     PlayerCard[]
+  decks     Deck[]
+  matches   MatchPlayer[]
+
+  @@map("players")
+}
+
+model Card {
+  id        String        @id
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  versions  CardVersion[]
+
+  @@map("cards")
+}
+
+model CardVersion {
+  id          String       @id @default(uuid()) @db.Uuid
+  cardId      String       @map("card_id")
+  version     String
+  definition  Json
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  card        Card         @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  playerCards PlayerCard[]
+  deckCards   DeckCard[]
+
+  @@unique([cardId, version])
+  @@index([cardId, version])
+  @@map("card_versions")
+}
+
+model PlayerCard {
+  id            String      @id @default(uuid()) @db.Uuid
+  playerId      String      @map("player_id") @db.Uuid
+  cardVersionId String      @map("card_version_id") @db.Uuid
+  quantity      Int         @default(1)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  cardVersion   CardVersion @relation(fields: [cardVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, cardVersionId])
+  @@index([playerId])
+  @@map("player_cards")
+}
+
+model Deck {
+  id              String     @id @default(uuid()) @db.Uuid
+  playerId        String     @map("player_id") @db.Uuid
+  name            String
+  cardDataVersion String     @map("card_data_version")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  player          Player     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  cards           DeckCard[]
+
+  @@unique([playerId, name])
+  @@index([playerId, updatedAt])
+  @@map("decks")
+}
+
+model DeckCard {
+  id            String      @id @default(uuid()) @db.Uuid
+  deckId        String      @map("deck_id") @db.Uuid
+  cardVersionId String      @map("card_version_id") @db.Uuid
+  position      Int
+  quantity      Int         @default(1)
+  deck          Deck        @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  cardVersion   CardVersion @relation(fields: [cardVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([deckId, cardVersionId])
+  @@unique([deckId, position])
+  @@map("deck_cards")
+}
+
+model Match {
+  id              String          @id
+  status          MatchStatus     @default(IN_PROGRESS)
+  engineVersion   String          @map("engine_version")
+  rulesVersion    String          @map("rules_version")
+  cardDataVersion String          @map("card_data_version")
+  seed            String
+  initialState    Json            @map("initial_state")
+  finalState      Json?           @map("final_state")
+  checksum        String?
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt     DateTime?       @map("completed_at") @db.Timestamptz(6)
+  players         MatchPlayer[]
+  actions         MatchAction[]
+  events          MatchEvent[]
+  snapshots       MatchSnapshot[]
+
+  @@index([status, createdAt])
+  @@index([cardDataVersion, rulesVersion, engineVersion])
+  @@map("matches")
+}
+
+model MatchPlayer {
+  id           String @id @default(uuid()) @db.Uuid
+  matchId      String @map("match_id")
+  playerId     String @map("player_id") @db.Uuid
+  seat         Int
+  deckSnapshot Json   @map("deck_snapshot")
+  match        Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player       Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([matchId, playerId])
+  @@unique([matchId, seat])
+  @@index([playerId])
+  @@map("match_players")
+}
+
+model MatchAction {
+  id        String   @id @default(uuid()) @db.Uuid
+  matchId   String   @map("match_id")
+  sequence  Int
+  action    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, sequence])
+  @@index([matchId, createdAt])
+  @@map("match_actions")
+}
+
+model MatchEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  matchId   String   @map("match_id")
+  sequence  Int
+  event     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, sequence])
+  @@index([matchId, createdAt])
+  @@map("match_events")
+}
+
+model MatchSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  matchId       String   @map("match_id")
+  actionIndex   Int      @map("action_index")
+  eventSequence Int      @map("event_sequence")
+  state         Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, actionIndex])
+  @@index([matchId, eventSequence])
+  @@map("match_snapshots")
+}
