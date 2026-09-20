@@ -13,7 +13,7 @@
     "prisma:seed": "tsx src/database/seed-command.ts",
     "prisma:seed:check": "pnpm run prisma:generate && tsc -p tsconfig.seed.json --noEmit",
     "prisma:reset": "tsx src/database/reset.ts",
-    "replay": "pnpm --filter @deck-drive/game-engine build && tsx ../../scripts/replay/index.ts"
+    "replay": "pnpm run prisma:generate && pnpm --filter @deck-drive/game-engine build && tsx ../../scripts/replay/index.ts"
   },
   "dependencies": {
     "@deck-drive/game-engine": "workspace:*",
