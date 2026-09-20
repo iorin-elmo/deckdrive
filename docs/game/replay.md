@@ -58,6 +58,51 @@ and card-data versions used. It never silently substitutes a version. R01's
 loader must reject an unavailable version explicitly; future version adapters
 may be added as explicit migrations without rewriting old fixtures.
 
+## Visual replay envelope (required before battle-replay UI)
+
+R00's engine replay is an authoritative rules record, not a complete
+presentation record: `EFFECT_STARTED` contains an opaque effect ID and R00
+does not persist presentation metadata. A battle-replay UI must therefore not
+attempt to reconstruct effect colors by parsing that ID.
+
+Before shipping the visual replay UI, introduce a versioned visual replay
+envelope alongside the engine replay. For each viewer it must persist:
+
+- an initial viewer-scoped presentation snapshot containing the safe battle
+  state and `lastViewSequence`, plus its catalog, so replay starts from a known
+  projection boundary;
+- ordered persisted action projections, each with its presentation baseline,
+  authoritative snapshot, contiguous visual entries, and visible-card catalog;
+  live resync envelopes are not persisted as replay projections;
+- contiguous `viewSequence` projected events, including `REDACTED` markers
+  that retain non-secret `sourceSequence`, `sourceEventType`, and `playerId`
+  values;
+- the per-event before/after presentation transitions;
+- a catalog keyed by opaque `presentationCardRef`, containing display fields
+  only for the viewer's own or otherwise public cards; hidden opponent cards
+  and redacted markers have no catalog entry;
+- `EffectPresentationMetadata` keyed by `viewSequence` and the viewer-safe
+  `presentationEffectRef`, with
+  the zero-based effect index and presentation tone;
+- one server-only `VisualReplayEnvelope` record per viewer-scoped projection,
+  containing the source engine replay checksum, visual replay format version,
+  opaque replay-scoped viewer key, and checksum for that one record. Replay
+  delivery authorizes the requester and selects exactly its one record; it
+  never sends a collection of projections or the raw engine replay to a
+  browser.
+
+The visual-replay verifier must calculate `envelopeChecksum` from canonical
+JSON of the visual envelope with that field omitted, matching the engine
+replay checksum convention, then validate both checksums, the metadata/event
+key relationship, and the catalog coverage of every visible card reference.
+Each non-batch source event must map to exactly one viewer-safe event or a
+matching redacted marker. A `CARDS_DRAWN` source event must map to exactly one
+batch event, one matching redacted marker, or one contiguous ordered group of
+individual `CARD_DRAWN` events with the same source sequence and player; that
+group is verified as one unit and may not coexist with a batch event. R00
+format version 1 remains readable as a rules-only replay; it must use a
+non-animated fallback until a compatible visual envelope is available.
+
 ## Validation evidence
 
 `packages/game-engine/src/replay.test.ts` loads
