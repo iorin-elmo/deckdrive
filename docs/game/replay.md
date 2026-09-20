@@ -73,8 +73,9 @@ envelope alongside the engine replay. For each viewer it must persist:
   `presentationEffectRef`, with
   the zero-based effect index and presentation tone;
 - a persisted `VisualReplayEnvelope` wrapper containing the source engine
-  replay checksum, visual replay format version, and checksum over the
-  envelope itself.
+  replay checksum, visual replay format version, and a map of every
+  viewer-scoped projection keyed by an opaque replay-scoped viewer key; the
+  checksum covers that complete map.
 
 The visual-replay verifier must calculate `envelopeChecksum` from canonical
 JSON of the visual envelope with that field omitted, matching the engine
