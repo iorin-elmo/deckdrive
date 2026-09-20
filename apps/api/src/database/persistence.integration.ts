@@ -60,6 +60,28 @@ describe('Phase 3 PostgreSQL persistence', () => {
       checksum: 'fnv1a-32:7d5974d2',
     });
     expect(match.rows[0]?.initial_state).toEqual(match.rows[0]?.final_state);
+
+    const snapshots = await client.query<{
+      action_index: number;
+      event_sequence: number;
+      state: unknown;
+    }>(
+      `SELECT action_index, event_sequence, state
+       FROM match_snapshots WHERE match_id = 'development-seed-replay'`,
+    );
+    expect(snapshots.rows).toEqual([
+      {
+        action_index: 0,
+        event_sequence: 0,
+        state: expect.objectContaining({
+          matchId: 'development-seed-replay',
+          engineVersion: '1.0.0',
+          rulesVersion: '1.0.0',
+          cardDataVersion: '1.0.0',
+          seed: 'development-seed-replay-seed',
+        }),
+      },
+    ]);
   });
 
   it('rejects a match player outside the two-seat domain', async () => {

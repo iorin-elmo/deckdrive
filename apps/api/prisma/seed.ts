@@ -78,137 +78,139 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
 
   try {
-    const players = new Map<string, string>();
-    for (const userFixture of fixture.users) {
-      const user = await prisma.user.upsert({
-        where: { email: userFixture.email },
-        update: { displayName: userFixture.displayName },
-        create: userFixture,
-      });
-      const player = await prisma.player.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id },
-      });
-      players.set(userFixture.email, player.id);
-    }
+    await prisma.$transaction(async (transaction) => {
+      const players = new Map<string, string>();
+      for (const userFixture of fixture.users) {
+        const user = await transaction.user.upsert({
+          where: { email: userFixture.email },
+          update: { displayName: userFixture.displayName },
+          create: userFixture,
+        });
+        const player = await transaction.player.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: { userId: user.id },
+        });
+        players.set(userFixture.email, player.id);
+      }
 
-    const cardVersions = new Map<string, string>();
-    for (const cardFixture of fixture.cards) {
-      await prisma.card.upsert({
-        where: { id: cardFixture.id },
-        update: {},
-        create: { id: cardFixture.id },
-      });
-      const cardVersion = await prisma.cardVersion.upsert({
-        where: { cardId_version: { cardId: cardFixture.id, version: cardFixture.version } },
-        update: {},
+      const cardVersions = new Map<string, string>();
+      for (const cardFixture of fixture.cards) {
+        await transaction.card.upsert({
+          where: { id: cardFixture.id },
+          update: {},
+          create: { id: cardFixture.id },
+        });
+        const cardVersion = await transaction.cardVersion.upsert({
+          where: { cardId_version: { cardId: cardFixture.id, version: cardFixture.version } },
+          update: {},
+          create: {
+            cardId: cardFixture.id,
+            version: cardFixture.version,
+            definition: cardFixture.definition,
+          },
+        });
+        cardVersions.set(`${cardFixture.id}:${cardFixture.version}`, cardVersion.id);
+      }
+
+      const debugPlayerId = players.get('debug@deckdrive.local');
+      if (debugPlayerId === undefined)
+        throw new Error('Development fixture must contain the debug user.');
+
+      const deck = await transaction.deck.upsert({
+        where: { id: fixture.deck.id },
+        update: { name: fixture.deck.name, cardDataVersion: fixture.deck.cardDataVersion },
         create: {
-          cardId: cardFixture.id,
-          version: cardFixture.version,
-          definition: cardFixture.definition,
+          id: fixture.deck.id,
+          playerId: debugPlayerId,
+          name: fixture.deck.name,
+          cardDataVersion: fixture.deck.cardDataVersion,
         },
       });
-      cardVersions.set(`${cardFixture.id}:${cardFixture.version}`, cardVersion.id);
-    }
 
-    const debugPlayerId = players.get('debug@deckdrive.local');
-    if (debugPlayerId === undefined)
-      throw new Error('Development fixture must contain the debug user.');
+      for (const deckCard of fixture.deck.cards) {
+        const cardVersionId = cardVersions.get(`${deckCard.cardId}:${deckCard.version}`);
+        if (cardVersionId === undefined)
+          throw new Error(`Missing card version for ${deckCard.cardId}.`);
+        await transaction.playerCard.upsert({
+          where: { playerId_cardVersionId: { playerId: debugPlayerId, cardVersionId } },
+          update: { quantity: deckCard.quantity },
+          create: { playerId: debugPlayerId, cardVersionId, quantity: deckCard.quantity },
+        });
+        await transaction.deckCard.upsert({
+          where: { deckId_cardVersionId: { deckId: deck.id, cardVersionId } },
+          update: { position: deckCard.position, quantity: deckCard.quantity },
+          create: {
+            deckId: deck.id,
+            cardVersionId,
+            position: deckCard.position,
+            quantity: deckCard.quantity,
+          },
+        });
+      }
 
-    const deck = await prisma.deck.upsert({
-      where: { id: fixture.deck.id },
-      update: { name: fixture.deck.name, cardDataVersion: fixture.deck.cardDataVersion },
-      create: {
-        id: fixture.deck.id,
-        playerId: debugPlayerId,
-        name: fixture.deck.name,
-        cardDataVersion: fixture.deck.cardDataVersion,
-      },
+      await transaction.match.upsert({
+        where: { id: fixture.match.id },
+        update: {},
+        create: {
+          id: fixture.match.id,
+          status: fixture.match.status,
+          engineVersion: fixture.match.engineVersion,
+          rulesVersion: fixture.match.rulesVersion,
+          cardDataVersion: fixture.match.cardDataVersion,
+          formatVersion: fixture.match.formatVersion,
+          snapshotInterval: fixture.match.snapshotInterval,
+          seed: fixture.match.seed,
+          initialState: fixture.match.initialState,
+          finalState: fixture.match.finalState,
+          checksum: fixture.match.checksum,
+        },
+      });
+
+      for (const matchPlayer of fixture.match.players) {
+        const playerId = players.get(matchPlayer.email);
+        if (playerId === undefined) throw new Error(`Missing player for ${matchPlayer.email}.`);
+        await transaction.matchPlayer.upsert({
+          where: { matchId_playerId: { matchId: fixture.match.id, playerId } },
+          update: { seat: matchPlayer.seat, deckSnapshot: matchPlayer.deckSnapshot },
+          create: {
+            matchId: fixture.match.id,
+            playerId,
+            seat: matchPlayer.seat,
+            deckSnapshot: matchPlayer.deckSnapshot,
+          },
+        });
+      }
+
+      for (const action of fixture.match.actions) {
+        await transaction.matchAction.upsert({
+          where: { matchId_sequence: { matchId: fixture.match.id, sequence: action.sequence } },
+          update: { action: action.action },
+          create: { matchId: fixture.match.id, sequence: action.sequence, action: action.action },
+        });
+      }
+      for (const event of fixture.match.events) {
+        await transaction.matchEvent.upsert({
+          where: { matchId_sequence: { matchId: fixture.match.id, sequence: event.sequence } },
+          update: { event: event.event },
+          create: { matchId: fixture.match.id, sequence: event.sequence, event: event.event },
+        });
+      }
+      for (const snapshot of fixture.match.snapshots) {
+        await transaction.matchSnapshot.upsert({
+          where: {
+            matchId_actionIndex: { matchId: fixture.match.id, actionIndex: snapshot.actionIndex },
+          },
+          update: { eventSequence: snapshot.eventSequence, state: snapshot.state },
+          create: {
+            matchId: fixture.match.id,
+            actionIndex: snapshot.actionIndex,
+            eventSequence: snapshot.eventSequence,
+            state: snapshot.state,
+          },
+        });
+      }
     });
-
-    for (const deckCard of fixture.deck.cards) {
-      const cardVersionId = cardVersions.get(`${deckCard.cardId}:${deckCard.version}`);
-      if (cardVersionId === undefined)
-        throw new Error(`Missing card version for ${deckCard.cardId}.`);
-      await prisma.playerCard.upsert({
-        where: { playerId_cardVersionId: { playerId: debugPlayerId, cardVersionId } },
-        update: { quantity: deckCard.quantity },
-        create: { playerId: debugPlayerId, cardVersionId, quantity: deckCard.quantity },
-      });
-      await prisma.deckCard.upsert({
-        where: { deckId_cardVersionId: { deckId: deck.id, cardVersionId } },
-        update: { position: deckCard.position, quantity: deckCard.quantity },
-        create: {
-          deckId: deck.id,
-          cardVersionId,
-          position: deckCard.position,
-          quantity: deckCard.quantity,
-        },
-      });
-    }
-
-    await prisma.match.upsert({
-      where: { id: fixture.match.id },
-      update: {},
-      create: {
-        id: fixture.match.id,
-        status: fixture.match.status,
-        engineVersion: fixture.match.engineVersion,
-        rulesVersion: fixture.match.rulesVersion,
-        cardDataVersion: fixture.match.cardDataVersion,
-        formatVersion: fixture.match.formatVersion,
-        snapshotInterval: fixture.match.snapshotInterval,
-        seed: fixture.match.seed,
-        initialState: fixture.match.initialState,
-        finalState: fixture.match.finalState,
-        checksum: fixture.match.checksum,
-      },
-    });
-
-    for (const matchPlayer of fixture.match.players) {
-      const playerId = players.get(matchPlayer.email);
-      if (playerId === undefined) throw new Error(`Missing player for ${matchPlayer.email}.`);
-      await prisma.matchPlayer.upsert({
-        where: { matchId_playerId: { matchId: fixture.match.id, playerId } },
-        update: { seat: matchPlayer.seat, deckSnapshot: matchPlayer.deckSnapshot },
-        create: {
-          matchId: fixture.match.id,
-          playerId,
-          seat: matchPlayer.seat,
-          deckSnapshot: matchPlayer.deckSnapshot,
-        },
-      });
-    }
-
-    for (const action of fixture.match.actions) {
-      await prisma.matchAction.upsert({
-        where: { matchId_sequence: { matchId: fixture.match.id, sequence: action.sequence } },
-        update: { action: action.action },
-        create: { matchId: fixture.match.id, sequence: action.sequence, action: action.action },
-      });
-    }
-    for (const event of fixture.match.events) {
-      await prisma.matchEvent.upsert({
-        where: { matchId_sequence: { matchId: fixture.match.id, sequence: event.sequence } },
-        update: { event: event.event },
-        create: { matchId: fixture.match.id, sequence: event.sequence, event: event.event },
-      });
-    }
-    for (const snapshot of fixture.match.snapshots) {
-      await prisma.matchSnapshot.upsert({
-        where: {
-          matchId_actionIndex: { matchId: fixture.match.id, actionIndex: snapshot.actionIndex },
-        },
-        update: { eventSequence: snapshot.eventSequence, state: snapshot.state },
-        create: {
-          matchId: fixture.match.id,
-          actionIndex: snapshot.actionIndex,
-          eventSequence: snapshot.eventSequence,
-          state: snapshot.state,
-        },
-      });
-    }
   } finally {
     await prisma.$disconnect();
   }

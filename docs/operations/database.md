@@ -34,8 +34,8 @@ history through `pnpm db:migrate:deploy`; they must never use `migrate dev`,
 the fixture-backed debug user, sample cards, a deck, and a sample match, and
 refuses `production`, test, or an unset environment. It also refuses a
 non-loopback database host, so an accidentally supplied production connection
-cannot be seeded by a local `.env` development setting. Seed data is
-idempotent but is never part of a production deployment.
+cannot be seeded by a local `.env` development setting. The fixture is written
+atomically and is idempotent, but is never part of a production deployment.
 
 `db:reset` has the same development and loopback-host guard before it invokes
 Prisma's destructive reset command. Do not use it for recovery; restore a
