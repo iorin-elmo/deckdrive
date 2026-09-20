@@ -37,4 +37,13 @@ describe('development seed environment', () => {
       }),
     ).toThrow('Development database commands require a loopback DATABASE_URL host');
   });
+
+  it('allows an IPv6 loopback DATABASE_URL', () => {
+    expect(() =>
+      assertDevelopmentSeedEnvironment({
+        NODE_ENV: 'development',
+        DATABASE_URL: 'postgresql://deckdrive:deckdrive@[::1]:5432/deckdrive',
+      }),
+    ).not.toThrow();
+  });
 });

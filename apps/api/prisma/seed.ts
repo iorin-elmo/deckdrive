@@ -2,19 +2,19 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { PrismaPg } from '@prisma/adapter-pg';
-import { config } from 'dotenv';
 
-import { PrismaClient } from '../src/generated/prisma/client.js';
+import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
+import { loadRootEnvironment } from '../src/database/load-environment.js';
 import { assertDevelopmentSeedEnvironment } from '../src/database/seed-environment.js';
 
-config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
+loadRootEnvironment();
 
 interface SeedFixture {
   readonly users: readonly { readonly email: string; readonly displayName: string }[];
   readonly cards: readonly {
     readonly id: string;
     readonly version: string;
-    readonly definition: object;
+    readonly definition: Prisma.InputJsonValue;
   }[];
   readonly deck: {
     readonly id: string;
@@ -36,20 +36,26 @@ interface SeedFixture {
     readonly formatVersion: number;
     readonly snapshotInterval: number;
     readonly seed: string;
-    readonly initialState: object;
-    readonly finalState: object;
+    readonly initialState: Prisma.InputJsonValue;
+    readonly finalState: Prisma.InputJsonValue;
     readonly checksum: string;
     readonly players: readonly {
       readonly email: string;
       readonly seat: number;
-      readonly deckSnapshot: object;
+      readonly deckSnapshot: Prisma.InputJsonValue;
     }[];
-    readonly actions: readonly { readonly sequence: number; readonly action: object }[];
-    readonly events: readonly { readonly sequence: number; readonly event: object }[];
+    readonly actions: readonly {
+      readonly sequence: number;
+      readonly action: Prisma.InputJsonValue;
+    }[];
+    readonly events: readonly {
+      readonly sequence: number;
+      readonly event: Prisma.InputJsonValue;
+    }[];
     readonly snapshots: readonly {
       readonly actionIndex: number;
       readonly eventSequence: number;
-      readonly state: object;
+      readonly state: Prisma.InputJsonValue;
     }[];
   };
 }

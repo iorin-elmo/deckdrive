@@ -16,7 +16,8 @@ the repository and transaction boundary that writes real engine replays.
 
 ## Commands
 
-After `pnpm setup` has created `.env` and PostgreSQL is healthy, run:
+After `node scripts/setup/setup.mjs` has created `.env` and PostgreSQL is
+healthy, run:
 
 ```sh
 pnpm db:validate

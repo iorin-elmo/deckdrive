@@ -60,6 +60,7 @@ Run the same commands from a clean checkout after installing the versions in
 ```sh
 mise install
 pnpm install --frozen-lockfile
+node scripts/setup/setup.mjs
 pnpm lint
 pnpm format
 pnpm typecheck

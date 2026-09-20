@@ -19,7 +19,8 @@ export function assertDevelopmentDatabaseEnvironment(
     throw new Error('Development database commands require a valid DATABASE_URL.');
   }
 
-  if (!loopbackDatabaseHosts.has(database.hostname)) {
+  const hostname = database.hostname.replace(/^\[(.*)\]$/u, '$1');
+  if (!loopbackDatabaseHosts.has(hostname)) {
     throw new Error('Development database commands require a loopback DATABASE_URL host.');
   }
 }

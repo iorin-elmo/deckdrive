@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { loadRootEnvironment } from './load-environment.js';
 import { assertDevelopmentDatabaseEnvironment } from './seed-environment.js';
 
+loadRootEnvironment();
 assertDevelopmentDatabaseEnvironment();
 
 const prismaCli = fileURLToPath(

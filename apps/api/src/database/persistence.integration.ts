@@ -1,6 +1,10 @@
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { loadRootEnvironment } from './load-environment.js';
+
+loadRootEnvironment();
+
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined)
   throw new Error('DATABASE_URL is required for database integration tests.');
