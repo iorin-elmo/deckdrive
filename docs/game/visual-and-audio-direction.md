@@ -68,7 +68,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 | コスト | 左上の大きな六角形チップ。使用不能時は彩度を落とし、ホバー時に不足値を表示する。 |
 | レアリティ | 外周の細い縁と箔のような緩い光。BASIC は無彩色、COMMON は青、UNCOMMON は緑、RARE は紫、SR はピンク、SSR は水色、UR は金。常時点滅させない。 |
 
-現行 `@deck-drive/card-definitions` の rarity 契約は `RARE` までである。Pack の SR / SSR / UR 保証を有効化する前に、card-definitions の versioned rarity contract と Pack の提供割合・保証 contract へ `SR` / `SSR` / `UR` を追加し、この表示トークンを対応付ける。構造的な `@deck-drive/game-engine` の `CardDefinition` contract は rarity を持たないため変更しない。それまでは SR / SSR / UR を含む Pack を公開しない。
+現行 `@deck-drive/card-definitions` の rarity 契約は `RARE` までである。Pack の SR / SSR / UR 保証を有効化する前に、card-definitions の versioned rarity contract と Pack の提供割合・保証 contract へ `SR` / `SSR` / `UR` を追加し、この表示トークンを対応付ける。`ViewerSafeCard.rarity` は同じ versioned `CardRarity` を使うため、wire decoder と visual replay decoder もその新しい契約を受け入れる版へ同時に更新する。構造的な `@deck-drive/game-engine` の `CardDefinition` contract は rarity を持たないため変更しない。それまでは SR / SSR / UR を含む Pack を公開しない。
 
 ### 状態別の振る舞い
 
@@ -126,7 +126,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
 5. `max(650, 410 + D(n))` ms: 主ボタンを有効化できる最短時刻とする。実際の有効化には下記の authoritative snapshot と連続 sequence の条件も必要である。したがって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは最短 650 ms、2 枚以上では枚数に応じて延長される。
 
-通常の対戦画面には「演出を短縮」トグルを用意する。オンにすると、現在の演出と保留中の各 event を sequence 順に 100 ms の最終状態表示へ遷移し、効果音は再生しない。ゲーム状態・イベント・ドロー枚数は変えない。入力を有効化できるのは、短縮後のローカルキューが完了したことに加え、最新の authoritative snapshot で `phase === 'PLAYER_TURN'` かつ `activePlayerId === viewerPlayerId` であり、snapshot の `lastViewSequence` までを連続して反映済みで `nextExpectedViewSequence === lastViewSequence + 1` の場合だけとする。未着 event や未取得の `TURN_STARTED` をキューの空きだけで補わない。
+通常の対戦画面には「演出を短縮」トグルを用意する。オンにすると、現在の演出と保留中の各 event を sequence 順に 100 ms の最終状態表示へ遷移し、効果音は再生しない。ゲーム状態・イベント・ドロー枚数は変えない。短縮しても主ボタンは通常時と同じ `max(650, 410 + D(n))` より前には有効化しない。入力を有効化できるのは、その時刻と短縮後のローカルキュー完了の両方を満たし、さらに最新の authoritative snapshot で `phase === 'PLAYER_TURN'` かつ `activePlayerId === viewerPlayerId` であり、snapshot の `lastViewSequence` までを連続して反映済みで `nextExpectedViewSequence === lastViewSequence + 1` の場合だけとする。未着 event や未取得の `TURN_STARTED` をキューの空きだけで補わない。
 
 相手の行動中は操作領域を単に無効化するのではなく、相手のアバター周囲に「思考中」の弱いリングを表示する。通信待ちでは `同期中…` を表示し、ゲームのイベントが届くまで偽の結果を確定表示しない。
 
@@ -141,7 +141,7 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 1. **選択** — パックを棚から選ぶ。ホバーで封の一部が光り、収録枚数と提供割合への導線を常時表示する。
 2. **開封** — タップ / クリックで封を横に裂く。紙の裂け目と、パック周辺だけに収めた 0.35 秒の柔らかな光を出す。`演出を短縮` ボタンはこの時点から表示する。モーション削減時は光らせず、0.15 秒の不透明度フェードと静的な開封アイコンに置き換える。
 3. **放出** — 5 枚を裏向きで扇状に置く。レアリティは裏面の発光量でほのかに予告するが、色だけでは区別しない。
-4. **公開** — 左から順に選択して 3D 風の半回転（0.42 秒）。カード名、効果、所持済み枚数を読み上げ可能なテキストとして表示する。
+4. **公開** — 左から順に選択して 3D 風の半回転（0.42 秒）。カード名、効果、所持済み枚数を読み上げ可能なテキストとして表示する。モーション削減時は回転を行わず、0.15 秒の非点滅フェード後に表面を静的に切り替える。
 5. **ハイライト** — RARE は紫、SR はピンク、SSR は水色、UR は金のリングと紙吹雪を 0.8 秒。いずれもレア名バッジを併記し、自動連続点滅・全画面フラッシュは行わない。モーション削減時は粒子を出さず、静的な高コントラストのバッジと枠色だけで示す。
 6. **確定** — `コレクションへ` と `もう一度開封` を表示。重複カードの変換量・保存先を明示する。
 
@@ -220,9 +220,10 @@ UI は server-projected event を受け取る `BattleAnimationQueue` を持つ�
 
 受信時は wire payload を decoder で検証してからキューへ入れる。未知 payload は `viewSequence` の有無にかかわらずキューへ進めない。現在の演出を 150 ms で安全にフェードして、イベント履歴と最新スナップショットを再取得する resync barrier とする。診断ログには schema error、`viewSequence`、イベント種別、不可逆ハッシュだけを記録し、raw payload、カード ID、手札、ユーザー識別子は記録しない。スナップショットを受け取るまで `presentationState` を進めず、後続 event も再生しないため、不明な状態変化をまたいで古い表示値から演出することはない。各キュー項目は元の `GameEvent` ではなく、server whitelist を通過した `ViewerSafeEvent` または `RedactedMarker` だけを保持する。演出種別は UI 用の派生情報であり、viewer projection を置き換えない。
 
-engine の `EFFECT_STARTED.effectId` はサーバー内でだけ扱う opaque 値であり、ブラウザは受け取らず解析もしない。サーバーは action result、viewer-scoped event 履歴、リプレイに、対象 event の `viewSequence` と viewer ごとの `presentationEffectRef` をキーとした `EffectPresentationMetadata` を必ず同梱する。decoder は event と metadata の `viewSequence` および `presentationEffectRef` が一致しなければ resync barrier を起動する。metadata 内のカード参照も engine の `cardInstanceId` ではなく viewer ごとの不透明な `presentationCardRef` とし、非公開カードの ID を投影しない。`ViewerPresentationEnvelope.cardCatalogByPresentationRef` は、snapshot や event が参照するカードの表示名、コスト、効果文、アートワークを同じ opaque ref で解決する。ただし viewer 自身の手札とルール上公開されたカードだけを収録し、相手の非公開カードや `REDACTED` marker の参照は追加しない。`effectIndex` はカード定義の `effects` 配列と同じ **0 始まり**、`effectType` はその要素の type とする。`CUSTOM` を含む全 type は server-provided `presentationTone` を使い、`CUSTOM` の既定値は中立 tone とする。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata と必要な card catalog entry を同じレスポンスに含める。metadata または必要な catalog entry がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
+engine の `EFFECT_STARTED.effectId` はサーバー内でだけ扱う opaque 値であり、ブラウザは受け取らず解析もしない。サーバーは action result、viewer-scoped event 履歴、リプレイに、対象 event の `viewSequence` と viewer ごとの `presentationEffectRef` をキーとした `EffectPresentationMetadata` を必ず同梱する。decoder は event と metadata の `viewSequence` および `presentationEffectRef` が一致しなければ resync barrier を起動する。metadata 内のカード参照も engine の `cardInstanceId` ではなく viewer ごとの不透明な `presentationCardRef` とし、非公開カードの ID を投影しない。`ViewerPresentationEnvelope.cardCatalogByPresentationRef` は、snapshot や event が参照するカードの表示名、コスト、効果文、アートワークを同じ opaque ref で解決する。ただし viewer 自身の手札とルール上公開されたカードだけを収録し、相手の非公開カードや `REDACTED` marker の参照は追加しない。decoder は `ownHandCardRefs`、公開捨て札 refs、`CARD_PLAYED` / `CARD_DRAWN` / `CARD_DISCARDED` の `presentationCardRef`、`CARDS_DRAWN.presentationCardRefs`、および effect metadata の `presentationCardRef` がすべて catalog にあることをキュー投入前に検証する。欠落する ref を持つ event / metadata は種類を問わず resync barrier とし、`REDACTED` marker は card ref も catalog entry も持たない。`effectIndex` はカード定義の `effects` 配列と同じ **0 始まり**、`effectType` はその要素の type とする。`CUSTOM` を含む全 type は server-provided `presentationTone` を使い、`CUSTOM` の既定値は中立 tone とする。再接続時も、未再生の `EFFECT_STARTED` に対応する metadata と必要な card catalog entry を同じレスポンスに含める。metadata または必要な catalog entry がない `EFFECT_STARTED` は中立フラッシュを推測表示せず、resync barrier として扱う。
 
 ```ts
+import type { CardRarity } from '@deck-drive/card-definitions';
 import type { GameEvent, Status, TerminalBattleResult } from '@deck-drive/game-engine';
 
 type AnimationKind =
@@ -259,7 +260,8 @@ interface ViewerSafeCard {
   readonly name: string;
   readonly class: 'SWORD' | 'GUARDIAN' | 'MAGE' | 'ALCHEMIST' | 'HUNTER' | 'TRICKSTER' | 'NEUTRAL';
   readonly type: 'ATTACK' | 'SKILL' | 'POWER' | 'REACTION' | 'CURSE';
-  readonly rarity: 'BASIC' | 'COMMON' | 'UNCOMMON' | 'RARE';
+  /** Keep this imported versioned contract in sync before enabling new rarities in Pack. */
+  readonly rarity: CardRarity;
   readonly cost: number;
   readonly rulesText: string;
   /** Null means the client must render its built-in card-art placeholder. */
@@ -273,6 +275,7 @@ interface BattlePresentationState {
   readonly activePlayerId: string;
   readonly phase: 'PLAYER_TURN' | 'MATCH_END';
   readonly hpByEntity: Readonly<Record<string, number>>;
+  readonly maxHpByEntity: Readonly<Record<string, number>>;
   readonly blockByEntity: Readonly<Record<string, number>>;
   readonly energyByPlayer: Readonly<Record<string, number>>;
   readonly maxEnergyByPlayer: Readonly<Record<string, number>>;
@@ -285,6 +288,8 @@ interface BattlePresentationState {
   /** Viewer-safe refs only when the game rules make that discard public; otherwise an empty array. */
   readonly publicDiscardCardRefsByPlayer: Readonly<Record<string, readonly string[]>>;
   readonly statusesByEntity: Readonly<Record<string, readonly Status[]>>;
+  /** Null until MATCH_END; required to restore VICTORY, DEFEAT, or DRAW after reconnect. */
+  readonly terminalResult: TerminalBattleResult | null;
 }
 
 interface PresentationTransition {
@@ -364,13 +369,23 @@ interface ResyncPresentationEnvelope extends ViewerPresentationEnvelopeBase {
 
 type ViewerPresentationEnvelope = ActionPresentationEnvelope | ResyncPresentationEnvelope;
 
+/** Persisted projection intentionally excludes live RESYNC envelopes. */
+interface PersistedVisualReplayProjection {
+  readonly initialSnapshot: BattlePresentationSnapshot;
+  readonly initialCardCatalogByPresentationRef: Readonly<Record<string, ViewerSafeCard>>;
+  readonly actions: readonly ActionPresentationEnvelope[];
+}
+
 /** Persisted alongside an engine replay; live action/resync responses use ViewerPresentationEnvelope. */
 interface VisualReplayEnvelope {
   readonly visualReplayFormatVersion: number;
   readonly sourceEngineReplayChecksum: string;
+  /** FNV-1a over canonical JSON of this envelope with envelopeChecksum omitted. */
   readonly envelopeChecksum: string;
-  readonly projection: ViewerPresentationEnvelope;
+  readonly projection: PersistedVisualReplayProjection;
 }
+
+type VisualReplayEnvelopeChecksumInput = Omit<VisualReplayEnvelope, 'envelopeChecksum'>;
 
 type AnimationKindForEvent<Event extends ViewerSafeEvent> =
   Event extends { readonly type: 'CARD_PLAYED' } ? 'card-play'
@@ -436,6 +451,8 @@ type BattleAnimation =
 ```
 
 現行 engine の `GameEvent` 全 variant と、viewer projection の `ViewerSafeEvent` 全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。型テストで `GameEvent['type']` の全種が viewer-safe event または redacted marker に投影可能であり、各 viewer-safe event が animation kind を持つことを検証する。`CARDS_DRAWN` は engine contract に存在するが、現行 basic resolver が emit しないため、projection の fixture で batch 表示・`D(n)`・catalog 解決を検証する。`n≤5` の全件表示、`n>5` の先頭 5 枚・残り束・live region・private draw の背面のみ表示も検証する。テストでは、順不同・重複・欠番・再接続時に、連続した `viewSequence` 以外を先行再生しないこと、`REDACTED` marker が非公開 global event を待たせず、`playerId` ごとの private discard marker が draw 区間を分断して墓地カウンタだけを進めること、手札・山札・墓地の公開カウンタだけを transition どおり進め、カード ID を含まないこと、server-provided transition、metadata、versioned class / type / rarity を含む card catalog が保持されること、`artwork: null` ではプレースホルダーを表示すること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。action envelope は baseline の次から snapshot の `lastViewSequence` までを再生し、resync envelope は entries を再生せず `lastViewSequence + 1` を次の期待値にすること、入力が authoritative `phase` / `activePlayerId` と連続反映済みの sequence を満たすまで有効化されないことも確認する。`EFFECT_STARTED` の metadata または必要な catalog entry の欠落、および将来追加される未知イベントは、秘密情報を含まない診断情報だけを記録して resync barrier を起動し、snapshot 受領後に再開することを確認する。リプレイは engine checksum と visual envelope checksum、event / metadata の key 関係を検証し、非batch source event は viewer-safe event または source sequence / type 付き redacted marker の 1 件に、`CARDS_DRAWN` は batch event、matching redacted marker、または同じ source sequence / player の連続した `CARD_DRAWN` group のいずれか一つに対応することを検証する。
+
+さらに、decoder が手札・公開捨て札・全カード参照 event・effect metadata の catalog coverage を検証してからキューに入れ、欠落時は resync barrier になることを確認する。`maxHpByEntity` に基づく HP バー、`terminalResult` による再接続後の勝利・敗北・引き分け画面、モーション削減時の非回転パック公開、短縮時にも維持される入力有効化の最短時刻を検証する。永続 visual replay は live `RESYNC` envelope を受理せず、initial snapshot と順序付き action projection のみを保存すること、`envelopeChecksum` を除いた canonical JSON から checksum を計算すること、改ざん時に検証失敗することも確認する。
 
 ## 10. 完成判定
 
