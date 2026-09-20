@@ -72,10 +72,12 @@ envelope alongside the engine replay. For each viewer it must persist:
 - `EffectPresentationMetadata` keyed by `viewSequence` and the viewer-safe
   `presentationEffectRef`, with
   the zero-based effect index and presentation tone;
-- a persisted `VisualReplayEnvelope` wrapper containing the source engine
-  replay checksum, visual replay format version, and a map of every
-  viewer-scoped projection keyed by an opaque replay-scoped viewer key; the
-  checksum covers that complete map.
+- one server-only `VisualReplayEnvelope` record per viewer-scoped projection,
+  containing the source engine replay checksum, visual replay format version,
+  opaque replay-scoped viewer key, and checksum for that one record. Replay
+  delivery authorizes the requester and selects exactly its one record; it
+  never sends a collection of projections or the raw engine replay to a
+  browser.
 
 The visual-replay verifier must calculate `envelopeChecksum` from canonical
 JSON of the visual envelope with that field omitted, matching the engine

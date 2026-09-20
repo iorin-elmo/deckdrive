@@ -122,9 +122,9 @@ DECK//DRIVE は「カードを一枚出すたびに、小さな必殺技を放�
 
 1. 0 ms: `TURN_ENDED` — 現プレイヤーのプレイレーンを閉じ、手札を 8% 暗くする（160 ms）。
 2. 100 ms: 画面中央に細いネオン線を横切らせ、`ENEMY TURN` または `YOUR TURN` を表示（240 ms）。自分の番は基調光、相手の番は青紫。
-3. 290 ms: 同じ player の連続した draw 区間ごとに、viewer-safe な `CARD_DRAWN`、`CARDS_DRAWN`、`REDACTED` draw marker をまとめて再生する。`n` は要求枚数ではなく、その区間の表示可能な `CARD_DRAWN` の件数、`CARDS_DRAWN.presentationCardRefs.length`、redacted marker ごとの `after.handCountByPlayer - before.handCountByPlayer` の正の差分を合計した実ドロー数とする。ドロー以外の entry は区間を分断するため、`EFFECT_STARTED`、ダメージ、状態変化をまたいで合成・加算しない。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms。`n>5` の圧縮表示は表の規則に従う。
+3. 290 ms: 同じ player の連続した draw 区間ごとに、viewer-safe な `CARD_DRAWN`、`CARDS_DRAWN`、`REDACTED` draw marker をまとめて再生する。`n` は要求枚数ではなく、その区間の表示可能な `CARD_DRAWN` の件数、`CARDS_DRAWN.presentationCardRefs.length`、redacted marker ごとの `after.handCountByPlayer - before.handCountByPlayer` の正の差分を合計した実ドロー数とする。ドロー以外の entry は区間を分断するため、`EFFECT_STARTED`、ダメージ、状態変化をまたいで合成・加算しない。ドロー演出時間は `D(0)=0`、`D(n)=min(220 + 90 × (n - 1), 580)` ms であり、`n≥5` は 580 ms に飽和する。`n>5` の圧縮表示は表の規則に従う。
 4. `290 + D(n)` ms: sequence 上で後続の `TURN_STARTED` を再生し、エネルギーを 120 ms で満たす。同時に自分の番だけ手札を 6 px せり上げる（120 ms）。
-5. `max(650, 410 + D(n))` ms: 主ボタンを有効化できる最短時刻とする。実際の有効化には下記の authoritative snapshot と連続 sequence の条件も必要である。したがって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは最短 650 ms、2 枚以上では枚数に応じて延長される。
+5. `max(650, 410 + D(n))` ms: 主ボタンを有効化できる最短時刻とする。実際の有効化には下記の authoritative snapshot と連続 sequence の条件も必要である。したがって、入力可能化は常にドローと `TURN_STARTED` の表示完了後になり、1 枚ドローでは最短 650 ms、2〜5 枚では枚数に応じて最大 990 ms まで延長され、5 枚以上はすべて最短 990 ms に飽和する。
 
 通常の対戦画面には「演出を短縮」トグルを用意する。オンにすると、現在の演出と保留中の各 event を sequence 順に 100 ms の最終状態表示へ遷移し、効果音は再生しない。ゲーム状態・イベント・ドロー枚数は変えない。短縮しても主ボタンは通常時と同じ `max(650, 410 + D(n))` より前には有効化しない。入力を有効化できるのは、その時刻と短縮後のローカルキュー完了の両方を満たし、さらに最新の authoritative snapshot で `phase === 'PLAYER_TURN'` かつ `activePlayerId === viewerPlayerId` であり、snapshot の `lastViewSequence` までを連続して反映済みで `nextExpectedViewSequence === lastViewSequence + 1` の場合だけとする。未着 event や未取得の `TURN_STARTED` をキューの空きだけで補わない。
 
@@ -215,6 +215,8 @@ CSV のヘッダーを唯一のスキーマとする。以下は各列の説明�
 ## 9. 実装インターフェース
 
 UI は server-projected event を受け取る `BattleAnimationQueue` を持つ。完全な engine `BattleState`（全手札・山札・墓地・seed を含む）はサーバーだけに保持し、ブラウザには `ViewerPresentationEnvelope` の viewer-safe な snapshot と event だけを送る。クライアントは snapshot を直ちに authoritative state として更新し、ゲームロジックはアニメーション終了を待たない。一方、画面に表示する HP、ブロック、手札、山札、墓地、エネルギー、ステータスは `presentationState` に保持する。`turn`、`activePlayerId`、`phase`、`lastViewSequence` は snapshot の必須値とし、再接続直後に `YOUR TURN` / `ENEMY TURN`、主ボタンの有効可否、終局画面、次に待つ sequence を推測なしで復元する。サーバーは viewer ごとに、各表示 event の `PresentationTransition`（before / after）を同梱する。クライアントはコスト、最大エネルギー、墓地枚数を推測・最終状態との差分計算で導かず、この transition だけで演出する。演出完了時だけ `presentationState` を transition の終了値へ進めるため、確定状態が先に届いても値が最終値へ瞬間移動しない。action 応答では action 前の `presentationBaselineViewSequence` から entries を再生した後に authoritative snapshot と照合し、再接続用 snapshot では直ちに `presentationState` を 150 ms フェードで同期する。
+
+engine replay、全 viewer 分の `VisualReplayEnvelope`、および viewer projection を生成するための状態は server-only とする。リプレイ取得ではサーバーが認証済み主体について match 参加者または許可済み観戦者であることを確認し、その主体に対応する `viewerReplayKey` を内部で解決して **1 件だけ**返す。クライアントが他者の key を指定しても選択に使わず拒否し、未認可の要求、raw engine replay、他 viewer の projection は返さない。観戦者には参加者の private projection を流用せず、観戦ポリシーに対応した別の public-only projection を事前に生成する。
 
 キューはグローバルな `GameEvent.sequence` ではなく、viewer ごとに連続する `viewSequence` をキーにした保留バッファを持つ。プライベート情報を隠す global event は viewer projection で ID やカード定義を含まない `REDACTED` marker となる。marker は非機密な `sourceSequence`、`sourceEventType`、`playerId` を保持するため、visual replay verifier は対応する engine event が欠落・重複していないことを確認できる。`CARDS_DRAWN` だけは、1 件の batch entry、同じ `sourceSequence` / `playerId` を持つ連続した `CARD_DRAWN` group、または 1 件の redacted marker のいずれかへ投影する。individual group は `viewSequence` 順・重複しない `presentationCardRef`・source の枚数を保ち、batch と混在してはならない。他の source event は viewer-safe event または matching redacted marker の 1 件だけへ投影する。marker も viewer に観測可能な集計値（例: `handCountByPlayer`、`drawPileCountByPlayer`、`discardCountByPlayer`）の before / after transition を持ち、非公開のカード内容を出さずにカウンタを正しく進める。action 応答のキューは `presentationBaselineViewSequence + 1` から開始し、entries が authoritative snapshot の `lastViewSequence` まで連続することを検証する。再接続用 snapshot は entries を含まず、`lastViewSequence + 1` で `nextExpectedViewSequence` を初期化する。これにより action 演出を final snapshot によって飛ばさず、再接続後に既反映 entries を二重再生しない。`nextExpectedViewSequence` 未満は重複として破棄し、欠番が 1.5 秒を超えて続く、または再接続した場合は、演出を推測・スキップせず viewer-scoped event 履歴または最新 `ViewerPresentationEnvelope` を再取得する。最新 snapshot へ復帰する場合は、未再生の演出を安全な 150 ms フェードに畳み、snapshot の `lastViewSequence + 1` から再開する。
 
@@ -376,14 +378,15 @@ interface PersistedVisualReplayProjection {
   readonly actions: readonly ActionPresentationEnvelope[];
 }
 
-/** Persisted alongside an engine replay; live action/resync responses use ViewerPresentationEnvelope. */
+/** One server-only persisted record per authorized viewer; live action/resync responses use ViewerPresentationEnvelope. */
 interface VisualReplayEnvelope {
+  /** Opaque key resolved by the server, never used to select a different viewer from the client. */
+  readonly viewerReplayKey: string;
   readonly visualReplayFormatVersion: number;
   readonly sourceEngineReplayChecksum: string;
   /** FNV-1a over canonical JSON of this envelope with envelopeChecksum omitted. */
   readonly envelopeChecksum: string;
-  /** Every viewer-safe view; keys are opaque replay-scoped viewer identifiers. */
-  readonly projectionsByViewerKey: Readonly<Record<string, PersistedVisualReplayProjection>>;
+  readonly projection: PersistedVisualReplayProjection;
 }
 
 type VisualReplayEnvelopeChecksumInput = Omit<VisualReplayEnvelope, 'envelopeChecksum'>;
@@ -453,7 +456,7 @@ type BattleAnimation =
 
 現行 engine の `GameEvent` 全 variant と、viewer projection の `ViewerSafeEvent` 全 variant を網羅してテストする。対象は `CARD_PLAYED`、`EFFECT_STARTED`、`DAMAGE_DEALT`、`BLOCK_REDUCED`、`ENTITY_DAMAGED`、`BLOCK_GAINED`、`HEALED`、`CARDS_DRAWN`、`CARD_DRAWN`、`CARD_DISCARDED`、`STATUS_APPLIED`、`STATUS_REMOVED`、`TURN_ENDED`、`TURN_STARTED`、`MATCH_FINISHED`。型テストで `GameEvent['type']` の全種が viewer-safe event または redacted marker に投影可能であり、各 viewer-safe event が animation kind を持つことを検証する。`CARDS_DRAWN` は engine contract に存在するが、現行 basic resolver が emit しないため、projection の fixture で batch 表示・`D(n)`・catalog 解決を検証する。`n≤5` の全件表示、`n>5` の先頭 5 枚・残り束・live region・private draw の背面のみ表示も検証する。テストでは、順不同・重複・欠番・再接続時に、連続した `viewSequence` 以外を先行再生しないこと、`REDACTED` marker が非公開 global event を待たせず、`playerId` ごとの private discard marker が draw 区間を分断して transition どおり手札・墓地カウンタを進めること、カード ID を含まないこと、server-provided transition、metadata、versioned class / type / rarity を含む card catalog が保持されること、`artwork: null` ではプレースホルダーを表示すること、完全ブロックでは HP ダメージ演出を生成しないことも確認する。action envelope は baseline の次から snapshot の `lastViewSequence` までを再生し、resync envelope は entries を再生せず `lastViewSequence + 1` を次の期待値にすること、入力が authoritative `phase` / `activePlayerId` と連続反映済みの sequence を満たすまで有効化されないことも確認する。`EFFECT_STARTED` の metadata または必要な catalog entry の欠落、および将来追加される未知イベントは、秘密情報を含まない診断情報だけを記録して resync barrier を起動し、snapshot 受領後に再開することを確認する。リプレイは engine checksum と visual envelope checksum、event / metadata の key 関係を検証し、非batch source event は viewer-safe event または source sequence / type 付き redacted marker の 1 件に、`CARDS_DRAWN` は batch event、matching redacted marker、または同じ source sequence / player の連続した `CARD_DRAWN` group のいずれか一つに対応することを検証する。
 
-さらに、decoder が手札・公開捨て札・全カード参照 event・effect metadata の catalog coverage を検証してからキューに入れ、欠落時は resync barrier になることを確認する。`maxHpByEntity` に基づく HP バー、`terminalResult` による再接続後の勝利・敗北・引き分け画面、モーション削減時の非回転パック公開、短縮時にも維持される入力有効化の最短時刻を検証する。致死の最悪ケースが 2,100 ms に収まり、private discard が先行eventの有無に応じて手札・墓地の正しい差分を適用することも検証する。resync は未再生 entry を安全フェードで破棄してmetadataを要求しないことを確認する。永続 visual replay は live `RESYNC` envelope を受理せず、viewerごとの不透明キーで initial snapshot と順序付き action projection をすべて保存すること、`envelopeChecksum` を除いた canonical JSON から checksum を計算すること、改ざん時に検証失敗することも確認する。
+さらに、decoder が手札・公開捨て札・全カード参照 event・effect metadata の catalog coverage を検証してからキューに入れ、欠落時は resync barrier になることを確認する。`maxHpByEntity` に基づく HP バー、`terminalResult` による再接続後の勝利・敗北・引き分け画面、モーション削減時の非回転パック公開、短縮時にも維持される入力有効化の最短時刻を検証する。`D(n)` が 5 枚で飽和し、5 枚以上の最短入力可能時刻がすべて 990 ms となることも検証する。致死の最悪ケースが 2,100 ms に収まり、private discard が先行eventの有無に応じて手札・墓地の正しい差分を適用することも検証する。resync は未再生 entry を安全フェードで破棄してmetadataを要求しないことを確認する。永続 visual replay は live `RESYNC` envelope を受理せず、viewerごとの別 server-only record に initial snapshot と順序付き action projection を保存すること、リクエスト時に認可済み主体の1 recordだけを返し、他者・観戦者用でないprivate projection・raw engine replayを拒否すること、`envelopeChecksum` を除いた canonical JSON から checksum を計算すること、改ざん時に検証失敗することも確認する。
 
 ## 10. 完成判定
 
