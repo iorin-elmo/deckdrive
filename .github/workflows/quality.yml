@@ -20,6 +20,24 @@ jobs:
     name: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://deckdrive:deckdrive@127.0.0.1:5432/deckdrive
+      NODE_ENV: development
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: deckdrive
+          POSTGRES_PASSWORD: deckdrive
+          POSTGRES_DB: deckdrive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U deckdrive -d deckdrive"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out source
@@ -51,6 +69,15 @@ jobs:
 
       - name: Run unit tests
         run: pnpm test
+
+      - name: Apply database migration
+        run: pnpm db:migrate:deploy
+
+      - name: Seed development database
+        run: pnpm db:seed
+
+      - name: Run database integration tests
+        run: pnpm test:integration
 
       - name: Run replay regression
         run: pnpm test:replay

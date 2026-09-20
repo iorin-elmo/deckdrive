@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "."
+  },
+  "include": [
+    "prisma/seed-runner.ts",
+    "prisma/seed.ts",
+    "src/database/load-environment.ts",
+    "src/database/seed-environment.ts",
+    "src/generated/prisma"
+  ]
+}

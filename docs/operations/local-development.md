@@ -44,9 +44,9 @@ node scripts/setup/setup.mjs
 3. Polls `pg_isready` inside the `postgres` container until ready.
 4. Polls `http://127.0.0.1:${MAILPIT_UI_PORT}/livez` and `/readyz` until
    Mailpit responds `200 OK`.
-5. Prints which later `pnpm setup` steps (DB migration, DB seed, dev user,
-   card/mission/cosmetic data) are **not implemented yet** — those belong to
-   D00, E02, M00, and related tasks (spec §5.2).
+5. Prints the manual database commands: `pnpm db:migrate`, followed by
+   `pnpm db:seed`. Development-user and card/mission/cosmetic setup belong to
+   E02, M00, and related tasks (spec §5.2).
 
 This script is not yet wired into a root `pnpm setup` command because the
 root `package.json` `scripts` field belongs to the integration lead /

@@ -162,9 +162,9 @@ async function main() {
   }
 
   log('postgres and mailpit are up and healthy.');
+  log('database migration and seed are manual steps; run `pnpm db:migrate` then `pnpm db:seed`.');
   log(
-    'the remaining pnpm setup steps (DB migration, DB seed, dev user, card/mission/cosmetic ' +
-      'data) are not implemented yet; they are introduced by D00, E02, M00, and related tasks.',
+    'dev user and card/mission/cosmetic data setup are introduced by E02, M00, and related tasks.',
   );
   log(
     "api / web / admin containers are not defined yet; they are added by each app's owning phase.",
