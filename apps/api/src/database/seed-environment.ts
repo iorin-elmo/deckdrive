@@ -23,6 +23,10 @@ export function assertDevelopmentDatabaseEnvironment(
   if (!loopbackDatabaseHosts.has(hostname)) {
     throw new Error('Development database commands require a loopback DATABASE_URL host.');
   }
+
+  if (database.searchParams.has('host')) {
+    throw new Error('Development database commands do not allow DATABASE_URL host overrides.');
+  }
 }
 
 export const assertDevelopmentSeedEnvironment = assertDevelopmentDatabaseEnvironment;

@@ -8,7 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
-    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:dev": "tsx src/database/migrate.ts",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "prisma:seed:check": "prisma generate && tsc -p tsconfig.seed.json --noEmit",

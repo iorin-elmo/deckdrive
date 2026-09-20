@@ -25,9 +25,10 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-`db:migrate` is a development command. Production deployments must use the
-immutable, committed migration history through `pnpm db:migrate:deploy`; they
-must never use `migrate dev`, `db push`, or a direct schema edit.
+`db:migrate` is limited to `NODE_ENV=development` and a loopback PostgreSQL
+host. Production deployments must use the immutable, committed migration
+history through `pnpm db:migrate:deploy`; they must never use `migrate dev`,
+`db push`, or a direct schema edit.
 
 `db:seed` is deliberately restricted to `NODE_ENV=development`. It installs
 the fixture-backed debug user, sample cards, a deck, and a sample match, and

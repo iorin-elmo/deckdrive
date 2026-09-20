@@ -38,6 +38,15 @@ describe('development seed environment', () => {
     ).toThrow('Development database commands require a loopback DATABASE_URL host');
   });
 
+  it('rejects DATABASE_URL host query overrides', () => {
+    expect(() =>
+      assertDevelopmentSeedEnvironment({
+        NODE_ENV: 'development',
+        DATABASE_URL: `${localDatabaseUrl}?host=db.example.com`,
+      }),
+    ).toThrow('Development database commands do not allow DATABASE_URL host overrides');
+  });
+
   it('allows an IPv6 loopback DATABASE_URL', () => {
     expect(() =>
       assertDevelopmentSeedEnvironment({
