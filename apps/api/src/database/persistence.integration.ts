@@ -35,19 +35,28 @@ describe('Phase 3 PostgreSQL persistence', () => {
     );
 
     const match = await client.query<{
+      engine_version: string;
+      rules_version: string;
+      card_data_version: string;
       format_version: number;
       snapshot_interval: number;
+      seed: string;
       initial_state: unknown;
       final_state: unknown;
       checksum: string;
     }>(
-      `SELECT format_version, snapshot_interval, initial_state, final_state, checksum
+      `SELECT engine_version, rules_version, card_data_version, format_version, snapshot_interval,
+              seed, initial_state, final_state, checksum
        FROM matches WHERE id = 'development-seed-replay'`,
     );
     expect(match.rows).toHaveLength(1);
     expect(match.rows[0]).toMatchObject({
+      engine_version: '1.0.0',
+      rules_version: '1.0.0',
+      card_data_version: '1.0.0',
       format_version: 1,
       snapshot_interval: 1,
+      seed: 'development-seed-replay-seed',
       checksum: 'fnv1a-32:7d5974d2',
     });
     expect(match.rows[0]?.initial_state).toEqual(match.rows[0]?.final_state);
