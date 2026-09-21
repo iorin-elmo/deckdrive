@@ -59,6 +59,22 @@ export interface CpuMatch {
   readonly state: BattleState;
 }
 
+export interface DeckDriveClient {
+  developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
+  me(playerId: string): Promise<Player>;
+  cards(): Promise<readonly CardSummary[]>;
+  decks(playerId: string): Promise<readonly Deck[]>;
+  startCpuMatch(
+    playerId: string,
+    deckId: string,
+    difficulty: CpuMatch['difficulty'],
+  ): Promise<CpuMatch>;
+  match(
+    playerId: string,
+    matchId: string,
+  ): Promise<{ id: string; status: string; finalState: BattleState | null }>;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -68,7 +84,7 @@ export class ApiError extends Error {
   }
 }
 
-export class DeckDriveApi {
+export class DeckDriveApi implements DeckDriveClient {
   constructor(private readonly baseUrl = '') {}
 
   async developmentLogin(email: string, displayName: string): Promise<{ playerId: string }> {
@@ -148,3 +164,120 @@ export class DeckDriveApi {
 }
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
+
+const previewCards: readonly CardSummary[] = [
+  {
+    cardId: 'sword_strike',
+    version: '1.0.0',
+    definition: {
+      id: 'sword_strike',
+      name: 'Strike',
+      class: 'SWORD',
+      rarity: 'BASIC',
+      cost: 1,
+      type: 'ATTACK',
+      description: 'Deal 6 damage.',
+      keywords: ['damage'],
+    },
+  },
+  {
+    cardId: 'guardian_guard',
+    version: '1.0.0',
+    definition: {
+      id: 'guardian_guard',
+      name: 'Guard',
+      class: 'GUARDIAN',
+      rarity: 'BASIC',
+      cost: 1,
+      type: 'SKILL',
+      description: 'Gain 5 block.',
+      keywords: ['block'],
+    },
+  },
+  {
+    cardId: 'neutral_insight',
+    version: '1.0.0',
+    definition: {
+      id: 'neutral_insight',
+      name: 'Insight',
+      class: 'NEUTRAL',
+      rarity: 'BASIC',
+      cost: 1,
+      type: 'SKILL',
+      description: 'Draw 1 card.',
+      keywords: ['draw'],
+    },
+  },
+];
+
+const previewDeck: Deck = {
+  id: 'preview-starter-deck',
+  name: 'Observatory starter',
+  cardDataVersion: '1.0.0',
+  cards: previewCards.map((card, position) => ({
+    cardVersionId: `preview-${card.cardId}`,
+    position,
+    quantity: 10,
+    cardVersion: card,
+  })),
+};
+
+function previewBattle(matchId: string): BattleState {
+  return {
+    matchId,
+    turn: 1,
+    phase: 'PLAYER_TURN',
+    players: [
+      {
+        id: 'preview-player',
+        hp: 30,
+        maxHp: 30,
+        energy: 3,
+        maxEnergy: 3,
+        block: 0,
+        hand: previewCards.map((card, index) => ({
+          id: `preview-hand-${String(index)}`,
+          definitionId: card.definition.id,
+        })),
+        statuses: [],
+      },
+      {
+        id: 'cpu-preview',
+        hp: 30,
+        maxHp: 30,
+        energy: 3,
+        maxEnergy: 3,
+        block: 0,
+        hand: [],
+        statuses: [],
+      },
+    ],
+  };
+}
+
+/** Explicit local-only fixture client for inspecting Phase 5 UI without a database. */
+export const previewApi: DeckDriveClient = {
+  async developmentLogin() {
+    return { playerId: 'preview-player' };
+  },
+  async me() {
+    return {
+      id: 'preview-player',
+      displayName: 'Offline preview',
+      balances: { GEM: 120, EXCHANGE_POINT: 6 },
+    };
+  },
+  async cards() {
+    return previewCards;
+  },
+  async decks() {
+    return [previewDeck];
+  },
+  async startCpuMatch(_playerId, _deckId, difficulty) {
+    const id = 'preview-cpu-match';
+    return { id, difficulty, state: previewBattle(id) };
+  },
+  async match(_playerId, matchId) {
+    return { id: matchId, status: 'IN_PROGRESS', finalState: previewBattle(matchId) };
+  },
+};

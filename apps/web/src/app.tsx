@@ -33,10 +33,12 @@ import { ActionButton, AsyncNotice, classNames } from '@deck-drive/ui';
 import {
   api,
   ApiError,
+  previewApi,
   type BattleState,
   type CardSummary,
   type CpuMatch,
   type Deck,
+  type DeckDriveClient,
 } from './api.js';
 import { useSessionStore } from './store.js';
 
@@ -114,6 +116,7 @@ function TitlePage() {
 function LoginPage() {
   const navigate = useNavigate();
   const setPlayerId = useSessionStore((state) => state.setPlayerId);
+  const enablePreview = useSessionStore((state) => state.enablePreview);
   const [email, setEmail] = useState('debug@deckdrive.local');
   const [displayName, setDisplayName] = useState('Debug Player');
   const login = useMutation({
@@ -162,7 +165,15 @@ function LoginPage() {
               required
             />
           </label>
-          {login.isError ? <ApiFailure error={login.error} /> : null}
+          {login.isError ? (
+            <ApiFailure
+              error={login.error}
+              onPreview={() => {
+                enablePreview();
+                navigate('/home');
+              }}
+            />
+          ) : null}
           <ActionButton className="w-full" type="submit" disabled={login.isPending}>
             {login.isPending ? (
               <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
@@ -179,11 +190,13 @@ function LoginPage() {
 
 function AuthenticatedLayout() {
   const playerId = useSessionStore((state) => state.playerId);
+  const previewMode = useSessionStore((state) => state.previewMode);
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
+  const client = useApiClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const player = useQuery({
-    queryKey: ['me', playerId],
-    queryFn: () => api.me(playerId!),
+    queryKey: ['me', playerId, previewMode],
+    queryFn: () => client.me(playerId!),
     enabled: playerId !== null,
   });
   if (playerId === null) return <Navigate replace to="/login" />;
@@ -231,7 +244,9 @@ function AuthenticatedLayout() {
             <p className="font-semibold text-stone-100">
               {player.data?.displayName ?? 'Loading player'}
             </p>
-            <p className="text-amber-200">{formatBalances(player.data?.balances)}</p>
+            <p className="text-amber-200">
+              {previewMode ? 'Offline preview' : formatBalances(player.data?.balances)}
+            </p>
           </div>
         </div>
       </header>
@@ -259,8 +274,16 @@ function RoutesContent() {
 
 function HomePage() {
   const playerId = useSessionStore((state) => state.playerId)!;
-  const player = useQuery({ queryKey: ['me', playerId], queryFn: () => api.me(playerId) });
-  const decks = useQuery({ queryKey: ['decks', playerId], queryFn: () => api.decks(playerId) });
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const player = useQuery({
+    queryKey: ['me', playerId, previewMode],
+    queryFn: () => client.me(playerId),
+  });
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
   return (
     <>
       <PageHeading
@@ -329,7 +352,9 @@ function HomePage() {
 }
 
 function CardsPage() {
-  const cards = useQuery({ queryKey: ['cards'], queryFn: () => api.cards() });
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const cards = useQuery({ queryKey: ['cards', previewMode], queryFn: () => client.cards() });
   const [search, setSearch] = useState('');
   const visibleCards = cards.data?.filter((card) => {
     const text =
@@ -374,7 +399,9 @@ function CardsPage() {
 
 function CardDetailPage() {
   const { cardId = '' } = useParams();
-  const cards = useQuery({ queryKey: ['cards'], queryFn: () => api.cards() });
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const cards = useQuery({ queryKey: ['cards', previewMode], queryFn: () => client.cards() });
   const card = cards.data?.find((candidate) => candidate.cardId === cardId);
   if (cards.isLoading) return <LoadingNotice title="Loading card" />;
   if (cards.isError) return <ApiFailure error={cards.error} />;
@@ -391,7 +418,12 @@ function CardDetailPage() {
 
 function DecksPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
-  const decks = useQuery({ queryKey: ['decks', playerId], queryFn: () => api.decks(playerId) });
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
   return (
     <>
       <PageHeading
@@ -422,7 +454,12 @@ function DecksPage() {
 function DeckDetailPage() {
   const { deckId = '' } = useParams();
   const playerId = useSessionStore((state) => state.playerId)!;
-  const decks = useQuery({ queryKey: ['decks', playerId], queryFn: () => api.decks(playerId) });
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
   if (decks.isLoading) return <LoadingNotice title="Loading deck" />;
   if (decks.isError) return <ApiFailure error={decks.error} />;
@@ -439,7 +476,7 @@ function DeckDetailPage() {
       <PageHeading
         eyebrow="DECK WORKSHOP"
         title={deck.name}
-        description={`${String(deckCardTotal(deck))} cards · data version ${deck.cardDataVersion}`}
+        description={`${String(deckCardTotal(deck))} cards - data version ${deck.cardDataVersion}`}
       />
       <section className="mt-7 grid gap-4 lg:grid-cols-[1fr_0.4fr]">
         <div className="surface-panel overflow-hidden">
@@ -494,14 +531,19 @@ function DeckDetailPage() {
 
 function CpuSetupPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const decks = useQuery({ queryKey: ['decks', playerId], queryFn: () => api.decks(playerId) });
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
   const queryDeck = new URLSearchParams(location.search).get('deck');
   const [deckId, setDeckId] = useState(queryDeck ?? '');
   const [difficulty, setDifficulty] = useState<CpuMatch['difficulty']>('NORMAL');
   const start = useMutation({
-    mutationFn: () => api.startCpuMatch(playerId, deckId, difficulty),
+    mutationFn: () => client.startCpuMatch(playerId, deckId, difficulty),
     onSuccess: (match) => navigate(`/battle/cpu/${match.id}`, { state: { match } }),
   });
   return (
@@ -590,10 +632,12 @@ function CpuBattlePage() {
   const { matchId = '' } = useParams();
   const location = useLocation();
   const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
   const started = (location.state as { readonly match?: CpuMatch } | null)?.match;
   const remoteMatch = useQuery({
-    queryKey: ['match', playerId, matchId],
-    queryFn: () => api.match(playerId, matchId),
+    queryKey: ['match', playerId, matchId, previewMode],
+    queryFn: () => client.match(playerId, matchId),
     enabled: started === undefined,
   });
   const state = started?.state ?? remoteMatch.data?.finalState;
@@ -617,9 +661,11 @@ function CpuBattlePage() {
 function ResultPage() {
   const { matchId = '' } = useParams();
   const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
   const match = useQuery({
-    queryKey: ['match', playerId, matchId],
-    queryFn: () => api.match(playerId, matchId),
+    queryKey: ['match', playerId, matchId, previewMode],
+    queryFn: () => client.match(playerId, matchId),
   });
   if (match.isLoading) return <LoadingNotice title="Loading result" />;
   if (match.isError) return <ApiFailure error={match.error} />;
@@ -662,7 +708,7 @@ function BattleBoard({
       <PageHeading
         eyebrow={difficulty === undefined ? 'PERSISTED STATE' : `${difficulty} CPU`}
         title="CPU arena"
-        description={`Turn ${String(state.turn)} · ${state.phase.replaceAll('_', ' ').toLowerCase()}`}
+        description={`Turn ${String(state.turn)} - ${state.phase.replaceAll('_', ' ').toLowerCase()}`}
       />
       <section className="battle-board mt-7" aria-label="Battle state">
         <Combatant label="Opponent" player={opponent} tone="enemy" />
@@ -742,7 +788,7 @@ function Combatant({
       {player.statuses.length > 0 ? (
         <p className="mt-4 text-xs text-stone-300">
           Statuses:{' '}
-          {player.statuses.map((status) => `${status.id} ×${String(status.stacks)}`).join(', ')}
+          {player.statuses.map((status) => `${status.id} x${String(status.stacks)}`).join(', ')}
         </p>
       ) : null}
     </article>
@@ -761,7 +807,7 @@ function CardTile({ card }: { readonly card: CardSummary }) {
       </div>
       <div className="mt-10">
         <p className="text-xs font-bold tracking-wide text-cyan-200">
-          {definition.class} · {definition.type}
+          {definition.class} - {definition.type}
         </p>
         <h2 className="mt-2 text-xl font-black text-stone-50">{definition.name}</h2>
         <p className="mt-3 text-sm leading-6 text-stone-300">{definition.description}</p>
@@ -814,7 +860,7 @@ function DeckTile({ deck }: { readonly deck: Deck }) {
         </span>
       </div>
       <p className="mt-3 text-sm text-stone-300">
-        {String(deck.cards.length)} distinct card versions · {deck.cardDataVersion}
+        {String(deck.cards.length)} distinct card versions - {deck.cardDataVersion}
       </p>
       <div className="mt-6 flex gap-3">
         <Link className="hero-secondary" to={`/decks/${deck.id}`}>
@@ -892,7 +938,13 @@ function LoadingNotice({ title }: { readonly title: string }) {
   );
 }
 
-function ApiFailure({ error }: { readonly error: Error }) {
+function ApiFailure({
+  error,
+  onPreview,
+}: {
+  readonly error: Error;
+  readonly onPreview?: () => void;
+}) {
   const description =
     error instanceof ApiError && error.code === 'API_UNAVAILABLE'
       ? 'The API is not running at the configured address.'
@@ -903,14 +955,25 @@ function ApiFailure({ error }: { readonly error: Error }) {
           : 'The service could not be reached.';
   return (
     <AsyncNotice kind="error" title="Unable to load this view">
-      {description} Check that the API is running, then try again.
+      <p>{description} Check that the API is running, then try again.</p>
+      {onPreview === undefined ? null : (
+        <ActionButton className="mt-4" tone="quiet" onClick={onPreview}>
+          <Sparkles size={17} aria-hidden="true" />
+          Open offline preview
+        </ActionButton>
+      )}
     </AsyncNotice>
   );
 }
 
+function useApiClient(): DeckDriveClient {
+  const previewMode = useSessionStore((state) => state.previewMode);
+  return previewMode ? previewApi : api;
+}
+
 function formatBalances(balances: Readonly<Record<string, number>> | undefined): string {
   if (balances === undefined) return 'Balances loading';
-  return `${String(balances.GEM ?? 0)} gems · ${String(balances.EXCHANGE_POINT ?? 0)} exchange`;
+  return `${String(balances.GEM ?? 0)} gems - ${String(balances.EXCHANGE_POINT ?? 0)} exchange`;
 }
 
 function deckCardTotal(deck: Deck): number {

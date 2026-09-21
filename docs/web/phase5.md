@@ -21,6 +21,14 @@ Vite serves the client at `http://localhost:5173` and proxies `/api` to
 `http://localhost:3000`. Set `VITE_API_URL` to use an explicitly configured
 API origin instead, or set `VITE_API_PROXY` to change the local proxy target.
 
+## Offline preview
+
+When the API or local database is unavailable, the development login error
+offers an explicit **Open offline preview** action. It uses fixture data solely
+for navigating the client and is visibly labelled `Offline preview`; it never
+contacts or writes to the API. Run the API and database above to test the real
+development-login flow.
+
 ## Implemented routes
 
 - `/` title experience

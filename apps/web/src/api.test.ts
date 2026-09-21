@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, DeckDriveApi } from './api.js';
+import { ApiError, DeckDriveApi, previewApi } from './api.js';
 
 describe('DeckDriveApi', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -73,5 +73,21 @@ describe('DeckDriveApi', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('connection refused')));
 
     await expect(new DeckDriveApi().cards()).rejects.toEqual(new ApiError(0, 'API_UNAVAILABLE'));
+  });
+
+  it('provides a local fixture only when offline preview is selected', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const decks = await previewApi.decks('preview-player');
+    const deck = decks[0];
+    expect(deck).toBeDefined();
+    if (deck === undefined) throw new Error('Expected the preview deck');
+
+    const match = await previewApi.startCpuMatch('preview-player', deck.id, 'NORMAL');
+
+    expect(deck).toMatchObject({ id: 'preview-starter-deck' });
+    expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
