@@ -266,6 +266,9 @@ export class ApiApplication {
     const ids = cards.map((card) => card.cardVersionId);
     if (new Set(ids).size !== ids.length)
       throw new BadRequestError('Each card version may appear once in a deck.');
+    const positions = cards.map((card) => card.position);
+    if (new Set(positions).size !== positions.length)
+      throw new BadRequestError('Deck card positions must be unique non-negative integers.');
     const owned = await this.prisma.playerCard.findMany({
       where: { playerId, cardVersionId: { in: ids } },
       include: { cardVersion: { select: { definition: true } } },
