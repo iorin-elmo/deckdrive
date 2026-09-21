@@ -14,7 +14,11 @@ describe('ApiApplication authentication', () => {
       },
     } as unknown as PrismaClient);
 
-    const response = await application.handle({ method: 'GET', path: '/api/v1/cards', headers: {} });
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/cards',
+      headers: {},
+    });
 
     expect(response).toMatchObject({
       status: 200,
