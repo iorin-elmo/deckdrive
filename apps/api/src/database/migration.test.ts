@@ -33,3 +33,21 @@ describe('initial persistence migration', () => {
     expect(migration).not.toContain('card_versions_card_id_version_idx');
   });
 });
+
+describe('Phase 4 currency ledger migration', () => {
+  const ledgerMigration = readFileSync(
+    new URL(
+      '../../prisma/migrations/20260921000000_add_currency_ledger/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  it('adds an append-only, idempotent currency transaction ledger', () => {
+    expect(ledgerMigration).toContain('CREATE TABLE "currency_transactions"');
+    expect(ledgerMigration).toContain('currency_transactions_amount_non_zero');
+    expect(ledgerMigration).toContain('currency_transactions_player_id_idempotency_key_key');
+    expect(ledgerMigration).toContain('FOREIGN KEY ("player_id") REFERENCES "players"');
+    expect(ledgerMigration).not.toMatch(/\bDROP\b/u);
+  });
+});
