@@ -45,6 +45,150 @@
         "artwork": null,
         "deckLimit": 3
       }
+    },
+    {
+      "id": "neutral_insight",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_insight",
+        "version": "1.0.0",
+        "name": "Insight",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Draw 1 card.",
+        "effects": [{ "type": "DRAW", "amount": 1, "target": "SELF" }],
+        "keywords": ["draw"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "sword_lunge",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_lunge",
+        "version": "1.0.0",
+        "name": "Lunge",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 4 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 4, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "sword_riposte",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_riposte",
+        "version": "1.0.0",
+        "name": "Riposte",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 5 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 5, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_bulwark",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_bulwark",
+        "version": "1.0.0",
+        "name": "Bulwark",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Gain 7 block.",
+        "effects": [{ "type": "GAIN_BLOCK", "amount": 7, "target": "SELF" }],
+        "keywords": ["block"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_mend",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_mend",
+        "version": "1.0.0",
+        "name": "Mend",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Heal 3 health.",
+        "effects": [{ "type": "HEAL", "amount": 3, "target": "SELF" }],
+        "keywords": ["heal"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_focus",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_focus",
+        "version": "1.0.0",
+        "name": "Focus",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 0,
+        "type": "SKILL",
+        "description": "Draw 1 card.",
+        "effects": [{ "type": "DRAW", "amount": 1, "target": "SELF" }],
+        "keywords": ["draw"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_spark",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_spark",
+        "version": "1.0.0",
+        "name": "Spark",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 3 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 3, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_recovery",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_recovery",
+        "version": "1.0.0",
+        "name": "Recovery",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Heal 2 health.",
+        "effects": [{ "type": "HEAL", "amount": 2, "target": "SELF" }],
+        "keywords": ["heal"],
+        "artwork": null,
+        "deckLimit": 3
+      }
     }
   ],
   "deck": {
@@ -52,8 +196,16 @@
     "name": "Debug starter",
     "cardDataVersion": "1.0.0",
     "cards": [
-      { "cardId": "sword_strike", "version": "1.0.0", "position": 0, "quantity": 1 },
-      { "cardId": "guardian_guard", "version": "1.0.0", "position": 1, "quantity": 1 }
+      { "cardId": "sword_strike", "version": "1.0.0", "position": 0, "quantity": 3 },
+      { "cardId": "guardian_guard", "version": "1.0.0", "position": 1, "quantity": 3 },
+      { "cardId": "neutral_insight", "version": "1.0.0", "position": 2, "quantity": 3 },
+      { "cardId": "sword_lunge", "version": "1.0.0", "position": 3, "quantity": 3 },
+      { "cardId": "sword_riposte", "version": "1.0.0", "position": 4, "quantity": 3 },
+      { "cardId": "guardian_bulwark", "version": "1.0.0", "position": 5, "quantity": 3 },
+      { "cardId": "guardian_mend", "version": "1.0.0", "position": 6, "quantity": 3 },
+      { "cardId": "neutral_focus", "version": "1.0.0", "position": 7, "quantity": 3 },
+      { "cardId": "neutral_spark", "version": "1.0.0", "position": 8, "quantity": 3 },
+      { "cardId": "neutral_recovery", "version": "1.0.0", "position": 9, "quantity": 3 }
     ]
   },
   "match": {

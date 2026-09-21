@@ -61,6 +61,12 @@ describe('Phase 3 PostgreSQL persistence', () => {
     });
     expect(match.rows[0]?.initial_state).toEqual(match.rows[0]?.final_state);
 
+    const deck = await client.query<{ total: number; maximum: number }>(
+      `SELECT COALESCE(SUM(quantity), 0)::int AS total, COALESCE(MAX(quantity), 0) AS maximum
+       FROM deck_cards WHERE deck_id = '6e05b0c4-09cb-4e71-ae9f-18f1d4a94dfb'`,
+    );
+    expect(deck.rows).toEqual([{ total: 30, maximum: 3 }]);
+
     const snapshots = await client.query<{
       action_index: number;
       event_sequence: number;
