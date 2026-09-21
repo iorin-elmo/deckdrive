@@ -43,20 +43,27 @@ export class ApiApplication {
       const cardId = path.match(/^\/api\/v1\/cards\/([^/]+)$/u)?.[1];
       if (request.method === 'GET' && cardId !== undefined) return await this.getCard(cardId);
 
+      const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
+      const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
+      const authenticatedRoute =
+        (request.method === 'GET' && (path === '/api/v1/me' || path === '/api/v1/decks')) ||
+        (request.method === 'POST' && (path === '/api/v1/decks' || path === '/api/v1/matches')) ||
+        (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
+        (matchId !== undefined && request.method === 'GET');
+      if (!authenticatedRoute) return { status: 404, body: { error: 'NOT_FOUND' } };
+
       const player = await this.requirePlayer(request);
       if (request.method === 'GET' && path === '/api/v1/me') return await this.me(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
         return await this.createDeck(player.id, request.body);
-      const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       if (deckId !== undefined && request.method === 'PUT')
         return await this.updateDeck(player.id, deckId, request.body);
       if (deckId !== undefined && request.method === 'DELETE')
         return await this.deleteDeck(player.id, deckId);
       if (request.method === 'POST' && path === '/api/v1/matches')
         return await this.startCpuMatch(player.id, request.body);
-      const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       if (matchId !== undefined && request.method === 'GET')
         return await this.getMatch(player.id, matchId);
       return { status: 404, body: { error: 'NOT_FOUND' } };

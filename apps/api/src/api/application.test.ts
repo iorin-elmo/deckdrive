@@ -37,6 +37,18 @@ describe('ApiApplication authentication', () => {
     ).resolves.toEqual({ status: 500, body: { error: 'INTERNAL_ERROR' } });
   });
 
+  it('returns not found before authenticating an unsupported route', async () => {
+    const findUnique = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({ method: 'POST', path: '/api/v1/cards', headers: {} }),
+    ).resolves.toEqual({ status: 404, body: { error: 'NOT_FOUND' } });
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
   it('hides development authentication in production', async () => {
     const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'production' });
 
