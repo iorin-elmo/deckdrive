@@ -21,7 +21,10 @@ Vite serves the client at `http://localhost:5173` and proxies `/api` to
 `http://localhost:3000`. Set `VITE_API_URL` to use an explicitly configured
 API origin instead, or set `VITE_API_PROXY` to change the local proxy target.
 For a cross-origin `VITE_API_URL`, configure the API's `CORS_ORIGINS` to
-include the web application's origin (the default permits `http://localhost:5173`).
+include the web application's origin (the default permits
+`http://localhost:5173`). The API binds `0.0.0.0` by default so that configured
+origins can reach it from another host/container; set `HOST` to override that
+bind address.
 
 ## Offline preview
 

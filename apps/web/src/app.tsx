@@ -28,6 +28,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from 'react-router-dom';
 import { ActionButton, AsyncNotice, classNames } from '@deck-drive/ui';
 
@@ -405,12 +406,26 @@ function CardsPage() {
   );
 }
 
+export function selectCardSummary(
+  cards: readonly CardSummary[],
+  cardId: string,
+  version: string | null,
+): CardSummary | undefined {
+  return cards.find(
+    (candidate) =>
+      candidate.cardId === cardId && (version === null || candidate.version === version),
+  );
+}
+
 function CardDetailPage() {
   const { cardId = '' } = useParams();
+  const [searchParams] = useSearchParams();
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
   const cards = useQuery({ queryKey: ['cards', previewMode], queryFn: () => client.cards() });
-  const card = cards.data?.find((candidate) => candidate.cardId === cardId);
+  const card = cards.data
+    ? selectCardSummary(cards.data, cardId, searchParams.get('version'))
+    : undefined;
   if (cards.isLoading) return <LoadingNotice title="Loading card" />;
   if (cards.isError) return <ApiFailure error={cards.error} />;
   if (card === undefined)
@@ -809,7 +824,7 @@ function Combatant({
 function CardTile({ card }: { readonly card: CardSummary }) {
   const definition = card.definition;
   return (
-    <Link to={`/cards/${card.cardId}`} className="card-tile">
+    <Link to={cardDetailHref(card)} className="card-tile">
       <div className="flex items-start justify-between gap-3">
         <span className="rarity-chip">{definition.rarity}</span>
         <span className="cost-orb" aria-label={`Cost ${String(definition.cost)}`}>
@@ -832,6 +847,10 @@ function CardTile({ card }: { readonly card: CardSummary }) {
       </div>
     </Link>
   );
+}
+
+export function cardDetailHref(card: Pick<CardSummary, 'cardId' | 'version'>): string {
+  return `/cards/${encodeURIComponent(card.cardId)}?version=${encodeURIComponent(card.version)}`;
 }
 
 function CardDetail({ card }: { readonly card: CardSummary }) {

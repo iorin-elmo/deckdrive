@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { apiCorsOrigins, apiPort } from './server-config.js';
+import { apiCorsOrigins, apiHost, apiPort } from './server-config.js';
 
 describe('apiPort', () => {
   it('uses 3000 by default', () => {
@@ -32,5 +32,19 @@ describe('apiCorsOrigins', () => {
 
   it('rejects an explicit empty origin list', () => {
     expect(() => apiCorsOrigins(' , ')).toThrow('CORS_ORIGINS must include');
+  });
+});
+
+describe('apiHost', () => {
+  it('binds to all interfaces by default', () => {
+    expect(apiHost(undefined)).toBe('0.0.0.0');
+  });
+
+  it('accepts a configured host value', () => {
+    expect(apiHost(' 127.0.0.1 ')).toBe('127.0.0.1');
+  });
+
+  it('rejects an explicit empty host', () => {
+    expect(() => apiHost('  ')).toThrow('HOST must include');
   });
 });

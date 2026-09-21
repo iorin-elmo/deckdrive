@@ -4,7 +4,7 @@ import { ApiApplication } from './api/application.js';
 import { createApiHttpServer } from './api/http.js';
 import { loadRootEnvironment } from './database/load-environment.js';
 import { PrismaClient } from './generated/prisma/client.js';
-import { apiCorsOrigins, apiPort } from './server-config.js';
+import { apiCorsOrigins, apiHost, apiPort } from './server-config.js';
 
 loadRootEnvironment();
 
@@ -16,10 +16,11 @@ const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: data
 const server = createApiHttpServer(new ApiApplication(prisma), {
   allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
 });
+const host = apiHost(process.env.HOST);
 const port = apiPort(process.env.PORT);
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`DeckDrive API listening at http://127.0.0.1:${String(port)}`);
+server.listen(port, host, () => {
+  console.log(`DeckDrive API listening at http://${host}:${String(port)}`);
 });
 
 async function shutdown(): Promise<void> {
