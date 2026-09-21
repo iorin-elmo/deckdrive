@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError, type CardSummary, type Deck } from './api.js';
-import { canOpenOfflinePreview, cardDetailHref, isCpuReadyDeck, selectCardSummary } from './app.js';
+import {
+  canOpenOfflinePreview,
+  cardDetailHref,
+  isCpuReadyDeck,
+  loginReturnPath,
+  resultTitle,
+  selectCardSummary,
+} from './app.js';
 
 const cards: readonly CardSummary[] = [
   {
@@ -82,5 +89,21 @@ describe('isCpuReadyDeck', () => {
   it('only allows complete 30-card decks into CPU practice', () => {
     expect(isCpuReadyDeck(deck(30))).toBe(true);
     expect(isCpuReadyDeck(deck(2))).toBe(false);
+  });
+});
+
+describe('loginReturnPath', () => {
+  it('preserves a local destination and rejects external return paths', () => {
+    expect(loginReturnPath('/cards?version=1.0.0')).toBe('/cards?version=1.0.0');
+    expect(loginReturnPath('//example.test')).toBe('/home');
+    expect(loginReturnPath(null)).toBe('/home');
+  });
+});
+
+describe('resultTitle', () => {
+  it('uses the persisted match status for result headings', () => {
+    expect(resultTitle('COMPLETED')).toBe('Battle complete');
+    expect(resultTitle('ABANDONED')).toBe('Battle abandoned');
+    expect(resultTitle('IN_PROGRESS')).toBe('Battle in progress');
   });
 });

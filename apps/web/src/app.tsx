@@ -117,15 +117,17 @@ function TitlePage() {
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setPlayerId = useSessionStore((state) => state.setPlayerId);
   const enablePreview = useSessionStore((state) => state.enablePreview);
+  const returnTo = loginReturnPath(new URLSearchParams(location.search).get('returnTo'));
   const [email, setEmail] = useState('debug@deckdrive.local');
   const [displayName, setDisplayName] = useState('Debug Player');
   const login = useMutation({
     mutationFn: () => api.developmentLogin(email, displayName),
     onSuccess: ({ playerId }) => {
       setPlayerId(playerId);
-      navigate('/home');
+      navigate(returnTo);
     },
   });
   return (
@@ -173,7 +175,7 @@ function LoginPage() {
                 error={login.error}
                 onPreview={() => {
                   enablePreview();
-                  navigate('/home');
+                  navigate(returnTo);
                 }}
               />
             ) : (
@@ -195,6 +197,7 @@ function LoginPage() {
 }
 
 function AuthenticatedLayout() {
+  const location = useLocation();
   const playerId = useSessionStore((state) => state.playerId);
   const previewMode = useSessionStore((state) => state.previewMode);
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
@@ -205,7 +208,10 @@ function AuthenticatedLayout() {
     queryFn: () => client.me(playerId!),
     enabled: playerId !== null,
   });
-  if (playerId === null) return <Navigate replace to="/login" />;
+  if (playerId === null) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
+  }
   return (
     <div className="app-background min-h-screen text-stone-100">
       <header className="border-b border-stone-800 bg-zinc-950/90">
@@ -719,16 +725,19 @@ function ResultPage() {
   if (match.isLoading) return <LoadingNotice title="Loading result" />;
   if (match.isError) return <ApiFailure error={match.error} />;
   const state = match.data?.finalState;
+  const abandoned = match.data?.status === 'ABANDONED';
   return (
     <>
       <PageHeading
         eyebrow="MATCH RESULT"
-        title={match.data?.status === 'COMPLETED' ? 'Battle complete' : 'Battle in progress'}
+        title={resultTitle(match.data?.status)}
         description="The server owns results. This view only renders persisted match data."
       />
       {state === null || state === undefined ? (
-        <AsyncNotice kind="empty" title="No final result yet">
-          The match is still in progress or has no persisted final state.
+        <AsyncNotice kind="empty" title={abandoned ? 'Battle abandoned' : 'No final result yet'}>
+          {abandoned
+            ? 'This match was abandoned before a final result was persisted.'
+            : 'The match is still in progress or has no persisted final state.'}
         </AsyncNotice>
       ) : (
         <BattleBoard state={state} />
@@ -982,6 +991,16 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
 
 export function isCpuReadyDeck(deck: Deck): boolean {
   return deckCardTotal(deck) === 30;
+}
+
+export function loginReturnPath(value: string | null): string {
+  return value !== null && /^\/(?!\/)/u.test(value) ? value : '/home';
+}
+
+export function resultTitle(status: string | undefined): string {
+  if (status === 'COMPLETED') return 'Battle complete';
+  if (status === 'ABANDONED') return 'Battle abandoned';
+  return 'Battle in progress';
 }
 
 export function canOpenOfflinePreview(error: Error): boolean {
