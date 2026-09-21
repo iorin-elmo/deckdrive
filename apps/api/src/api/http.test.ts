@@ -45,6 +45,7 @@ describe('createApiHttpServer', () => {
       });
       await expect(response.json()).resolves.toEqual({ error: 'PAYLOAD_TOO_LARGE' });
       expect(response.status).toBe(413);
+      expect(response.headers.get('connection')).toBe('close');
       expect(application.handle).not.toHaveBeenCalled();
     } finally {
       server.close();

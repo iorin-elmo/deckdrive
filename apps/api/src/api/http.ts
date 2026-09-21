@@ -26,7 +26,7 @@ export function createApiHttpServer(application: ApiApplication): Server {
       if (error instanceof HttpRequestError) {
         if (error.status === 413) {
           request.resume();
-          response.shouldKeepAlive = false;
+          response.setHeader('connection', 'close');
         }
         writeJson(response, error.status, { error: error.code });
         return;
