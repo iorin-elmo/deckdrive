@@ -45,7 +45,8 @@ describe('Phase 4 currency ledger migration', () => {
 
   it('adds an append-only, idempotent currency transaction ledger', () => {
     expect(ledgerMigration).toContain('CREATE TABLE "currency_transactions"');
-    expect(ledgerMigration).toContain('currency_transactions_amount_non_zero');
+    expect(ledgerMigration).toContain('currency_transactions_amount_positive');
+    expect(ledgerMigration).toContain('CHECK ("amount" > 0)');
     expect(ledgerMigration).toContain('currency_transactions_player_id_idempotency_key_key');
     expect(ledgerMigration).toContain('FOREIGN KEY ("player_id") REFERENCES "players"');
     expect(ledgerMigration).not.toMatch(/\bDROP\b/u);

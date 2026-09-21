@@ -10,7 +10,7 @@ CREATE TABLE "currency_transactions" (
     "idempotency_key" TEXT NOT NULL,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "currency_transactions_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "currency_transactions_amount_non_zero" CHECK ("amount" <> 0)
+    CONSTRAINT "currency_transactions_amount_positive" CHECK ("amount" > 0)
 );
 
 CREATE UNIQUE INDEX "currency_transactions_player_id_idempotency_key_key"

@@ -23,9 +23,10 @@ body exceeding the limit receives `413` before the controller is invoked.
 
 Deck writes require exactly 30 owned cards and enforce both the global and
 per-card copy limits. CPU decisions use only actions accepted by the game
-engine. `CurrencyTransaction` is append-only and unique on player plus
-idempotency key; the reward service performs its lookup and insert inside the
-same Prisma transaction for reuse by Pack and Mission phases.
+engine. `CurrencyTransaction` is append-only, has a positive reward amount,
+and is unique on player plus idempotency key; the reward service performs its
+lookup and insert inside the same Prisma transaction for reuse by Pack and
+Mission phases.
 
 ## Phase boundary
 
