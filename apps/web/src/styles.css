@@ -1,0 +1,384 @@
+@import 'tailwindcss';
+@source "../../../packages/ui/src";
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #101310;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  min-width: 320px;
+  background: #101310;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #101310;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.title-scene {
+  background-color: rgba(5, 13, 13, 0.72);
+  background-image: url('/assets/observatory-arena.png');
+  background-blend-mode: multiply;
+  background-position: center;
+  background-size: cover;
+}
+.app-background {
+  background-color: #101310;
+  background-image: url('/assets/observatory-arena.png');
+  background-attachment: fixed;
+  background-position: center;
+  background-size: cover;
+}
+.app-background::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(10, 14, 12, 0.92);
+}
+.app-background > * {
+  position: relative;
+  z-index: 1;
+}
+.surface-panel {
+  border: 1px solid rgba(120, 113, 108, 0.45);
+  border-radius: 8px;
+  background: rgba(25, 27, 24, 0.94);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
+}
+.arena-panel {
+  border: 1px solid rgba(34, 211, 238, 0.36);
+  border-radius: 8px;
+  background-color: rgba(9, 44, 42, 0.9);
+  background-image: url('/assets/observatory-arena.png');
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 999px rgba(9, 36, 34, 0.55);
+}
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: rgb(253 230 138);
+}
+.quiet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgb(207 250 254);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.quiet-link:hover {
+  color: rgb(254 240 138);
+}
+.hero-command,
+.hero-secondary {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 6px;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition: 150ms ease;
+}
+.hero-command {
+  background: rgb(103 232 249);
+  color: rgb(10 18 18);
+}
+.hero-command:hover {
+  background: rgb(165 243 252);
+}
+.hero-secondary {
+  border: 1px solid rgb(120 113 108);
+  background: rgba(28, 29, 27, 0.82);
+  color: rgb(245 245 244);
+}
+.hero-secondary:hover {
+  border-color: rgb(253 230 138);
+  color: rgb(254 240 138);
+}
+.nav-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  color: rgb(214 211 209);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.nav-link:hover,
+.nav-link-active {
+  background: rgba(42, 57, 51, 0.8);
+  color: rgb(207 250 254);
+}
+.field-label {
+  display: grid;
+  gap: 0.45rem;
+  color: rgb(231 229 228);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.field-label input,
+.field-label select,
+.search-field input {
+  width: 100%;
+  border: 1px solid rgb(87 83 78);
+  border-radius: 6px;
+  background: rgb(19 22 19);
+  color: rgb(245 245 244);
+  min-height: 2.75rem;
+  padding: 0.6rem 0.75rem;
+  outline: none;
+}
+.field-label input:focus,
+.field-label select:focus,
+.search-field input:focus {
+  border-color: rgb(103 232 249);
+  box-shadow: 0 0 0 2px rgba(103, 232, 249, 0.25);
+}
+.search-field {
+  display: flex;
+  max-width: 34rem;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid rgb(87 83 78);
+  border-radius: 6px;
+  background: rgb(19 22 19);
+  padding-left: 0.75rem;
+  color: rgb(103 232 249);
+}
+.search-field input {
+  border: 0;
+  box-shadow: none;
+}
+.search-field input:focus {
+  box-shadow: none;
+}
+.card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+.card-tile {
+  display: flex;
+  min-height: 19rem;
+  flex-direction: column;
+  border: 1px solid rgba(14, 116, 144, 0.75);
+  border-radius: 8px;
+  background: rgba(18, 31, 29, 0.95);
+  padding: 1.1rem;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease;
+}
+.card-tile:hover {
+  transform: translateY(-3px);
+  border-color: rgb(253 230 138);
+}
+.card-tile:focus-visible,
+.quick-link:focus-visible,
+.hero-command:focus-visible,
+.hero-secondary:focus-visible,
+.quiet-link:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid rgb(103 232 249);
+  outline-offset: 3px;
+}
+.rarity-chip,
+.keyword-chip {
+  border-radius: 4px;
+  border: 1px solid rgba(253, 230, 138, 0.48);
+  color: rgb(254 240 138);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  padding: 0.2rem 0.4rem;
+}
+.keyword-chip {
+  border-color: rgba(103, 232, 249, 0.35);
+  color: rgb(165 243 252);
+  letter-spacing: 0;
+}
+.cost-orb {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(253 230 138);
+  color: rgb(69 38 0);
+  font-weight: 900;
+}
+.metric {
+  border: 1px solid rgba(120, 113, 108, 0.48);
+  border-radius: 6px;
+  padding: 0.65rem;
+}
+.metric dt {
+  color: rgb(168 162 158);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.metric dd {
+  margin: 0.2rem 0 0;
+  color: rgb(250 250 249);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.quick-link {
+  border: 1px solid rgba(120, 113, 108, 0.48);
+  border-radius: 8px;
+  background: rgba(25, 27, 24, 0.92);
+  padding: 1.25rem;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+.quick-link:hover {
+  border-color: rgb(103 232 249);
+  background: rgba(24, 38, 34, 0.96);
+}
+.deck-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.deck-table th {
+  background: rgba(42, 57, 51, 0.72);
+  color: rgb(168 162 158);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  padding: 0.75rem 1rem;
+  text-transform: uppercase;
+}
+.deck-table td {
+  border-top: 1px solid rgba(87, 83, 78, 0.42);
+  padding: 0.8rem 1rem;
+  color: rgb(231 229 228);
+  vertical-align: middle;
+}
+.deck-table td span {
+  display: block;
+  margin-top: 0.15rem;
+  color: rgb(168 162 158);
+  font-size: 0.75rem;
+}
+.difficulty-option {
+  min-height: 2.75rem;
+  border: 1px solid rgb(87 83 78);
+  border-radius: 6px;
+  background: rgb(19 22 19);
+  color: rgb(214 211 209);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+.difficulty-option:hover,
+.difficulty-option-selected {
+  border-color: rgb(103 232 249);
+  background: rgba(21, 81, 77, 0.7);
+  color: rgb(207 250 254);
+}
+.battle-board {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+.combatant,
+.battle-field {
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+.combatant {
+  border: 1px solid rgba(120, 113, 108, 0.55);
+  background: rgba(25, 27, 24, 0.96);
+}
+.combatant-enemy {
+  border-color: rgba(251, 113, 133, 0.55);
+}
+.combatant-player {
+  border-color: rgba(103, 232, 249, 0.55);
+}
+.battle-field {
+  display: flex;
+  min-height: 16rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(253, 230, 138, 0.4);
+  background: rgba(37, 32, 18, 0.8);
+}
+.battle-ring {
+  height: 7.5rem;
+  width: 7.5rem;
+  border: 1rem solid rgba(103, 232, 249, 0.38);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1rem rgba(253, 230, 138, 0.12);
+}
+.hand-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+.hand-card {
+  min-height: 10rem;
+  border: 1px solid rgba(103, 232, 249, 0.42);
+  border-radius: 8px;
+  background: rgba(18, 31, 29, 0.95);
+  padding: 0.8rem;
+}
+@media (min-width: 900px) {
+  .battle-board {
+    grid-template-columns: minmax(14rem, 0.7fr) minmax(18rem, 1fr) minmax(14rem, 0.7fr);
+    align-items: stretch;
+  }
+}
+@media (max-width: 640px) {
+  .title-scene {
+    background-position: 62% center;
+  }
+  .deck-table th,
+  .deck-table td {
+    padding: 0.65rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
