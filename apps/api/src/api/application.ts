@@ -92,20 +92,23 @@ export class ApiApplication {
   }
 
   private async listCards(): Promise<ApiResponse> {
-    const cards = await this.prisma.cardVersion.findMany({
-      orderBy: [{ cardId: 'asc' }, { version: 'desc' }],
-      select: { cardId: true, version: true, definition: true },
-    });
+    const cards = sortVersionedCards(
+      await this.prisma.cardVersion.findMany({
+        orderBy: { cardId: 'asc' },
+        select: { cardId: true, version: true, definition: true },
+      }),
+    );
     return { status: 200, body: { cards } };
   }
 
   private async getCard(cardId: string): Promise<ApiResponse> {
-    const card = await this.prisma.cardVersion.findFirst({
-      where: { cardId },
-      orderBy: { version: 'desc' },
-      select: { cardId: true, version: true, definition: true },
-    });
-    return card === null
+    const [card] = sortVersionedCards(
+      await this.prisma.cardVersion.findMany({
+        where: { cardId },
+        select: { cardId: true, version: true, definition: true },
+      }),
+    );
+    return card === undefined
       ? { status: 404, body: { error: 'CARD_NOT_FOUND' } }
       : { status: 200, body: card };
   }
@@ -321,6 +324,33 @@ export class ApiApplication {
 
 class UnauthorizedError extends Error {}
 class BadRequestError extends Error {}
+
+function sortVersionedCards<T extends { readonly cardId: string; readonly version: string }>(
+  cards: readonly T[],
+): T[] {
+  return [...cards].sort((left, right) => {
+    const cardIdOrder = left.cardId.localeCompare(right.cardId);
+    if (cardIdOrder !== 0) return cardIdOrder;
+    return compareSemanticVersions(right.version, left.version);
+  });
+}
+
+function compareSemanticVersions(left: string, right: string): number {
+  const leftParts = parseSemanticVersion(left);
+  const rightParts = parseSemanticVersion(right);
+  if (leftParts === undefined || rightParts === undefined) return left.localeCompare(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function parseSemanticVersion(version: string): number[] | undefined {
+  const parts = version.split('.').map((part) => Number(part));
+  return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : undefined;
+}
 
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value))

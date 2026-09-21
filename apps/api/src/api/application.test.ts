@@ -4,6 +4,51 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('sorts listCards responses by numeric semantic version for the same card', async () => {
+    const application = new ApiApplication({
+      cardVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          { cardId: 'sword_strike', version: '1.2.0', definition: { id: 'older' } },
+          { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+        ]),
+      },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({ method: 'GET', path: '/api/v1/cards', headers: {} });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        cards: [
+          { cardId: 'sword_strike', version: '1.10.0' },
+          { cardId: 'sword_strike', version: '1.2.0' },
+        ],
+      },
+    });
+  });
+
+  it('returns the numerically latest card version for card detail requests', async () => {
+    const application = new ApiApplication({
+      cardVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          { cardId: 'sword_strike', version: '1.2.0', definition: { id: 'older' } },
+          { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+        ]),
+      },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/cards/sword_strike',
+      headers: {},
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+    });
+  });
+
   it('accepts the player header with any casing', async () => {
     const findUnique = vi.fn().mockResolvedValue({ id: 'player-1' });
     const application = new ApiApplication({

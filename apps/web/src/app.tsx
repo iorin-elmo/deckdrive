@@ -516,7 +516,7 @@ function DeckDetailPage() {
                 <tr key={item.cardVersionId}>
                   <td>
                     <Link
-                      to={`/cards/${item.cardVersion.cardId}`}
+                      to={cardDetailHref(item.cardVersion)}
                       className="font-semibold text-cyan-100 hover:text-cyan-200"
                     >
                       {item.cardVersion.definition.name}
