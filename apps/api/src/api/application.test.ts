@@ -49,4 +49,42 @@ describe('ApiApplication authentication', () => {
       }),
     ).resolves.toEqual({ status: 404, body: { error: 'NOT_FOUND' } });
   });
+
+  it('uses the stored CardDefinition ID when creating CPU card instances', async () => {
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      deck: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'deck-1',
+          cardDataVersion: '1.0.0',
+          cards: [
+            {
+              quantity: 1,
+              position: 0,
+              cardVersion: {
+                cardId: 'database-card-id',
+                definition: {
+                  id: 'engine-definition-id',
+                  cost: 1,
+                  effects: [{ type: 'DAMAGE', amount: 1, target: 'ENEMY' }],
+                },
+              },
+            },
+          ],
+        }),
+      },
+      match: { create: vi.fn() },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({
+      method: 'POST',
+      path: '/api/v1/matches',
+      headers: { 'x-deckdrive-player-id': 'player-1' },
+      body: { deckId: 'deck-1', difficulty: 'EASY' },
+    });
+
+    expect(response.status).toBe(201);
+    const state = (response.body as { state: { players: { hand: unknown[] }[] } }).state;
+    expect(state.players[0]?.hand[0]).toMatchObject({ definitionId: 'engine-definition-id' });
+  });
 });

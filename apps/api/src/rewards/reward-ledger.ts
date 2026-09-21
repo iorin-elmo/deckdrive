@@ -57,6 +57,9 @@ function assertSameGrant(entry: RewardLedgerEntry, grant: RewardGrant): void {
 }
 
 function validateGrant(grant: RewardGrant): void {
+  if (grant.playerId.trim().length === 0) {
+    throw new RewardValidationError('A player ID is required.');
+  }
   if (!Number.isInteger(grant.amount) || grant.amount <= 0) {
     throw new RewardValidationError('Reward amounts must be positive integers.');
   }

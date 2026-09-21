@@ -26,6 +26,22 @@ class InMemoryLedger {
 }
 
 describe('RewardService', () => {
+  it('rejects an empty player ID before accessing the ledger', async () => {
+    const ledger = new InMemoryLedger();
+    const service = new RewardService(ledger);
+
+    await expect(
+      service.grant({
+        playerId: ' ',
+        currency: 'GEM',
+        amount: 10,
+        reason: 'CPU_MATCH_WIN',
+        idempotencyKey: 'match:1:reward',
+      }),
+    ).rejects.toThrow('player ID');
+    expect(ledger.entries).toHaveLength(0);
+  });
+
   it('writes one ledger entry when a grant is retried', async () => {
     const ledger = new InMemoryLedger();
     const service = new RewardService(ledger);

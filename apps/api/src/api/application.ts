@@ -199,13 +199,13 @@ export class ApiApplication {
       include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
     if (deck === null) return { status: 404, body: { error: 'DECK_NOT_FOUND' } };
-    const cards = deck.cards.flatMap((deckCard) =>
-      Array.from({ length: deckCard.quantity }, (_, index) => ({
+    const cards = deck.cards.flatMap((deckCard) => {
+      const definition = toEngineDefinition(deckCard.cardVersion.definition);
+      return Array.from({ length: deckCard.quantity }, (_, index) => ({
         id: `${deckCard.cardVersion.cardId}-${String(deckCard.position)}-${String(index)}`,
-        definitionId: deckCard.cardVersion.cardId,
-      })),
-    );
-    deck.cards.forEach((deckCard) => toEngineDefinition(deckCard.cardVersion.definition));
+        definitionId: definition.id,
+      }));
+    });
     const matchId = randomUUID();
     const cpuId = `cpu:${matchId}`;
     const state = createInitialBattleState({
@@ -353,7 +353,9 @@ function deckLimit(value: Prisma.JsonValue): number | null {
   return typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value) &&
-    typeof value.deckLimit === 'number'
+    typeof value.deckLimit === 'number' &&
+    Number.isInteger(value.deckLimit) &&
+    value.deckLimit > 0
     ? value.deckLimit
     : null;
 }
