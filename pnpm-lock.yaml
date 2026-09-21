@@ -141,6 +141,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@deck-drive/game-engine':
+        specifier: workspace:*
+        version: link:../../packages/game-engine
       '@prisma/adapter-pg':
         specifier: 7.10.0
         version: 7.10.0
