@@ -280,6 +280,6 @@ export const previewApi: DeckDriveClient = {
   },
   async match(_playerId, matchId) {
     const state = previewBattle(matchId);
-    return { id: matchId, status: 'IN_PROGRESS', initialState: state, finalState: state };
+    return { id: matchId, status: 'IN_PROGRESS', initialState: state, finalState: null };
   },
 };

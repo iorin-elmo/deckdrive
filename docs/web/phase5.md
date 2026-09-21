@@ -11,6 +11,7 @@ With local PostgreSQL running, migrate and seed the development database, then
 start the API before the web client:
 
 ```powershell
+corepack pnpm --filter @deck-drive/api prisma:generate
 corepack pnpm --filter @deck-drive/api prisma:migrate:dev
 corepack pnpm --filter @deck-drive/api prisma:seed
 corepack pnpm --filter @deck-drive/api dev
@@ -53,8 +54,9 @@ motion preferences.
 
 Phase 4 exposes CPU match creation and match state retrieval, but no
 player-action endpoint. The battle screen therefore renders the server-returned
-state without inventing client-authoritative actions. Interactive turn controls
-belong with the later real-time battle protocol.
+state without inventing client-authoritative actions. The CPU profile is sent
+when a match is created, but it does not affect the returned initial state until
+the later player-action and CPU-turn protocol is available.
 
 ## Verification
 

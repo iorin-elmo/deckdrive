@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CardSummary } from './api.js';
-import { cardDetailHref, selectCardSummary } from './app.js';
+import { ApiError, type CardSummary } from './api.js';
+import { canOpenOfflinePreview, cardDetailHref, selectCardSummary } from './app.js';
 
 const cards: readonly CardSummary[] = [
   {
@@ -52,5 +52,14 @@ describe('selectCardSummary', () => {
     expect(selectCardSummary(cards, 'sword_strike', null)).toMatchObject({
       version: '1.0.0',
     });
+  });
+});
+
+describe('canOpenOfflinePreview', () => {
+  it('only enables the fallback for unavailable or failed services', () => {
+    expect(canOpenOfflinePreview(new ApiError(0, 'API_UNAVAILABLE'))).toBe(true);
+    expect(canOpenOfflinePreview(new ApiError(500, 'INTERNAL_ERROR'))).toBe(true);
+    expect(canOpenOfflinePreview(new ApiError(400, 'INVALID_REQUEST'))).toBe(false);
+    expect(canOpenOfflinePreview(new ApiError(404, 'NOT_FOUND'))).toBe(false);
   });
 });

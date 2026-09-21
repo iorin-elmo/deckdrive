@@ -242,14 +242,14 @@ select {
   border-radius: 6px;
   padding: 0.65rem;
 }
-.metric dt {
+.metric-label {
   color: rgb(168 162 158);
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.metric dd {
+.metric-value {
   margin: 0.2rem 0 0;
   color: rgb(250 250 249);
   font-size: 1.05rem;

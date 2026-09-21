@@ -168,13 +168,17 @@ function LoginPage() {
             />
           </label>
           {login.isError ? (
-            <ApiFailure
-              error={login.error}
-              onPreview={() => {
-                enablePreview();
-                navigate('/home');
-              }}
-            />
+            canOpenOfflinePreview(login.error) ? (
+              <ApiFailure
+                error={login.error}
+                onPreview={() => {
+                  enablePreview();
+                  navigate('/home');
+                }}
+              />
+            ) : (
+              <ApiFailure error={login.error} />
+            )
           ) : null}
           <ActionButton className="w-full" type="submit" disabled={login.isPending}>
             {login.isPending ? (
@@ -565,6 +569,7 @@ function CpuSetupPage() {
   const queryDeck = new URLSearchParams(location.search).get('deck');
   const [deckId, setDeckId] = useState(queryDeck ?? '');
   const [difficulty, setDifficulty] = useState<CpuMatch['difficulty']>('NORMAL');
+  const selectedDeck = decks.data?.some((deck) => deck.id === deckId) ?? false;
   const start = useMutation({
     mutationFn: () => client.startCpuMatch(playerId, deckId, difficulty),
     onSuccess: (match) => navigate(`/battle/cpu/${match.id}`, { state: { match } }),
@@ -574,27 +579,42 @@ function CpuSetupPage() {
       <PageHeading
         eyebrow="CPU PRACTICE"
         title="Set the challenge"
-        description="Choose a saved deck and difficulty. The server remains authoritative for match creation."
+        description="Choose a saved deck and a CPU profile. The server remains authoritative for match creation."
       />
       <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <form
           className="surface-panel p-6"
           onSubmit={(event) => {
             event.preventDefault();
+            if (!selectedDeck) return;
             start.mutate();
           }}
         >
-          <label className="field-label">
-            Deck
-            <select value={deckId} onChange={(event) => setDeckId(event.target.value)} required>
-              <option value="">Choose a deck</option>
-              {decks.data?.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name} ({String(deckCardTotal(deck))}/30)
-                </option>
-              ))}
-            </select>
-          </label>
+          {decks.data?.length === 0 ? (
+            <AsyncNotice kind="empty" title="No decks available">
+              Create a valid deck through the API before starting CPU practice.
+              <Link className="quiet-link mt-3" to="/decks">
+                Open decks
+              </Link>
+            </AsyncNotice>
+          ) : (
+            <label className="field-label">
+              Deck
+              <select
+                value={deckId}
+                onChange={(event) => setDeckId(event.target.value)}
+                disabled={decks.isLoading || decks.isError}
+                required
+              >
+                <option value="">Choose a deck</option>
+                {decks.data?.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name} ({String(deckCardTotal(deck))}/30)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {decks.isError ? (
             <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
           ) : null}
@@ -621,7 +641,7 @@ function CpuSetupPage() {
           <ActionButton
             className="mt-7 w-full"
             type="submit"
-            disabled={deckId.length === 0 || start.isPending}
+            disabled={!selectedDeck || start.isPending}
           >
             <Swords size={18} aria-hidden="true" />
             {start.isPending ? 'Creating match' : 'Enter CPU arena'}
@@ -629,10 +649,11 @@ function CpuSetupPage() {
         </form>
         <article className="arena-panel min-h-80 p-6 sm:p-8">
           <p className="eyebrow">MATCH FORMAT</p>
-          <h2 className="mt-2 text-3xl font-black">One deck. Four tempos.</h2>
+          <h2 className="mt-2 text-3xl font-black">Match setup</h2>
           <p className="mt-4 max-w-md leading-7 text-stone-200">
-            Difficulty controls the server CPU strategy. The client displays the returned state and
-            never chooses actions for either side.
+            The selected CPU profile is sent with match creation. The current API returns the
+            initial state and does not execute CPU turns yet, so the profile does not alter this
+            screen's state.
           </p>
           <ul className="mt-7 space-y-3 text-sm text-stone-200">
             <li className="flex gap-3">
@@ -641,7 +662,7 @@ function CpuSetupPage() {
             </li>
             <li className="flex gap-3">
               <BadgeCheck size={18} className="text-cyan-200" aria-hidden="true" />
-              Engine-validated actions
+              Server-created initial state
             </li>
             <li className="flex gap-3">
               <BadgeCheck size={18} className="text-cyan-200" aria-hidden="true" />
@@ -866,12 +887,12 @@ function CardDetail({ card }: { readonly card: CardSummary }) {
         <p className="eyebrow mt-8">CARD DETAIL</p>
         <h1 className="mt-2 text-4xl font-black">{definition.name}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-8 text-stone-200">{definition.description}</p>
-        <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Metric label="Class" value={definition.class} />
           <Metric label="Type" value={definition.type} />
           <Metric label="Rarity" value={definition.rarity} />
           <Metric label="Version" value={card.version} />
-        </dl>
+        </div>
       </article>
     </section>
   );
@@ -951,10 +972,14 @@ function PageHeading({
 function Metric({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div className="metric">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
+      <p className="metric-label">{label}</p>
+      <p className="metric-value">{value}</p>
     </div>
   );
+}
+
+export function canOpenOfflinePreview(error: Error): boolean {
+  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
 }
 
 function LoadingNotice({ title }: { readonly title: string }) {

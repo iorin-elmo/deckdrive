@@ -85,9 +85,15 @@ describe('DeckDriveApi', () => {
     if (deck === undefined) throw new Error('Expected the preview deck');
 
     const match = await previewApi.startCpuMatch('preview-player', deck.id, 'NORMAL');
+    const persistedMatch = await previewApi.match('preview-player', match.id);
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });
+    expect(persistedMatch).toMatchObject({
+      status: 'IN_PROGRESS',
+      initialState: { matchId: 'preview-cpu-match' },
+      finalState: null,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
