@@ -49,6 +49,32 @@ describe('ApiApplication authentication', () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
+  it('rejects oversized decks before querying the player collection', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      playerCard: { findMany },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Oversized',
+          cardDataVersion: '1.0.0',
+          cards: Array.from({ length: 31 }, (_, position) => ({
+            cardVersionId: `card-${String(position)}`,
+            quantity: 1,
+            position,
+          })),
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('hides development authentication in production', async () => {
     const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'production' });
 

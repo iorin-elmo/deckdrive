@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { finished } from 'node:stream/promises';
 
 import { ApiApplication, type ApiRequest } from './application.js';
 
@@ -25,7 +26,7 @@ export function createApiHttpServer(application: ApiApplication): Server {
       if (response.headersSent) return;
       if (error instanceof HttpRequestError) {
         if (error.status === 413) {
-          request.resume();
+          await drainRequestBody(request);
           response.setHeader('connection', 'close');
         }
         writeJson(response, error.status, { error: error.code });
@@ -44,7 +45,7 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   }
   const chunks: Buffer[] = [];
   let length = 0;
-  for await (const chunk of request) {
+  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     const buffer = Buffer.from(chunk);
     length += buffer.length;
     if (length > maximumRequestBodyBytes) {
@@ -59,6 +60,11 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     if (error instanceof SyntaxError) throw new HttpRequestError(400, 'INVALID_REQUEST');
     throw error;
   }
+}
+
+async function drainRequestBody(request: IncomingMessage): Promise<void> {
+  request.resume();
+  await finished(request);
 }
 
 class HttpRequestError extends Error {

@@ -17,7 +17,8 @@ body exceeding the limit receives `413` before the controller is invoked.
 
 - `GET /api/v1/cards` and `GET /api/v1/cards/:id` expose versioned card data.
 - `GET /api/v1/me` returns the authenticated player and derived ledger balances.
-- `GET` and `POST /api/v1/decks`, plus `PUT` and `DELETE /api/v1/decks/:id`, manage only the caller's decks.
+- `GET /api/v1/decks`, `POST /api/v1/decks`, `PUT /api/v1/decks/:id`, and
+  `DELETE /api/v1/decks/:id` manage only the caller's decks.
 - `POST /api/v1/matches` creates a CPU match from an owned deck and accepts
   `EASY`, `NORMAL`, `HARD`, or `EXPERT`; `GET /api/v1/matches/:id` is owner-only.
 

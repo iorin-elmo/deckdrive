@@ -10,6 +10,7 @@ import {
 import type { CpuDifficulty } from '../cpu/strategy.js';
 import {
   DeckValidationError,
+  deckSize,
   validateDeckCards,
   type DeckCardInput,
 } from '../decks/deck-validation.js';
@@ -259,6 +260,8 @@ export class ApiApplication {
     playerId: string,
     cards: readonly DeckCardInput[],
   ): Promise<void> {
+    if (cards.length > deckSize)
+      throw new BadRequestError(`A deck cannot contain more than ${deckSize} card entries.`);
     const ids = cards.map((card) => card.cardVersionId);
     if (new Set(ids).size !== ids.length)
       throw new BadRequestError('Each card version may appear once in a deck.');
