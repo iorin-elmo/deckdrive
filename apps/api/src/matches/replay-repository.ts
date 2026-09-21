@@ -36,6 +36,15 @@ export class MatchReplayRepository {
     }
 
     await this.prisma.$transaction(async (transaction) => {
+      const cardVersionCount = await transaction.cardVersion.count({
+        where: { version: replay.cardDataVersion },
+      });
+      if (cardVersionCount === 0) {
+        throw new ReplayPersistenceError(
+          `No card definitions are available for card data version ${replay.cardDataVersion}.`,
+        );
+      }
+
       await transaction.match.create({
         data: {
           id: replay.matchId,

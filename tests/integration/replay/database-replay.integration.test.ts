@@ -34,11 +34,14 @@ const testDefinitions: readonly CardDefinition[] = definitions.map((definition) 
   id: `${fixtureId}-${definition.id}`,
 }));
 const replay = createReplay();
+const rollbackReplay = createReplay(`${fixtureId}-rollback`);
+const rollbackTriggerName = `rbt_${randomUUID().replaceAll('-', '')}`;
+const rollbackFunctionName = `${rollbackTriggerName}_fn`;
 
-function createReplay(): Replay {
+function createReplay(matchId = fixtureId): Replay {
   const result = recordReplay(
     createInitialBattleState({
-      matchId: fixtureId as MatchId,
+      matchId: matchId as MatchId,
       seed: fixture.seed,
       engineVersion: fixture.engineVersion,
       rulesVersion: fixture.rulesVersion,
@@ -79,7 +82,9 @@ describe('database replay adapter', () => {
   });
 
   afterAll(async () => {
-    await prisma.match.deleteMany({ where: { id: replay.matchId } });
+    await prisma.match.deleteMany({
+      where: { id: { in: [replay.matchId, rollbackReplay.matchId] } },
+    });
     await prisma.cardVersion.deleteMany({
       where: { cardId: { in: testDefinitions.map((definition) => definition.id) } },
     });
@@ -96,5 +101,43 @@ describe('database replay adapter', () => {
 
     expect(restored).toEqual(replay);
     expect(verifyReplay(restored, testDefinitions)).toEqual({ ok: true });
+  });
+
+  it('rolls back every replay row when a child write fails', async () => {
+    const escapedMatchId = rollbackReplay.matchId.replaceAll("'", "''");
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION "${rollbackFunctionName}"() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced replay child write failure';
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER "${rollbackTriggerName}"
+      BEFORE INSERT ON "match_actions"
+      FOR EACH ROW
+      WHEN (NEW."match_id" = '${escapedMatchId}' AND NEW."sequence" = 2)
+      EXECUTE FUNCTION "${rollbackFunctionName}"();
+    `);
+
+    try {
+      await expect(repository.save(rollbackReplay, testDefinitions)).rejects.toThrow();
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS "${rollbackTriggerName}" ON "match_actions"`,
+      );
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${rollbackFunctionName}"()`);
+    }
+
+    const [match, actionCount, eventCount, snapshotCount] = await Promise.all([
+      prisma.match.findUnique({ where: { id: rollbackReplay.matchId } }),
+      prisma.matchAction.count({ where: { matchId: rollbackReplay.matchId } }),
+      prisma.matchEvent.count({ where: { matchId: rollbackReplay.matchId } }),
+      prisma.matchSnapshot.count({ where: { matchId: rollbackReplay.matchId } }),
+    ]);
+    expect(match).toBeNull();
+    expect(actionCount).toBe(0);
+    expect(eventCount).toBe(0);
+    expect(snapshotCount).toBe(0);
   });
 });

@@ -6,6 +6,27 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { MatchReplayRepository, ReplayPersistenceError } from './replay-repository.js';
 
 describe('MatchReplayRepository', () => {
+  it('rejects saving a replay when its card-data version is unavailable', async () => {
+    const replay = createZeroActionReplay();
+    const cardVersionCount = vi.fn().mockResolvedValue(0);
+    const createMatch = vi.fn();
+    const transaction = {
+      cardVersion: { count: cardVersionCount },
+      match: { create: createMatch },
+    };
+    const prisma = {
+      $transaction: vi.fn((callback) => callback(transaction)),
+    } as unknown as PrismaClient;
+
+    await expect(new MatchReplayRepository(prisma).save(replay)).rejects.toThrow(
+      ReplayPersistenceError,
+    );
+    expect(cardVersionCount).toHaveBeenCalledWith({
+      where: { version: replay.cardDataVersion },
+    });
+    expect(createMatch).not.toHaveBeenCalled();
+  });
+
   it('rejects a zero-action replay when its card-data version is unavailable', async () => {
     const replay = createZeroActionReplay();
     const findCardVersions = vi.fn().mockResolvedValue([]);
