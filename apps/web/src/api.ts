@@ -89,7 +89,11 @@ export class ApiError extends Error {
 }
 
 export class DeckDriveApi implements DeckDriveClient {
-  constructor(private readonly baseUrl = '') {}
+  private readonly baseUrl: string;
+
+  constructor(baseUrl = '') {
+    this.baseUrl = baseUrl.replace(/\/+$/u, '');
+  }
 
   async developmentLogin(email: string, displayName: string): Promise<{ playerId: string }> {
     return this.request('/api/v1/auth/development', {

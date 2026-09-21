@@ -223,11 +223,14 @@ function AuthenticatedLayout() {
             tone="quiet"
             className="sm:hidden"
             aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-controls="primary-navigation"
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
           >
             {menuOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
           </ActionButton>
           <nav
+            id="primary-navigation"
             aria-label="Primary navigation"
             className={classNames(
               'items-center gap-1 sm:flex',

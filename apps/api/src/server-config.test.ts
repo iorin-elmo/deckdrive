@@ -36,12 +36,13 @@ describe('apiCorsOrigins', () => {
 });
 
 describe('apiHost', () => {
-  it('binds to all interfaces by default', () => {
-    expect(apiHost(undefined)).toBe('0.0.0.0');
+  it('binds to loopback by default', () => {
+    expect(apiHost(undefined)).toBe('127.0.0.1');
   });
 
   it('accepts a configured host value', () => {
     expect(apiHost(' 127.0.0.1 ')).toBe('127.0.0.1');
+    expect(apiHost('0.0.0.0')).toBe('0.0.0.0');
   });
 
   it('rejects an explicit empty host', () => {

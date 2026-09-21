@@ -31,6 +31,18 @@ describe('DeckDriveApi', () => {
     );
   });
 
+  it('normalizes a trailing slash in the configured API origin', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ cards: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new DeckDriveApi('https://api.example.test/').cards();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/api/v1/cards',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('sends the player header and body for a CPU match request', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'match-1', difficulty: 'NORMAL', state: {} }), {

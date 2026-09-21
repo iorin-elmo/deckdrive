@@ -7,7 +7,7 @@ export function apiPort(value: string | undefined): number {
 }
 
 export function apiHost(value: string | undefined): string {
-  if (value === undefined || value.length === 0) return '0.0.0.0';
+  if (value === undefined || value.length === 0) return '127.0.0.1';
   const host = value.trim();
   if (host.length === 0)
     throw new Error('HOST must include at least one non-whitespace character.');
