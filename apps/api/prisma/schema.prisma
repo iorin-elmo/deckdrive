@@ -13,6 +13,11 @@ enum MatchStatus {
   ABANDONED
 }
 
+enum Currency {
+  GEM
+  EXCHANGE_POINT
+}
+
 model User {
   id          String   @id @default(uuid()) @db.Uuid
   email       String   @unique @db.Citext
@@ -33,8 +38,24 @@ model Player {
   cards     PlayerCard[]
   decks     Deck[]
   matches   MatchPlayer[]
+  currencyTransactions CurrencyTransaction[]
 
   @@map("players")
+}
+
+model CurrencyTransaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  currency       Currency
+  amount         Int
+  reason         String
+  idempotencyKey String   @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, createdAt])
+  @@map("currency_transactions")
 }
 
 model Card {
