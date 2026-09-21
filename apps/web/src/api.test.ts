@@ -68,4 +68,10 @@ describe('DeckDriveApi', () => {
       new ApiError(401, 'UNAUTHORIZED'),
     );
   });
+
+  it('identifies an unavailable API without exposing a transport error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('connection refused')));
+
+    await expect(new DeckDriveApi().cards()).rejects.toEqual(new ApiError(0, 'API_UNAVAILABLE'));
+  });
 });

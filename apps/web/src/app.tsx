@@ -894,9 +894,13 @@ function LoadingNotice({ title }: { readonly title: string }) {
 
 function ApiFailure({ error }: { readonly error: Error }) {
   const description =
-    error instanceof ApiError
-      ? `Request failed: ${error.code} (${String(error.status)}).`
-      : 'The service could not be reached.';
+    error instanceof ApiError && error.code === 'API_UNAVAILABLE'
+      ? 'The API is not running at the configured address.'
+      : error instanceof ApiError && error.code === 'REQUEST_FAILED'
+        ? 'The API proxy could not reach a running server.'
+        : error instanceof ApiError
+          ? `Request failed: ${error.code} (${String(error.status)}).`
+          : 'The service could not be reached.';
   return (
     <AsyncNotice kind="error" title="Unable to load this view">
       {description} Check that the API is running, then try again.

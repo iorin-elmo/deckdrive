@@ -7,9 +7,13 @@ primitives.
 
 ## Run locally
 
-Start the API on port 3000, then run:
+With local PostgreSQL running, migrate and seed the development database, then
+start the API before the web client:
 
 ```powershell
+corepack pnpm --filter @deck-drive/api prisma:migrate:dev
+corepack pnpm --filter @deck-drive/api prisma:seed
+corepack pnpm --filter @deck-drive/api dev
 corepack pnpm --filter @deck-drive/web dev
 ```
 

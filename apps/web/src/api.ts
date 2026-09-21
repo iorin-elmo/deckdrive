@@ -119,14 +119,19 @@ export class DeckDriveApi {
       readonly body?: unknown;
     } = {},
   ): Promise<Result> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: options.method ?? 'GET',
-      headers: {
-        ...(options.playerId === undefined ? {} : { 'X-Deckdrive-Player-Id': options.playerId }),
-        ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: options.method ?? 'GET',
+        headers: {
+          ...(options.playerId === undefined ? {} : { 'X-Deckdrive-Player-Id': options.playerId }),
+          ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      });
+    } catch {
+      throw new ApiError(0, 'API_UNAVAILABLE');
+    }
     const body: unknown = response.status === 204 ? null : await response.json().catch(() => null);
     if (!response.ok) {
       const code =
