@@ -14,7 +14,7 @@ player before reading or changing data.
 
 - `GET /api/v1/cards` and `GET /api/v1/cards/:id` expose versioned card data.
 - `GET /api/v1/me` returns the authenticated player and derived ledger balances.
-- `GET`, `POST`, `PUT`, and `DELETE /api/v1/decks` manage only the caller's decks.
+- `GET` and `POST /api/v1/decks`, plus `PUT` and `DELETE /api/v1/decks/:id`, manage only the caller's decks.
 - `POST /api/v1/matches` creates a CPU match from an owned deck and accepts
   `EASY`, `NORMAL`, `HARD`, or `EXPERT`; `GET /api/v1/matches/:id` is owner-only.
 

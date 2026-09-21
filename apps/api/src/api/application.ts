@@ -3,9 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { createInitialBattleState } from '@deck-drive/game-engine';
 import type { CardDefinition, CardInstance, MatchId, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
-import { assertDevelopmentAuthentication } from '../auth/development-auth.js';
+import {
+  DevelopmentAuthenticationDisabledError,
+  assertDevelopmentAuthentication,
+} from '../auth/development-auth.js';
 import type { CpuDifficulty } from '../cpu/strategy.js';
-import { validateDeckCards, type DeckCardInput } from '../decks/deck-validation.js';
+import {
+  DeckValidationError,
+  validateDeckCards,
+  type DeckCardInput,
+} from '../decks/deck-validation.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -30,27 +37,28 @@ export class ApiApplication {
     try {
       const path = request.path;
       if (request.method === 'POST' && path === '/api/v1/auth/development') {
-        return this.developmentLogin(request.body);
+        return await this.developmentLogin(request.body);
       }
-      if (request.method === 'GET' && path === '/api/v1/cards') return this.listCards();
+      if (request.method === 'GET' && path === '/api/v1/cards') return await this.listCards();
       const cardId = path.match(/^\/api\/v1\/cards\/([^/]+)$/u)?.[1];
-      if (request.method === 'GET' && cardId !== undefined) return this.getCard(cardId);
+      if (request.method === 'GET' && cardId !== undefined) return await this.getCard(cardId);
 
       const player = await this.requirePlayer(request);
-      if (request.method === 'GET' && path === '/api/v1/me') return this.me(player.id);
-      if (request.method === 'GET' && path === '/api/v1/decks') return this.listDecks(player.id);
+      if (request.method === 'GET' && path === '/api/v1/me') return await this.me(player.id);
+      if (request.method === 'GET' && path === '/api/v1/decks')
+        return await this.listDecks(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
-        return this.createDeck(player.id, request.body);
+        return await this.createDeck(player.id, request.body);
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       if (deckId !== undefined && request.method === 'PUT')
-        return this.updateDeck(player.id, deckId, request.body);
+        return await this.updateDeck(player.id, deckId, request.body);
       if (deckId !== undefined && request.method === 'DELETE')
-        return this.deleteDeck(player.id, deckId);
+        return await this.deleteDeck(player.id, deckId);
       if (request.method === 'POST' && path === '/api/v1/matches')
-        return this.startCpuMatch(player.id, request.body);
+        return await this.startCpuMatch(player.id, request.body);
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       if (matchId !== undefined && request.method === 'GET')
-        return this.getMatch(player.id, matchId);
+        return await this.getMatch(player.id, matchId);
       return { status: 404, body: { error: 'NOT_FOUND' } };
     } catch (error) {
       return this.errorResponse(error);
@@ -141,7 +149,7 @@ export class ApiApplication {
           })),
         },
       },
-      include: { cards: { orderBy: { position: 'asc' } } },
+      include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
     return { status: 201, body: deck };
   }
@@ -169,7 +177,7 @@ export class ApiApplication {
             })),
           },
         },
-        include: { cards: { orderBy: { position: 'asc' } } },
+        include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
       });
     });
     return { status: 200, body: updated };
@@ -246,25 +254,31 @@ export class ApiApplication {
   ): Promise<void> {
     const ids = cards.map((card) => card.cardVersionId);
     if (new Set(ids).size !== ids.length)
-      throw new Error('Each card version may appear once in a deck.');
+      throw new BadRequestError('Each card version may appear once in a deck.');
     const owned = await this.prisma.playerCard.findMany({
       where: { playerId, cardVersionId: { in: ids } },
       include: { cardVersion: { select: { definition: true } } },
     });
-    if (owned.length !== cards.length) throw new Error('Deck contains a card that is not owned.');
+    if (owned.length !== cards.length)
+      throw new BadRequestError('Deck contains a card that is not owned.');
     const byId = new Map(owned.map((card) => [card.cardVersionId, card]));
-    validateDeckCards(
-      cards.map((card) => {
-        const collectionCard = byId.get(card.cardVersionId);
-        if (collectionCard === undefined)
-          throw new Error('Deck contains a card that is not owned.');
-        return {
-          ...card,
-          ownedQuantity: collectionCard.quantity,
-          deckLimit: deckLimit(collectionCard.cardVersion.definition),
-        };
-      }),
-    );
+    try {
+      validateDeckCards(
+        cards.map((card) => {
+          const collectionCard = byId.get(card.cardVersionId);
+          if (collectionCard === undefined)
+            throw new BadRequestError('Deck contains a card that is not owned.');
+          return {
+            ...card,
+            ownedQuantity: collectionCard.quantity,
+            deckLimit: deckLimit(collectionCard.cardVersion.definition),
+          };
+        }),
+      );
+    } catch (error) {
+      if (error instanceof DeckValidationError) throw new BadRequestError(error.message);
+      throw error;
+    }
   }
 
   private async requirePlayer(request: ApiRequest) {
@@ -280,22 +294,25 @@ export class ApiApplication {
 
   private errorResponse(error: unknown): ApiResponse {
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
-    if (error instanceof Error)
-      return { status: 400, body: { error: 'INVALID_REQUEST', message: error.message } };
+    if (error instanceof BadRequestError)
+      return { status: 400, body: { error: 'INVALID_REQUEST' } };
+    if (error instanceof DevelopmentAuthenticationDisabledError)
+      return { status: 404, body: { error: 'NOT_FOUND' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };
   }
 }
 
 class UnauthorizedError extends Error {}
+class BadRequestError extends Error {}
 
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error('Request body must be an object.');
+    throw new BadRequestError('Request body must be an object.');
   return value as Record<string, unknown>;
 }
 function string(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
-    throw new Error(`${field} is required.`);
+    throw new BadRequestError(`${field} is required.`);
   return value;
 }
 function header(
@@ -306,7 +323,7 @@ function header(
 }
 function deckInput(body: unknown) {
   const value = object(body);
-  if (!Array.isArray(value.cards)) throw new Error('cards must be an array.');
+  if (!Array.isArray(value.cards)) throw new BadRequestError('cards must be an array.');
   return {
     name: string(value.name, 'name'),
     cardDataVersion: string(value.cardDataVersion, 'cardDataVersion'),
@@ -324,13 +341,13 @@ function deckInput(body: unknown) {
 }
 function integer(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value))
-    throw new Error(`${field} must be an integer.`);
+    throw new BadRequestError(`${field} must be an integer.`);
   return value;
 }
 function cpuDifficulty(value: unknown): CpuDifficulty {
   if (value === 'EASY' || value === 'NORMAL' || value === 'HARD' || value === 'EXPERT')
     return value;
-  throw new Error('difficulty must be EASY, NORMAL, HARD, or EXPERT.');
+  throw new BadRequestError('difficulty must be EASY, NORMAL, HARD, or EXPERT.');
 }
 function deckLimit(value: Prisma.JsonValue): number | null {
   return typeof value === 'object' &&
