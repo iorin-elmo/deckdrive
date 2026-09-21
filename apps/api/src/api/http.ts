@@ -5,19 +5,23 @@ import { ApiApplication, type ApiRequest } from './application.js';
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(application: ApiApplication): Server {
   return createServer(async (request, response) => {
-    const apiRequest: ApiRequest = {
-      method: request.method ?? 'GET',
-      path: new URL(request.url ?? '/', 'http://localhost').pathname,
-      headers: Object.fromEntries(
-        Object.entries(request.headers).map(([name, value]) => [
-          name,
-          Array.isArray(value) ? value[0] : value,
-        ]),
-      ),
-      body: await readJsonBody(request),
-    };
-    const apiResponse = await application.handle(apiRequest);
-    writeJson(response, apiResponse.status, apiResponse.body);
+    try {
+      const apiRequest: ApiRequest = {
+        method: request.method ?? 'GET',
+        path: new URL(request.url ?? '/', 'http://localhost').pathname,
+        headers: Object.fromEntries(
+          Object.entries(request.headers).map(([name, value]) => [
+            name,
+            Array.isArray(value) ? value[0] : value,
+          ]),
+        ),
+        body: await readJsonBody(request),
+      };
+      const apiResponse = await application.handle(apiRequest);
+      writeJson(response, apiResponse.status, apiResponse.body);
+    } catch {
+      writeJson(response, 400, { error: 'INVALID_REQUEST' });
+    }
   });
 }
 

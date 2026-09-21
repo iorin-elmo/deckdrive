@@ -14,7 +14,8 @@ export function chooseCpuAction(
   const fallback = legalActions.find((action) => action.type === 'END_TURN');
   if (fallback === undefined) throw new Error('CPU has no legal action.');
 
-  if (difficulty === 'EASY') return legalActions[0] ?? fallback;
+  if (difficulty === 'EASY')
+    return legalActions.find((action) => action.type === 'PLAY_CARD') ?? fallback;
   const scored = legalActions.map((action) => ({
     action,
     score: scoreAction(state, action, definitions, difficulty),

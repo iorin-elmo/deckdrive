@@ -32,7 +32,18 @@ export class PrismaRewardLedger implements RewardLedgerRepository, RewardLedgerO
   }
 
   async insert(grant: RewardGrant): Promise<RewardLedgerEntry> {
-    return this.toEntry(await this.prisma.currencyTransaction.create({ data: grant }))!;
+    return this.toEntry(
+      await this.prisma.currencyTransaction.upsert({
+        where: {
+          playerId_idempotencyKey: {
+            playerId: grant.playerId,
+            idempotencyKey: grant.idempotencyKey,
+          },
+        },
+        update: {},
+        create: grant,
+      }),
+    )!;
   }
 
   private toEntry(entry: Awaited<ReturnType<LedgerClient['currencyTransaction']['findUnique']>>) {

@@ -268,7 +268,7 @@ export class ApiApplication {
   }
 
   private async requirePlayer(request: ApiRequest) {
-    const playerId = request.headers['x-deckdrive-player-id'];
+    const playerId = header(request.headers, 'x-deckdrive-player-id');
     if (playerId === undefined || playerId.length === 0) throw new UnauthorizedError();
     const player = await this.prisma.player.findUnique({
       where: { id: playerId },
@@ -297,6 +297,12 @@ function string(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new Error(`${field} is required.`);
   return value;
+}
+function header(
+  headers: Readonly<Record<string, string | undefined>>,
+  name: string,
+): string | undefined {
+  return Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
 }
 function deckInput(body: unknown) {
   const value = object(body);

@@ -51,8 +51,20 @@ export class RewardService {
         }
         return existing;
       }
-      return ledger.insert(grant);
+      const inserted = await ledger.insert(grant);
+      assertSameGrant(inserted, grant);
+      return inserted;
     });
+  }
+}
+
+function assertSameGrant(entry: RewardLedgerEntry, grant: RewardGrant): void {
+  if (
+    entry.currency !== grant.currency ||
+    entry.amount !== grant.amount ||
+    entry.reason !== grant.reason
+  ) {
+    throw new RewardValidationError('Idempotency key was already used for a different reward.');
   }
 }
 

@@ -62,4 +62,25 @@ describe('RewardService', () => {
       }),
     ).rejects.toThrow('different reward');
   });
+
+  it('rejects a concurrent idempotency winner with a different payload', async () => {
+    const ledger = new InMemoryLedger();
+    const service = new RewardService(ledger);
+    ledger.findByIdempotencyKey = async () => null;
+    ledger.insert = async (grant) => ({
+      ...grant,
+      amount: 11,
+      id: 'concurrent-entry',
+      createdAt: new Date(0),
+    });
+    await expect(
+      service.grant({
+        playerId: 'player',
+        currency: 'GEM',
+        amount: 10,
+        reason: 'CPU_MATCH_WIN',
+        idempotencyKey: 'match:1:reward',
+      }),
+    ).rejects.toThrow('different reward');
+  });
 });

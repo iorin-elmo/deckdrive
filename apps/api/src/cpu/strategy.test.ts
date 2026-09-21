@@ -36,6 +36,10 @@ describe('CPU strategy', () => {
     },
   );
 
+  it('plays an available card on EASY instead of always ending the turn', () => {
+    expect(chooseCpuAction(state(), cpu, definitions, 'EASY')).toMatchObject({ type: 'PLAY_CARD' });
+  });
+
   it('does not invent actions when the CPU is not active', () => {
     expect(legalCpuActions(state(), player, definitions)).toEqual([]);
   });
