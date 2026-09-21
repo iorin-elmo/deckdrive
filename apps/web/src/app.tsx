@@ -997,7 +997,7 @@ export function isCpuReadyDeck(deck: Deck): boolean {
 }
 
 export function loginReturnPath(value: string | null): string {
-  return value !== null && /^\/(?!\/)/u.test(value) ? value : '/home';
+  return value !== null && /^\/(?!\/)[^\\]*$/u.test(value) ? value : '/home';
 }
 
 export function resultTitle(status: string | undefined): string {

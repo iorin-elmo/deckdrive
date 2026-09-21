@@ -96,6 +96,7 @@ describe('loginReturnPath', () => {
   it('preserves a local destination and rejects external return paths', () => {
     expect(loginReturnPath('/cards?version=1.0.0')).toBe('/cards?version=1.0.0');
     expect(loginReturnPath('//example.test')).toBe('/home');
+    expect(loginReturnPath('/\\example.test')).toBe('/home');
     expect(loginReturnPath(null)).toBe('/home');
   });
 });
