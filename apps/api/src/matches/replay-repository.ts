@@ -1,5 +1,5 @@
 import { replayFormatVersion, verifyReplay } from '@deck-drive/game-engine';
-import type { CardDefinition, CardDefinitionSource, Replay } from '@deck-drive/game-engine';
+import type { CardDefinition, Replay } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 
 export class ReplayNotFoundError extends Error {
@@ -27,21 +27,16 @@ export class UnsupportedReplayFormatError extends ReplayPersistenceError {
 export class MatchReplayRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async save(replay: Replay, definitions?: CardDefinitionSource): Promise<void> {
-    const verification = verifyReplay(replay, definitions);
-    if (!verification.ok) {
-      throw new ReplayPersistenceError(
-        `Cannot persist an invalid replay: ${verification.error.message}`,
-      );
-    }
-
+  async save(replay: Replay): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
-      const cardVersionCount = await transaction.cardVersion.count({
-        where: { version: replay.cardDataVersion },
-      });
-      if (cardVersionCount === 0) {
+      const definitions = await this.loadCardDefinitions(
+        replay.cardDataVersion,
+        transaction.cardVersion,
+      );
+      const verification = verifyReplay(replay, definitions);
+      if (!verification.ok) {
         throw new ReplayPersistenceError(
-          `No card definitions are available for card data version ${replay.cardDataVersion}.`,
+          `Cannot persist an invalid replay: ${verification.error.message}`,
         );
       }
 
@@ -112,7 +107,10 @@ export class MatchReplayRepository {
       throw new ReplayPersistenceError(`Persisted replay ${matchId} is incomplete.`);
     }
 
-    const definitions = await this.loadCardDefinitions(match.cardDataVersion);
+    const definitions = await this.loadCardDefinitions(
+      match.cardDataVersion,
+      this.prisma.cardVersion,
+    );
     const replay = {
       formatVersion: match.formatVersion,
       matchId: match.id,
@@ -142,8 +140,11 @@ export class MatchReplayRepository {
     return replay;
   }
 
-  private async loadCardDefinitions(cardDataVersion: string): Promise<readonly CardDefinition[]> {
-    const versions = await this.prisma.cardVersion.findMany({
+  private async loadCardDefinitions(
+    cardDataVersion: string,
+    cardVersion: Pick<PrismaClient['cardVersion'], 'findMany'>,
+  ): Promise<readonly CardDefinition[]> {
+    const versions = await cardVersion.findMany({
       where: { version: cardDataVersion },
       orderBy: { cardId: 'asc' },
       select: { definition: true },
@@ -167,13 +168,44 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
 }
 
 function isCardDefinition(value: unknown): value is CardDefinition {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value) || !Array.isArray(value.effects)) return false;
   return (
     typeof value.id === 'string' &&
-    typeof value.cost === 'number' &&
-    Array.isArray(value.effects) &&
-    value.effects.every((effect) => isRecord(effect) && typeof effect.type === 'string')
+    value.id.length > 0 &&
+    isNonNegativeInteger(value.cost) &&
+    value.effects.length > 0 &&
+    value.effects.every(isCardEffect)
   );
+}
+
+function isCardEffect(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  switch (value.type) {
+    case 'DAMAGE':
+      return (
+        isPositiveInteger(value.amount) && (value.target === 'SELF' || value.target === 'ENEMY')
+      );
+    case 'HEAL':
+    case 'GAIN_BLOCK':
+    case 'DRAW':
+      return isPositiveInteger(value.amount) && value.target === 'SELF';
+    case 'CUSTOM':
+      return (
+        typeof value.resolver === 'string' &&
+        value.resolver.trim().length > 0 &&
+        (value.target === 'SELF' || value.target === 'ENEMY')
+      );
+    default:
+      return false;
+  }
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

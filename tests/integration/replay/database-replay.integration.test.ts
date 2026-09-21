@@ -95,7 +95,7 @@ describe('database replay adapter', () => {
   });
 
   it('persists actions, events, and snapshots transactionally and reconstructs the replay', async () => {
-    await repository.save(replay, testDefinitions);
+    await repository.save(replay);
 
     const restored = await repository.load(replay.matchId);
 
@@ -121,7 +121,7 @@ describe('database replay adapter', () => {
     `);
 
     try {
-      await expect(repository.save(rollbackReplay, testDefinitions)).rejects.toThrow();
+      await expect(repository.save(rollbackReplay)).rejects.toThrow();
     } finally {
       await prisma.$executeRawUnsafe(
         `DROP TRIGGER IF EXISTS "${rollbackTriggerName}" ON "match_actions"`,
