@@ -60,10 +60,10 @@ export function App() {
     <Routes>
       <Route path="/" element={<TitlePage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/cards" element={<PublicCardsPage />} />
+      <Route path="/cards/:cardId" element={<PublicCardDetailPage />} />
       <Route element={<AuthenticatedLayout />}>
         <Route path="/home" element={<HomePage />} />
-        <Route path="/cards" element={<CardsPage />} />
-        <Route path="/cards/:cardId" element={<CardDetailPage />} />
         <Route path="/decks" element={<DecksPage />} />
         <Route path="/decks/new" element={<DeckBuilderPage />} />
         <Route path="/decks/:deckId" element={<DeckDetailPage />} />
@@ -202,6 +202,42 @@ function LoginPage() {
   );
 }
 
+function PublicCardLayout({ children }: { children: ReactNode }) {
+  const playerId = useSessionStore((state) => state.playerId);
+  return (
+    <div className="app-background min-h-screen text-stone-100">
+      <header className="border-b border-stone-800 bg-zinc-950/90">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          <Link to="/" className="font-black tracking-[0.16em] text-cyan-200">
+            DECKDRIVE
+          </Link>
+          <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
+            {playerId === null ? 'Development login' : 'Enter game'}
+            <ChevronRight size={16} aria-hidden="true" />
+          </Link>
+        </div>
+      </header>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">{children}</main>
+    </div>
+  );
+}
+
+function PublicCardsPage() {
+  return (
+    <PublicCardLayout>
+      <CardsPage />
+    </PublicCardLayout>
+  );
+}
+
+function PublicCardDetailPage() {
+  return (
+    <PublicCardLayout>
+      <CardDetailPage />
+    </PublicCardLayout>
+  );
+}
+
 function AuthenticatedLayout() {
   const location = useLocation();
   const playerId = useSessionStore((state) => state.playerId);
@@ -225,6 +261,11 @@ function AuthenticatedLayout() {
           <Link to="/home" className="font-black tracking-[0.16em] text-cyan-200">
             DECKDRIVE
           </Link>
+          {previewMode ? (
+            <span className="ml-auto rounded border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100 sm:hidden">
+              Offline preview
+            </span>
+          ) : null}
           <ActionButton
             tone="quiet"
             className="sm:hidden"
@@ -282,8 +323,6 @@ function RoutesContent() {
   return (
     <Routes>
       <Route path="/home" element={<HomePage />} />
-      <Route path="/cards" element={<CardsPage />} />
-      <Route path="/cards/:cardId" element={<CardDetailPage />} />
       <Route path="/decks" element={<DecksPage />} />
       <Route path="/decks/new" element={<DeckBuilderPage />} />
       <Route path="/decks/:deckId" element={<DeckDetailPage />} />

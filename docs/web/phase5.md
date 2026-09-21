@@ -34,7 +34,7 @@ corepack pnpm --filter @deck-drive/web dev
 ```
 
 Vite serves the client at `http://localhost:5173` and proxies `/api` to
-`http://localhost:3000`. Set `VITE_API_URL` to use an explicitly configured
+`http://127.0.0.1:3000`. Set `VITE_API_URL` to use an explicitly configured
 API origin instead, or set `VITE_API_PROXY` to change the local proxy target.
 For a cross-origin `VITE_API_URL`, configure the API's `CORS_ORIGINS` to
 include the web application's origin (the default permits
@@ -56,7 +56,7 @@ development-login flow.
 - `/` title experience
 - `/login` development-only login placeholder
 - `/home` player summary and next actions
-- `/cards` and `/cards/:cardId` card list and detail
+- `/cards` and `/cards/:cardId` public card list and detail
 - `/decks`, `/decks/new`, and `/decks/:deckId/edit` saved deck inspection and builder
 - `/battle/cpu` CPU deck/difficulty setup
 - `/battle/cpu/:matchId` returned CPU match state
