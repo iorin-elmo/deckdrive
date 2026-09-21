@@ -146,6 +146,28 @@ describe('ApiApplication authentication', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  it('rejects decks with an invalid card total before querying the player collection', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      playerCard: { findMany },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Invalid total',
+          cardDataVersion: '1.0.0',
+          cards: [{ cardVersionId: 'card-1', quantity: 1, position: 0 }],
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('hides development authentication in production', async () => {
     const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'production' });
 

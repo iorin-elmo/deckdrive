@@ -269,6 +269,9 @@ export class ApiApplication {
     const positions = cards.map((card) => card.position);
     if (new Set(positions).size !== positions.length)
       throw new BadRequestError('Deck card positions must be unique non-negative integers.');
+    const total = cards.reduce((sum, card) => sum + card.quantity, 0);
+    if (total !== deckSize)
+      throw new BadRequestError(`A deck must contain exactly ${deckSize} cards.`);
     const owned = await this.prisma.playerCard.findMany({
       where: { playerId, cardVersionId: { in: ids } },
       include: { cardVersion: { select: { definition: true } } },
