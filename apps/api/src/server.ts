@@ -24,7 +24,12 @@ server.listen(port, host, () => {
 });
 
 async function shutdown(): Promise<void> {
-  server.close();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error === undefined) resolve();
+      else reject(error);
+    });
+  });
   await prisma.$disconnect();
 }
 

@@ -204,6 +204,7 @@ function LoginPage() {
 
 function PublicCardLayout({ children }: { children: ReactNode }) {
   const playerId = useSessionStore((state) => state.playerId);
+  const previewMode = useSessionStore((state) => state.previewMode);
   return (
     <div className="app-background min-h-screen text-stone-100">
       <header className="border-b border-stone-800 bg-zinc-950/90">
@@ -211,10 +212,17 @@ function PublicCardLayout({ children }: { children: ReactNode }) {
           <Link to="/" className="font-black tracking-[0.16em] text-cyan-200">
             DECKDRIVE
           </Link>
-          <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
-            {playerId === null ? 'Development login' : 'Enter game'}
-            <ChevronRight size={16} aria-hidden="true" />
-          </Link>
+          <div className="flex items-center gap-3">
+            {previewMode ? (
+              <span className="rounded border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100">
+                Offline preview
+              </span>
+            ) : null}
+            <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
+              {playerId === null ? 'Development login' : 'Enter game'}
+              <ChevronRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">{children}</main>
