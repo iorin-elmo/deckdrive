@@ -569,7 +569,8 @@ function CpuSetupPage() {
   const queryDeck = new URLSearchParams(location.search).get('deck');
   const [deckId, setDeckId] = useState(queryDeck ?? '');
   const [difficulty, setDifficulty] = useState<CpuMatch['difficulty']>('NORMAL');
-  const selectedDeck = decks.data?.some((deck) => deck.id === deckId) ?? false;
+  const playableDecks = (decks.data ?? []).filter(isCpuReadyDeck);
+  const selectedDeck = playableDecks.some((deck) => deck.id === deckId);
   const start = useMutation({
     mutationFn: () => client.startCpuMatch(playerId, deckId, difficulty),
     onSuccess: (match) => navigate(`/battle/cpu/${match.id}`, { state: { match } }),
@@ -590,9 +591,13 @@ function CpuSetupPage() {
             start.mutate();
           }}
         >
-          {decks.data?.length === 0 ? (
-            <AsyncNotice kind="empty" title="No decks available">
-              Create a valid deck through the API before starting CPU practice.
+          {decks.isLoading ? (
+            <LoadingNotice title="Loading decks" />
+          ) : decks.isError ? (
+            <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
+          ) : playableDecks.length === 0 ? (
+            <AsyncNotice kind="empty" title="No 30-card decks available">
+              Create a valid 30-card deck through the API before starting CPU practice.
               <Link className="quiet-link mt-3" to="/decks">
                 Open decks
               </Link>
@@ -607,7 +612,7 @@ function CpuSetupPage() {
                 required
               >
                 <option value="">Choose a deck</option>
-                {decks.data?.map((deck) => (
+                {playableDecks.map((deck) => (
                   <option key={deck.id} value={deck.id}>
                     {deck.name} ({String(deckCardTotal(deck))}/30)
                   </option>
@@ -615,9 +620,6 @@ function CpuSetupPage() {
               </select>
             </label>
           )}
-          {decks.isError ? (
-            <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
-          ) : null}
           <fieldset className="mt-6">
             <legend className="field-label">CPU difficulty</legend>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -978,6 +980,10 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
   );
 }
 
+export function isCpuReadyDeck(deck: Deck): boolean {
+  return deckCardTotal(deck) === 30;
+}
+
 export function canOpenOfflinePreview(error: Error): boolean {
   return error instanceof ApiError && (error.status === 0 || error.status >= 500);
 }
@@ -1002,17 +1008,23 @@ function ApiFailure({
   readonly onPreview?: () => void;
   readonly onRetry?: () => void;
 }) {
+  const unavailable = error instanceof ApiError && (error.status === 0 || error.status >= 500);
   const description =
     error instanceof ApiError && error.code === 'API_UNAVAILABLE'
       ? 'The API is not running at the configured address.'
       : error instanceof ApiError && error.code === 'REQUEST_FAILED'
         ? 'The API proxy could not reach a running server.'
         : error instanceof ApiError
-          ? `Request failed: ${error.code} (${String(error.status)}).`
+          ? `The API rejected this request: ${error.code} (${String(error.status)}).`
           : 'The service could not be reached.';
+  const advice = unavailable
+    ? 'Check that the API is running, then try again.'
+    : 'Review the request details and your session, then try again.';
   return (
     <AsyncNotice kind="error" title="Unable to load this view">
-      <p>{description} Check that the API is running, then try again.</p>
+      <p>
+        {description} {advice}
+      </p>
       {onPreview === undefined && onRetry === undefined ? null : (
         <div className="mt-4 flex flex-wrap gap-3">
           {onRetry === undefined ? null : (

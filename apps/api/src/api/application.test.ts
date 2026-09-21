@@ -239,7 +239,7 @@ describe('ApiApplication authentication', () => {
           cardDataVersion: '1.0.0',
           cards: [
             {
-              quantity: 1,
+              quantity: 30,
               position: 0,
               cardVersion: {
                 cardId: 'database-card-id',
@@ -266,5 +266,30 @@ describe('ApiApplication authentication', () => {
     expect(response.status).toBe(201);
     const state = (response.body as { state: { players: { hand: unknown[] }[] } }).state;
     expect(state.players[0]?.hand[0]).toMatchObject({ definitionId: 'engine-definition-id' });
+  });
+
+  it('rejects an incomplete deck before creating a CPU match', async () => {
+    const create = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      deck: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'deck-1',
+          cardDataVersion: '1.0.0',
+          cards: [{ quantity: 2 }],
+        }),
+      },
+      match: { create },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/matches',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: { deckId: 'deck-1', difficulty: 'EASY' },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(create).not.toHaveBeenCalled();
   });
 });

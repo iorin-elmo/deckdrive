@@ -7,14 +7,23 @@ primitives.
 
 ## Run locally
 
-With local PostgreSQL running, migrate and seed the development database, then
-start the API before the web client:
+With local PostgreSQL running, migrate and seed the development database first:
 
 ```powershell
 corepack pnpm --filter @deck-drive/api prisma:generate
 corepack pnpm --filter @deck-drive/api prisma:migrate:dev
 corepack pnpm --filter @deck-drive/api prisma:seed
+```
+
+Start the API in one terminal:
+
+```powershell
 corepack pnpm --filter @deck-drive/api dev
+```
+
+Start the web client in a second terminal:
+
+```powershell
 corepack pnpm --filter @deck-drive/web dev
 ```
 
@@ -25,7 +34,7 @@ For a cross-origin `VITE_API_URL`, configure the API's `CORS_ORIGINS` to
 include the web application's origin (the default permits
 `http://localhost:5173`). The API binds `0.0.0.0` by default so that configured
 origins can reach it from another host/container; set `HOST` to override that
-bind address.
+bind address. Put the Vite variables in the workspace-root `.env` file.
 
 ## Offline preview
 

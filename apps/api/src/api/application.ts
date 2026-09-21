@@ -210,6 +210,9 @@ export class ApiApplication {
       include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
     if (deck === null) return { status: 404, body: { error: 'DECK_NOT_FOUND' } };
+    const totalCards = deck.cards.reduce((total, card) => total + card.quantity, 0);
+    if (totalCards !== deckSize)
+      throw new BadRequestError(`A CPU match requires exactly ${deckSize} cards.`);
     const cards = deck.cards.flatMap((deckCard) => {
       const definition = toEngineDefinition(deckCard.cardVersion.definition);
       return Array.from({ length: deckCard.quantity }, (_, index) => ({

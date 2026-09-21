@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, type CardSummary } from './api.js';
-import { canOpenOfflinePreview, cardDetailHref, selectCardSummary } from './app.js';
+import { ApiError, type CardSummary, type Deck } from './api.js';
+import { canOpenOfflinePreview, cardDetailHref, isCpuReadyDeck, selectCardSummary } from './app.js';
 
 const cards: readonly CardSummary[] = [
   {
@@ -61,5 +61,26 @@ describe('canOpenOfflinePreview', () => {
     expect(canOpenOfflinePreview(new ApiError(500, 'INTERNAL_ERROR'))).toBe(true);
     expect(canOpenOfflinePreview(new ApiError(400, 'INVALID_REQUEST'))).toBe(false);
     expect(canOpenOfflinePreview(new ApiError(404, 'NOT_FOUND'))).toBe(false);
+  });
+});
+
+describe('isCpuReadyDeck', () => {
+  const deck = (quantity: number): Deck => ({
+    id: 'deck-1',
+    name: 'Deck',
+    cardDataVersion: '1.0.0',
+    cards: [
+      {
+        cardVersionId: 'card-1',
+        position: 0,
+        quantity,
+        cardVersion: cards[0]!,
+      },
+    ],
+  });
+
+  it('only allows complete 30-card decks into CPU practice', () => {
+    expect(isCpuReadyDeck(deck(30))).toBe(true);
+    expect(isCpuReadyDeck(deck(2))).toBe(false);
   });
 });

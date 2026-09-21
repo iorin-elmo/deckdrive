@@ -4,9 +4,12 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
 
+const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
+
 export default defineConfig(({ mode }) => {
-  const environment = loadEnv(mode, process.cwd(), '');
+  const environment = loadEnv(mode, workspaceRoot, '');
   return {
+    envDir: workspaceRoot,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
