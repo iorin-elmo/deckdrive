@@ -46,6 +46,8 @@ export class RewardService {
 
 function assertSameGrant(entry: RewardLedgerEntry, grant: RewardGrant): void {
   if (
+    entry.playerId !== grant.playerId ||
+    entry.idempotencyKey !== grant.idempotencyKey ||
     entry.currency !== grant.currency ||
     entry.amount !== grant.amount ||
     entry.reason !== grant.reason

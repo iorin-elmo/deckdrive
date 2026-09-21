@@ -61,12 +61,12 @@ describe('RewardService', () => {
     ).rejects.toThrow('different reward');
   });
 
-  it('rejects a concurrent idempotency winner with a different payload', async () => {
+  it('rejects a find-or-insert entry for another player or idempotency key', async () => {
     const ledger = new InMemoryLedger();
     const service = new RewardService(ledger);
     ledger.findOrInsert = async (grant) => ({
       ...grant,
-      amount: 11,
+      playerId: 'another-player',
       id: 'concurrent-entry',
       createdAt: new Date(0),
     });
