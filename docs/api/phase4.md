@@ -10,6 +10,9 @@ is deliberately separate from domain services and the game engine.
 endpoints require `X-Deckdrive-Player-Id`; the server resolves that ID to a
 player before reading or changing data.
 
+JSON request bodies are limited to 1 MiB. Malformed JSON receives `400`, and a
+body exceeding the limit receives `413` before the controller is invoked.
+
 ## Implemented endpoints
 
 - `GET /api/v1/cards` and `GET /api/v1/cards/:id` expose versioned card data.

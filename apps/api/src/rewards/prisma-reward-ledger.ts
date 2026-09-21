@@ -20,18 +20,7 @@ export class PrismaRewardLedger implements RewardLedgerRepository, RewardLedgerO
     );
   }
 
-  async findByIdempotencyKey(
-    playerId: string,
-    idempotencyKey: string,
-  ): Promise<RewardLedgerEntry | null> {
-    return this.toEntry(
-      await this.prisma.currencyTransaction.findUnique({
-        where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
-      }),
-    );
-  }
-
-  async insert(grant: RewardGrant): Promise<RewardLedgerEntry> {
+  async findOrInsert(grant: RewardGrant): Promise<RewardLedgerEntry> {
     return this.toEntry(
       await this.prisma.currencyTransaction.upsert({
         where: {

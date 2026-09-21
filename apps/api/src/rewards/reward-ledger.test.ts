@@ -14,13 +14,11 @@ class InMemoryLedger {
   ): Promise<Result> {
     return operation(this);
   }
-  async findByIdempotencyKey(playerId: string, key: string) {
-    return (
-      this.entries.find((entry) => entry.playerId === playerId && entry.idempotencyKey === key) ??
-      null
+  async findOrInsert(grant: RewardGrant): Promise<RewardLedgerEntry> {
+    const existing = this.entries.find(
+      (entry) => entry.playerId === grant.playerId && entry.idempotencyKey === grant.idempotencyKey,
     );
-  }
-  async insert(grant: RewardGrant): Promise<RewardLedgerEntry> {
+    if (existing !== undefined) return existing;
     const entry = { ...grant, id: String(this.entries.length + 1), createdAt: new Date(0) };
     this.entries.push(entry);
     return entry;
@@ -66,8 +64,7 @@ describe('RewardService', () => {
   it('rejects a concurrent idempotency winner with a different payload', async () => {
     const ledger = new InMemoryLedger();
     const service = new RewardService(ledger);
-    ledger.findByIdempotencyKey = async () => null;
-    ledger.insert = async (grant) => ({
+    ledger.findOrInsert = async (grant) => ({
       ...grant,
       amount: 11,
       id: 'concurrent-entry',

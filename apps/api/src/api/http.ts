@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import { ApiApplication, type ApiRequest } from './application.js';
 
+export const maximumRequestBodyBytes = 1024 * 1024;
+
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(application: ApiApplication): Server {
   return createServer(async (request, response) => {
@@ -19,18 +21,50 @@ export function createApiHttpServer(application: ApiApplication): Server {
       };
       const apiResponse = await application.handle(apiRequest);
       writeJson(response, apiResponse.status, apiResponse.body);
-    } catch {
-      writeJson(response, 400, { error: 'INVALID_REQUEST' });
+    } catch (error) {
+      if (response.headersSent) return;
+      if (error instanceof HttpRequestError) {
+        writeJson(response, error.status, { error: error.code });
+        return;
+      }
+      writeJson(response, 500, { error: 'INTERNAL_ERROR' });
     }
   });
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   if (request.method === 'GET' || request.method === 'DELETE') return undefined;
+  const contentLength = request.headers['content-length'];
+  if (contentLength !== undefined && Number(contentLength) > maximumRequestBodyBytes) {
+    throw new HttpRequestError(413, 'PAYLOAD_TOO_LARGE');
+  }
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let length = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk);
+    length += buffer.length;
+    if (length > maximumRequestBodyBytes) {
+      request.destroy();
+      throw new HttpRequestError(413, 'PAYLOAD_TOO_LARGE');
+    }
+    chunks.push(buffer);
+  }
   if (chunks.length === 0) return undefined;
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new HttpRequestError(400, 'INVALID_REQUEST');
+    throw error;
+  }
+}
+
+class HttpRequestError extends Error {
+  constructor(
+    readonly status: 400 | 413,
+    readonly code: 'INVALID_REQUEST' | 'PAYLOAD_TOO_LARGE',
+  ) {
+    super(code);
+  }
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown): void {

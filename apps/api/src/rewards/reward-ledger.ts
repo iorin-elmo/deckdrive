@@ -20,8 +20,7 @@ export interface RewardLedgerRepository {
 }
 
 export interface RewardLedgerOperations {
-  findByIdempotencyKey(playerId: string, idempotencyKey: string): Promise<RewardLedgerEntry | null>;
-  insert(grant: RewardGrant): Promise<RewardLedgerEntry>;
+  findOrInsert(grant: RewardGrant): Promise<RewardLedgerEntry>;
 }
 
 export class RewardValidationError extends Error {
@@ -38,22 +37,9 @@ export class RewardService {
   async grant(grant: RewardGrant): Promise<RewardLedgerEntry> {
     validateGrant(grant);
     return this.ledger.transaction(async (ledger) => {
-      const existing = await ledger.findByIdempotencyKey(grant.playerId, grant.idempotencyKey);
-      if (existing !== null) {
-        if (
-          existing.currency !== grant.currency ||
-          existing.amount !== grant.amount ||
-          existing.reason !== grant.reason
-        ) {
-          throw new RewardValidationError(
-            'Idempotency key was already used for a different reward.',
-          );
-        }
-        return existing;
-      }
-      const inserted = await ledger.insert(grant);
-      assertSameGrant(inserted, grant);
-      return inserted;
+      const entry = await ledger.findOrInsert(grant);
+      assertSameGrant(entry, grant);
+      return entry;
     });
   }
 }

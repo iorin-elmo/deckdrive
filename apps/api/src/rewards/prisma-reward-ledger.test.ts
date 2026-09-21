@@ -18,7 +18,7 @@ describe('PrismaRewardLedger', () => {
       currencyTransaction: { upsert },
     } as unknown as PrismaClient);
 
-    await ledger.insert({
+    await ledger.findOrInsert({
       playerId: 'player',
       currency: 'GEM',
       amount: 10,
