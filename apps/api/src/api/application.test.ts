@@ -75,6 +75,52 @@ describe('ApiApplication authentication', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  it('rejects empty decks before querying the player collection', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      playerCard: { findMany },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: { name: 'Empty', cardDataVersion: '1.0.0', cards: [] },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid quantities and positions before querying the player collection', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      playerCard: { findMany },
+    } as unknown as PrismaClient);
+
+    for (const card of [
+      { quantity: 0, position: 0 },
+      { quantity: -1, position: 0 },
+      { quantity: 1, position: -1 },
+    ]) {
+      await expect(
+        application.handle({
+          method: 'POST',
+          path: '/api/v1/decks',
+          headers: { 'x-deckdrive-player-id': 'player-1' },
+          body: {
+            name: 'Invalid',
+            cardDataVersion: '1.0.0',
+            cards: [{ cardVersionId: 'card-1', ...card }],
+          },
+        }),
+      ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    }
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('hides development authentication in production', async () => {
     const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'production' });
 

@@ -260,6 +260,7 @@ export class ApiApplication {
     playerId: string,
     cards: readonly DeckCardInput[],
   ): Promise<void> {
+    if (cards.length === 0) throw new BadRequestError('A deck requires cards.');
     if (cards.length > deckSize)
       throw new BadRequestError(`A deck cannot contain more than ${deckSize} card entries.`);
     const ids = cards.map((card) => card.cardVersionId);
@@ -341,17 +342,19 @@ function deckInput(body: unknown) {
       const card = object(item);
       return {
         cardVersionId: string(card.cardVersionId, 'cardVersionId'),
-        quantity: integer(card.quantity, 'quantity'),
-        position: integer(card.position, 'position'),
+        quantity: integer(card.quantity, 'quantity', 1),
+        position: integer(card.position, 'position', 0),
         ownedQuantity: 0,
         deckLimit: null,
       };
     }),
   };
 }
-function integer(value: unknown, field: string): number {
+function integer(value: unknown, field: string, minimum?: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value))
     throw new BadRequestError(`${field} must be an integer.`);
+  if (minimum !== undefined && value < minimum)
+    throw new BadRequestError(`${field} must be at least ${minimum}.`);
   return value;
 }
 function cpuDifficulty(value: unknown): CpuDifficulty {
