@@ -139,6 +139,11 @@ export class MatchReplayRepository {
       orderBy: { cardId: 'asc' },
       select: { definition: true },
     });
+    if (versions.length === 0) {
+      throw new ReplayPersistenceError(
+        `No card definitions are available for card data version ${cardDataVersion}.`,
+      );
+    }
     return versions.map(({ definition }) => {
       if (!isCardDefinition(definition)) {
         throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
