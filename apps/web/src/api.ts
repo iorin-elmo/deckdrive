@@ -69,10 +69,14 @@ export interface DeckDriveClient {
     deckId: string,
     difficulty: CpuMatch['difficulty'],
   ): Promise<CpuMatch>;
-  match(
-    playerId: string,
-    matchId: string,
-  ): Promise<{ id: string; status: string; finalState: BattleState | null }>;
+  match(playerId: string, matchId: string): Promise<MatchState>;
+}
+
+export interface MatchState {
+  readonly id: string;
+  readonly status: string;
+  readonly initialState: BattleState;
+  readonly finalState: BattleState | null;
 }
 
 export class ApiError extends Error {
@@ -120,10 +124,7 @@ export class DeckDriveApi implements DeckDriveClient {
     });
   }
 
-  async match(
-    playerId: string,
-    matchId: string,
-  ): Promise<{ id: string; status: string; finalState: BattleState | null }> {
+  async match(playerId: string, matchId: string): Promise<MatchState> {
     return this.request(`/api/v1/matches/${encodeURIComponent(matchId)}`, { playerId });
   }
 
@@ -278,6 +279,7 @@ export const previewApi: DeckDriveClient = {
     return { id, difficulty, state: previewBattle(id) };
   },
   async match(_playerId, matchId) {
-    return { id: matchId, status: 'IN_PROGRESS', finalState: previewBattle(matchId) };
+    const state = previewBattle(matchId);
+    return { id: matchId, status: 'IN_PROGRESS', initialState: state, finalState: state };
   },
 };

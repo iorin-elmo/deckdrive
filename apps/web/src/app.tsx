@@ -10,6 +10,7 @@ import {
   LogIn,
   Menu,
   Play,
+  RotateCcw,
   Search,
   Shield,
   Sparkles,
@@ -335,9 +336,11 @@ function HomePage() {
           icon={<BookOpen size={20} aria-hidden="true" />}
           title="Deck workshop"
           text={
-            decks.data === undefined
-              ? 'Loading decks.'
-              : `${String(decks.data.length)} deck${decks.data.length === 1 ? '' : 's'} ready for review.`
+            decks.isError
+              ? 'Deck information is unavailable.'
+              : decks.data === undefined
+                ? 'Loading decks.'
+                : `${String(decks.data.length)} deck${decks.data.length === 1 ? '' : 's'} ready for review.`
           }
         />
         <QuickLink
@@ -347,6 +350,11 @@ function HomePage() {
           text="Launch the selected deck against one of four CPU difficulties."
         />
       </section>
+      {decks.isError ? (
+        <div className="mt-4">
+          <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
+        </div>
+      ) : null}
     </>
   );
 }
@@ -572,6 +580,9 @@ function CpuSetupPage() {
               ))}
             </select>
           </label>
+          {decks.isError ? (
+            <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
+          ) : null}
           <fieldset className="mt-6">
             <legend className="field-label">CPU difficulty</legend>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -640,7 +651,7 @@ function CpuBattlePage() {
     queryFn: () => client.match(playerId, matchId),
     enabled: started === undefined,
   });
-  const state = started?.state ?? remoteMatch.data?.finalState;
+  const state = started?.state ?? remoteMatch.data?.finalState ?? remoteMatch.data?.initialState;
   if (remoteMatch.isLoading && state === undefined)
     return <LoadingNotice title="Loading battle state" />;
   if (remoteMatch.isError) return <ApiFailure error={remoteMatch.error} />;
@@ -674,7 +685,7 @@ function ResultPage() {
     <>
       <PageHeading
         eyebrow="MATCH RESULT"
-        title={match.data?.status === 'COMPLETE' ? 'Battle complete' : 'Battle in progress'}
+        title={match.data?.status === 'COMPLETED' ? 'Battle complete' : 'Battle in progress'}
         description="The server owns results. This view only renders persisted match data."
       />
       {state === null || state === undefined ? (
@@ -941,9 +952,11 @@ function LoadingNotice({ title }: { readonly title: string }) {
 function ApiFailure({
   error,
   onPreview,
+  onRetry,
 }: {
   readonly error: Error;
   readonly onPreview?: () => void;
+  readonly onRetry?: () => void;
 }) {
   const description =
     error instanceof ApiError && error.code === 'API_UNAVAILABLE'
@@ -956,11 +969,21 @@ function ApiFailure({
   return (
     <AsyncNotice kind="error" title="Unable to load this view">
       <p>{description} Check that the API is running, then try again.</p>
-      {onPreview === undefined ? null : (
-        <ActionButton className="mt-4" tone="quiet" onClick={onPreview}>
-          <Sparkles size={17} aria-hidden="true" />
-          Open offline preview
-        </ActionButton>
+      {onPreview === undefined && onRetry === undefined ? null : (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {onRetry === undefined ? null : (
+            <ActionButton tone="quiet" onClick={onRetry}>
+              <RotateCcw size={17} aria-hidden="true" />
+              Try again
+            </ActionButton>
+          )}
+          {onPreview === undefined ? null : (
+            <ActionButton tone="quiet" onClick={onPreview}>
+              <Sparkles size={17} aria-hidden="true" />
+              Open offline preview
+            </ActionButton>
+          )}
+        </div>
       )}
     </AsyncNotice>
   );

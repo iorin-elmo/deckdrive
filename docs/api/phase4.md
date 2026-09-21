@@ -13,6 +13,14 @@ player before reading or changing data.
 JSON request bodies are limited to 1 MiB. Malformed JSON receives `400`, and a
 body exceeding the limit receives `413` before the controller is invoked.
 
+## Browser access
+
+The native HTTP adapter handles browser CORS preflight and allows
+`http://localhost:5173` by default. Set `CORS_ORIGINS` to a comma-separated
+allowlist when serving the web client from another origin. The allowlist covers
+the JSON content type and `X-Deckdrive-Player-Id` request header used by
+authenticated web requests.
+
 ## Implemented endpoints
 
 - `GET /api/v1/cards` and `GET /api/v1/cards/:id` expose versioned card data.

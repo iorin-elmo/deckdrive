@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { apiPort } from './server-config.js';
+import { apiCorsOrigins, apiPort } from './server-config.js';
 
 describe('apiPort', () => {
   it('uses 3000 by default', () => {
@@ -15,5 +15,22 @@ describe('apiPort', () => {
     expect(() => apiPort('not-a-port')).toThrow('PORT must be an integer');
     expect(() => apiPort('0')).toThrow('PORT must be an integer');
     expect(() => apiPort('65536')).toThrow('PORT must be an integer');
+  });
+});
+
+describe('apiCorsOrigins', () => {
+  it('allows the local Vite origin by default', () => {
+    expect(apiCorsOrigins(undefined)).toEqual(['http://localhost:5173']);
+  });
+
+  it('splits configured origins and ignores surrounding whitespace', () => {
+    expect(apiCorsOrigins('https://deckdrive.example, http://localhost:4173 ')).toEqual([
+      'https://deckdrive.example',
+      'http://localhost:4173',
+    ]);
+  });
+
+  it('rejects an explicit empty origin list', () => {
+    expect(() => apiCorsOrigins(' , ')).toThrow('CORS_ORIGINS must include');
   });
 });

@@ -73,4 +73,40 @@ describe('createApiHttpServer', () => {
       await once(server, 'close');
     }
   });
+
+  it('serves CORS preflight and response headers for an allowed web origin', async () => {
+    const application = {
+      handle: vi.fn().mockResolvedValue({ status: 200, body: { cards: [] } }),
+    } as unknown as ApiApplication;
+    const server = createApiHttpServer(application, {
+      allowedOrigins: ['http://localhost:5173'],
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('Expected a TCP server address.');
+
+    try {
+      const baseUrl = `http://127.0.0.1:${String(address.port)}/api/v1/cards`;
+      const preflight = await fetch(baseUrl, {
+        method: 'OPTIONS',
+        headers: {
+          origin: 'http://localhost:5173',
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'content-type,x-deckdrive-player-id',
+        },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+      expect(application.handle).not.toHaveBeenCalled();
+
+      const response = await fetch(baseUrl, { headers: { origin: 'http://localhost:5173' } });
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+      expect(application.handle).toHaveBeenCalledOnce();
+    } finally {
+      server.close();
+      await once(server, 'close');
+    }
+  });
 });
