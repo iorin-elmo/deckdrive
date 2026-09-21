@@ -24,4 +24,15 @@ describe('validateDeckCards', () => {
   it('rejects a deck that is not exactly 30 cards', () => {
     expect(() => validateDeckCards(validCards.slice(0, 9))).toThrow('exactly 30');
   });
+
+  it('rejects more than 30 entries before applying per-card validation', () => {
+    const excessiveEntries = Array.from({ length: 31 }, (_, position) => ({
+      cardVersionId: `card-${String(position)}`,
+      quantity: 0,
+      position,
+      ownedQuantity: 0,
+      deckLimit: 0,
+    }));
+    expect(() => validateDeckCards(excessiveEntries)).toThrow('more than 30');
+  });
 });

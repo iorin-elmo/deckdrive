@@ -32,20 +32,20 @@ export class PrismaRewardLedger implements RewardLedgerRepository, RewardLedgerO
         update: {},
         create: grant,
       }),
-    )!;
+    );
   }
 
-  private toEntry(entry: Awaited<ReturnType<LedgerClient['currencyTransaction']['findUnique']>>) {
-    return entry === null
-      ? null
-      : {
-          id: entry.id,
-          playerId: entry.playerId,
-          currency: entry.currency,
-          amount: entry.amount,
-          reason: entry.reason,
-          idempotencyKey: entry.idempotencyKey,
-          createdAt: entry.createdAt,
-        };
+  private toEntry(
+    entry: Awaited<ReturnType<LedgerClient['currencyTransaction']['upsert']>>,
+  ): RewardLedgerEntry {
+    return {
+      id: entry.id,
+      playerId: entry.playerId,
+      currency: entry.currency,
+      amount: entry.amount,
+      reason: entry.reason,
+      idempotencyKey: entry.idempotencyKey,
+      createdAt: entry.createdAt,
+    };
   }
 }

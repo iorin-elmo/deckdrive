@@ -19,6 +19,9 @@ export class DeckValidationError extends Error {
 /** Validates only data supplied by the server's collection lookup. */
 export function validateDeckCards(cards: readonly DeckCardInput[]): void {
   if (cards.length === 0) throw new DeckValidationError('A deck requires cards.');
+  if (cards.length > deckSize) {
+    throw new DeckValidationError(`A deck cannot contain more than ${deckSize} card entries.`);
+  }
   const positions = new Set<number>();
   let total = 0;
   for (const card of cards) {

@@ -24,6 +24,10 @@ export function createApiHttpServer(application: ApiApplication): Server {
     } catch (error) {
       if (response.headersSent) return;
       if (error instanceof HttpRequestError) {
+        if (error.status === 413) {
+          request.resume();
+          response.shouldKeepAlive = false;
+        }
         writeJson(response, error.status, { error: error.code });
         return;
       }
@@ -44,7 +48,6 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     const buffer = Buffer.from(chunk);
     length += buffer.length;
     if (length > maximumRequestBodyBytes) {
-      request.destroy();
       throw new HttpRequestError(413, 'PAYLOAD_TOO_LARGE');
     }
     chunks.push(buffer);
