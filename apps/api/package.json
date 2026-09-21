@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm run prisma:generate && tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
     "prisma:generate": "tsx src/database/generate.ts",
     "prisma:validate": "prisma validate",

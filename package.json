@@ -18,7 +18,7 @@
     "db:seed": "pnpm --filter @deck-drive/api prisma:seed",
     "db:reset": "pnpm --filter @deck-drive/api prisma:reset",
     "replay": "pnpm --filter @deck-drive/api replay",
-    "test:integration": "pnpm --filter @deck-drive/game-engine build && vitest run apps/api/src/database/persistence.integration.test.ts tests/integration/replay/database-replay.integration.test.ts",
+    "test:integration": "pnpm --filter @deck-drive/api prisma:generate && pnpm --filter @deck-drive/game-engine build && vitest run apps/api/src/database/persistence.integration.test.ts tests/integration/replay/database-replay.integration.test.ts",
     "test:replay": "vitest run packages/game-engine/src/replay-regression.test.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
