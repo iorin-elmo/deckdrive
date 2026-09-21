@@ -57,14 +57,15 @@ development-login flow.
 - `/login` development-only login placeholder
 - `/home` player summary and next actions
 - `/cards` and `/cards/:cardId` card list and detail
-- `/decks` and `/decks/:deckId` saved deck list and inspection
+- `/decks`, `/decks/new`, and `/decks/:deckId/edit` saved deck inspection and builder
 - `/battle/cpu` CPU deck/difficulty setup
 - `/battle/cpu/:matchId` returned CPU match state
 - `/result/:matchId` persisted result state
 
-All server reads include loading, error, and empty states. The shell supports
-keyboard focus, labelled controls, compact mobile navigation, and reduced
-motion preferences.
+All server reads include loading, error, and empty states. The deck builder uses
+the authenticated collection and writes exact 30-card lists through the Phase 4
+deck endpoints. The shell supports keyboard focus, labelled controls, compact
+mobile navigation, and reduced motion preferences.
 
 ## API boundary
 

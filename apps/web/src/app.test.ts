@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, type CardSummary, type Deck } from './api.js';
+import { ApiError, type CardSummary, type Deck, type OwnedCard } from './api.js';
 import {
   canOpenOfflinePreview,
   cardDetailHref,
+  deckBuilderCardTotal,
+  deckBuilderCopyLimit,
+  deckBuilderInput,
   isCpuReadyDeck,
   loginReturnPath,
   resultTitle,
@@ -89,6 +92,39 @@ describe('isCpuReadyDeck', () => {
   it('only allows complete 30-card decks into CPU practice', () => {
     expect(isCpuReadyDeck(deck(30))).toBe(true);
     expect(isCpuReadyDeck(deck(2))).toBe(false);
+  });
+});
+
+describe('deckBuilderInput', () => {
+  const collection: readonly OwnedCard[] = [
+    { cardVersionId: 'version-1', quantity: 3, cardVersion: cards[0]! },
+    {
+      cardVersionId: 'version-2',
+      quantity: 2,
+      cardVersion: {
+        ...cards[1]!,
+        definition: { ...cards[1]!.definition, deckLimit: 2 },
+      },
+    },
+  ];
+
+  it('limits copies and builds contiguous API positions from selected cards', () => {
+    expect(deckBuilderCopyLimit(collection[0]!)).toBe(3);
+    expect(deckBuilderCopyLimit(collection[1]!)).toBe(2);
+    const input = deckBuilderInput(' Practice ', '1.0.0', collection, {
+      'version-1': 3,
+      'version-2': 2,
+    });
+
+    expect(input).toEqual({
+      name: 'Practice',
+      cardDataVersion: '1.0.0',
+      cards: [
+        { cardVersionId: 'version-1', quantity: 3, position: 0 },
+        { cardVersionId: 'version-2', quantity: 2, position: 1 },
+      ],
+    });
+    expect(deckBuilderCardTotal({ 'version-1': 3, 'version-2': 2 })).toBe(5);
   });
 });
 

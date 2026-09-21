@@ -47,7 +47,8 @@ export class ApiApplication {
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const authenticatedRoute =
-        (request.method === 'GET' && (path === '/api/v1/me' || path === '/api/v1/decks')) ||
+        (request.method === 'GET' &&
+          (path === '/api/v1/me' || path === '/api/v1/collection' || path === '/api/v1/decks')) ||
         (request.method === 'POST' && (path === '/api/v1/decks' || path === '/api/v1/matches')) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
@@ -55,6 +56,8 @@ export class ApiApplication {
 
       const player = await this.requirePlayer(request);
       if (request.method === 'GET' && path === '/api/v1/me') return await this.me(player.id);
+      if (request.method === 'GET' && path === '/api/v1/collection')
+        return await this.collection(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
@@ -142,6 +145,28 @@ export class ApiApplication {
       include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
     return { status: 200, body: { decks } };
+  }
+
+  private async collection(playerId: string): Promise<ApiResponse> {
+    const cards = await this.prisma.playerCard.findMany({
+      where: { playerId },
+      orderBy: { updatedAt: 'asc' },
+      include: { cardVersion: true },
+    });
+    return {
+      status: 200,
+      body: {
+        cards: cards.map((card) => ({
+          cardVersionId: card.cardVersionId,
+          quantity: card.quantity,
+          cardVersion: {
+            cardId: card.cardVersion.cardId,
+            version: card.cardVersion.version,
+            definition: card.cardVersion.definition,
+          },
+        })),
+      },
+    };
   }
 
   private async createDeck(playerId: string, body: unknown): Promise<ApiResponse> {

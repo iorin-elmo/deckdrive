@@ -76,6 +76,48 @@ describe('ApiApplication authentication', () => {
     expect(findUnique).toHaveBeenCalledWith({ where: { id: 'player-1' }, select: { id: true } });
   });
 
+  it('returns only the authenticated player collection with card version IDs', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        cardVersionId: 'version-1',
+        quantity: 3,
+        cardVersion: {
+          cardId: 'sword_strike',
+          version: '1.0.0',
+          definition: { id: 'sword_strike' },
+        },
+      },
+    ]);
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      playerCard: { findMany },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/collection',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        cards: [
+          {
+            cardVersionId: 'version-1',
+            quantity: 3,
+            cardVersion: { cardId: 'sword_strike', version: '1.0.0' },
+          },
+        ],
+      },
+    });
+    expect(findMany).toHaveBeenCalledWith({
+      where: { playerId: 'player-1' },
+      orderBy: { updatedAt: 'asc' },
+      include: { cardVersion: true },
+    });
+  });
+
   it('does not expose unexpected infrastructure errors as client errors', async () => {
     const application = new ApiApplication({
       cardVersion: { findMany: vi.fn().mockRejectedValue(new Error('database connection secret')) },

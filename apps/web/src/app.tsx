@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BadgeCheck,
   BookOpen,
@@ -9,6 +9,8 @@ import {
   LoaderCircle,
   LogIn,
   Menu,
+  Minus,
+  Plus,
   Play,
   RotateCcw,
   Search,
@@ -18,7 +20,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -40,7 +42,9 @@ import {
   type CardSummary,
   type CpuMatch,
   type Deck,
+  type DeckInput,
   type DeckDriveClient,
+  type OwnedCard,
 } from './api.js';
 import { useSessionStore } from './store.js';
 
@@ -61,7 +65,9 @@ export function App() {
         <Route path="/cards" element={<CardsPage />} />
         <Route path="/cards/:cardId" element={<CardDetailPage />} />
         <Route path="/decks" element={<DecksPage />} />
+        <Route path="/decks/new" element={<DeckBuilderPage />} />
         <Route path="/decks/:deckId" element={<DeckDetailPage />} />
+        <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
         <Route path="/battle/cpu" element={<CpuSetupPage />} />
         <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
         <Route path="/result/:matchId" element={<ResultPage />} />
@@ -279,7 +285,9 @@ function RoutesContent() {
       <Route path="/cards" element={<CardsPage />} />
       <Route path="/cards/:cardId" element={<CardDetailPage />} />
       <Route path="/decks" element={<DecksPage />} />
+      <Route path="/decks/new" element={<DeckBuilderPage />} />
       <Route path="/decks/:deckId" element={<DeckDetailPage />} />
+      <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
       <Route path="/battle/cpu" element={<CpuSetupPage />} />
       <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
       <Route path="/result/:matchId" element={<ResultPage />} />
@@ -467,12 +475,16 @@ function DecksPage() {
         title="Decks"
         description="Review your saved lists before taking one into the CPU arena."
       />
+      <Link className="hero-command mt-6" to="/decks/new">
+        <Plus size={18} aria-hidden="true" />
+        Build a deck
+      </Link>
       <section className="mt-7" aria-live="polite">
         {decks.isLoading ? <LoadingNotice title="Loading decks" /> : null}
         {decks.isError ? <ApiFailure error={decks.error} /> : null}
         {decks.data?.length === 0 ? (
           <AsyncNotice kind="empty" title="No decks yet">
-            Create a valid 30-card deck through the API, then it will appear here.
+            Build a valid 30-card deck from your collection to begin CPU practice.
           </AsyncNotice>
         ) : null}
         {decks.data !== undefined && decks.data.length > 0 ? (
@@ -559,8 +571,204 @@ function DeckDetailPage() {
             <Play size={17} fill="currentColor" aria-hidden="true" />
             Use for CPU
           </Link>
+          <Link className="hero-secondary mt-3" to={`/decks/${encodeURIComponent(deck.id)}/edit`}>
+            Edit deck
+          </Link>
         </aside>
       </section>
+    </>
+  );
+}
+
+function DeckBuilderPage() {
+  const { deckId } = useParams();
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
+  const collection = useQuery({
+    queryKey: ['collection', playerId, previewMode],
+    queryFn: () => client.collection(playerId),
+  });
+  const deck = decks.data?.find((candidate) => candidate.id === deckId);
+  const [name, setName] = useState('New deck');
+  const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
+
+  useEffect(() => {
+    if (deck === undefined) return;
+    setName(deck.name);
+    setQuantities(
+      Object.fromEntries(deck.cards.map((card) => [card.cardVersionId, card.quantity])),
+    );
+  }, [deck]);
+
+  const ownedCards = collection.data ?? [];
+  const cardDataVersion = deck?.cardDataVersion ?? ownedCards[0]?.cardVersion.version ?? '1.0.0';
+  const total = deckBuilderCardTotal(quantities);
+  const save = useMutation({
+    mutationFn: () => {
+      const input = deckBuilderInput(name, cardDataVersion, ownedCards, quantities);
+      return deckId === undefined
+        ? client.createDeck(playerId, input)
+        : client.updateDeck(playerId, deckId, input);
+    },
+    onSuccess: async (saved) => {
+      await queryClient.invalidateQueries({ queryKey: ['decks', playerId, previewMode] });
+      navigate(`/decks/${saved.id}`);
+    },
+  });
+
+  if (decks.isLoading || collection.isLoading)
+    return <LoadingNotice title="Loading deck workshop" />;
+  if (decks.isError) return <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />;
+  if (collection.isError)
+    return <ApiFailure error={collection.error} onRetry={() => void collection.refetch()} />;
+  if (deckId !== undefined && deck === undefined)
+    return (
+      <AsyncNotice kind="empty" title="Deck not found">
+        <Link className="quiet-link mt-3" to="/decks">
+          Return to decks
+        </Link>
+      </AsyncNotice>
+    );
+  if (ownedCards.length === 0)
+    return (
+      <AsyncNotice kind="empty" title="No cards in your collection">
+        This development player has no cards available for a 30-card deck.
+      </AsyncNotice>
+    );
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="DECK BUILDER"
+        title={deck === undefined ? 'Build a deck' : `Edit ${deck.name}`}
+        description="Choose owned card versions, then save an exact 30-card list."
+      />
+      <form
+        className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (total === 30 && name.trim().length > 0) save.mutate();
+        }}
+      >
+        <aside className="surface-panel h-fit p-6">
+          <label className="field-label">
+            Deck name
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={80}
+              required
+            />
+          </label>
+          <p className="eyebrow mt-7">READY CHECK</p>
+          <p className="mt-3 text-4xl font-black text-stone-50">
+            {String(total)} <span className="text-base font-medium text-stone-400">/ 30 cards</span>
+          </p>
+          <p className="mt-3 text-sm leading-6 text-stone-300">
+            Each quantity is limited by the card's copy limit and your collection.
+          </p>
+          {save.isError ? <ApiFailure error={save.error} /> : null}
+          <ActionButton
+            className="mt-7 w-full"
+            type="submit"
+            disabled={total !== 30 || name.trim().length === 0 || save.isPending}
+          >
+            <BookOpen size={18} aria-hidden="true" />
+            {save.isPending ? 'Saving deck' : deck === undefined ? 'Create deck' : 'Save deck'}
+          </ActionButton>
+          <Link className="quiet-link mt-4" to="/decks">
+            Return to decks
+          </Link>
+        </aside>
+        <section className="surface-panel overflow-hidden">
+          <table className="deck-table">
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Owned</th>
+                <th>Copies</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ownedCards.map((card) => {
+                const limit = deckBuilderCopyLimit(card);
+                const quantity = quantities[card.cardVersionId] ?? 0;
+                return (
+                  <tr key={card.cardVersionId}>
+                    <td>
+                      <Link
+                        className="font-semibold text-cyan-100 hover:text-cyan-200"
+                        to={cardDetailHref(card.cardVersion)}
+                      >
+                        {card.cardVersion.definition.name}
+                      </Link>
+                      <span>{card.cardVersion.definition.type}</span>
+                    </td>
+                    <td>{String(card.quantity)}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <ActionButton
+                          tone="quiet"
+                          type="button"
+                          aria-label={`Remove ${card.cardVersion.definition.name}`}
+                          disabled={quantity === 0}
+                          onClick={() =>
+                            setQuantities((current) => ({
+                              ...current,
+                              [card.cardVersionId]: Math.max(0, quantity - 1),
+                            }))
+                          }
+                        >
+                          <Minus size={16} aria-hidden="true" />
+                        </ActionButton>
+                        <input
+                          className="w-14 rounded-md border border-stone-600 bg-zinc-950 px-2 py-2 text-center text-sm font-bold text-stone-50"
+                          type="number"
+                          min="0"
+                          max={limit}
+                          value={quantity}
+                          aria-label={`${card.cardVersion.definition.name} copies`}
+                          onChange={(event) => {
+                            const requested = Number(event.target.value);
+                            const next = Number.isFinite(requested)
+                              ? Math.min(limit, Math.max(0, Math.floor(requested)))
+                              : 0;
+                            setQuantities((current) => ({
+                              ...current,
+                              [card.cardVersionId]: next,
+                            }));
+                          }}
+                        />
+                        <ActionButton
+                          tone="quiet"
+                          type="button"
+                          aria-label={`Add ${card.cardVersion.definition.name}`}
+                          disabled={quantity >= limit}
+                          onClick={() =>
+                            setQuantities((current) => ({
+                              ...current,
+                              [card.cardVersionId]: Math.min(limit, quantity + 1),
+                            }))
+                          }
+                        >
+                          <Plus size={16} aria-hidden="true" />
+                        </ActionButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      </form>
     </>
   );
 }
@@ -606,9 +814,9 @@ function CpuSetupPage() {
             <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
           ) : playableDecks.length === 0 ? (
             <AsyncNotice kind="empty" title="No 30-card decks available">
-              Create a valid 30-card deck through the API before starting CPU practice.
-              <Link className="quiet-link mt-3" to="/decks">
-                Open decks
+              Build a valid 30-card deck before starting CPU practice.
+              <Link className="quiet-link mt-3" to="/decks/new">
+                Build a deck
               </Link>
             </AsyncNotice>
           ) : (
@@ -994,6 +1202,31 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
 
 export function isCpuReadyDeck(deck: Deck): boolean {
   return deckCardTotal(deck) === 30;
+}
+
+export function deckBuilderCopyLimit(card: OwnedCard): number {
+  return Math.min(card.quantity, card.cardVersion.definition.deckLimit ?? 3, 3);
+}
+
+export function deckBuilderCardTotal(quantities: Readonly<Record<string, number>>): number {
+  return Object.values(quantities).reduce((total, quantity) => total + quantity, 0);
+}
+
+export function deckBuilderInput(
+  name: string,
+  cardDataVersion: string,
+  cards: readonly OwnedCard[],
+  quantities: Readonly<Record<string, number>>,
+): DeckInput {
+  const selected = cards.flatMap((card) => {
+    const quantity = quantities[card.cardVersionId] ?? 0;
+    return quantity === 0 ? [] : [{ cardVersionId: card.cardVersionId, quantity }];
+  });
+  return {
+    name: name.trim(),
+    cardDataVersion,
+    cards: selected.map((card, position) => ({ ...card, position })),
+  };
 }
 
 export function loginReturnPath(value: string | null): string {

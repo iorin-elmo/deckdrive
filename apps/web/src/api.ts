@@ -7,6 +7,7 @@ export interface CardDefinition {
   readonly type: string;
   readonly description: string;
   readonly keywords: readonly string[];
+  readonly deckLimit?: number | null;
 }
 
 export interface CardSummary {
@@ -27,6 +28,24 @@ export interface Deck {
   readonly name: string;
   readonly cardDataVersion: string;
   readonly cards: readonly DeckCard[];
+}
+
+export interface DeckCardInput {
+  readonly cardVersionId: string;
+  readonly quantity: number;
+  readonly position: number;
+}
+
+export interface DeckInput {
+  readonly name: string;
+  readonly cardDataVersion: string;
+  readonly cards: readonly DeckCardInput[];
+}
+
+export interface OwnedCard {
+  readonly cardVersionId: string;
+  readonly quantity: number;
+  readonly cardVersion: CardSummary;
 }
 
 export interface Player {
@@ -63,7 +82,10 @@ export interface DeckDriveClient {
   developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
+  collection(playerId: string): Promise<readonly OwnedCard[]>;
   decks(playerId: string): Promise<readonly Deck[]>;
+  createDeck(playerId: string, input: DeckInput): Promise<Deck>;
+  updateDeck(playerId: string, deckId: string, input: DeckInput): Promise<Deck>;
   startCpuMatch(
     playerId: string,
     deckId: string,
@@ -116,6 +138,25 @@ export class DeckDriveApi implements DeckDriveClient {
     return response.decks;
   }
 
+  async collection(playerId: string): Promise<readonly OwnedCard[]> {
+    const response = await this.request<{ cards: readonly OwnedCard[] }>('/api/v1/collection', {
+      playerId,
+    });
+    return response.cards;
+  }
+
+  async createDeck(playerId: string, input: DeckInput): Promise<Deck> {
+    return this.request('/api/v1/decks', { method: 'POST', playerId, body: input });
+  }
+
+  async updateDeck(playerId: string, deckId: string, input: DeckInput): Promise<Deck> {
+    return this.request(`/api/v1/decks/${encodeURIComponent(deckId)}`, {
+      method: 'PUT',
+      playerId,
+      body: input,
+    });
+  }
+
   async startCpuMatch(
     playerId: string,
     deckId: string,
@@ -135,7 +176,7 @@ export class DeckDriveApi implements DeckDriveClient {
   private async request<Result>(
     path: string,
     options: {
-      readonly method?: 'GET' | 'POST';
+      readonly method?: 'GET' | 'POST' | 'PUT';
       readonly playerId?: string;
       readonly body?: unknown;
     } = {},
@@ -170,49 +211,43 @@ export class DeckDriveApi implements DeckDriveClient {
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
 
+function previewCard(
+  cardId: string,
+  name: string,
+  cardClass: string,
+  cost: number,
+  type: string,
+  description: string,
+  keywords: readonly string[],
+): CardSummary {
+  return {
+    cardId,
+    version: '1.0.0',
+    definition: {
+      id: cardId,
+      name,
+      class: cardClass,
+      rarity: 'BASIC',
+      cost,
+      type,
+      description,
+      keywords,
+      deckLimit: 3,
+    },
+  };
+}
+
 const previewCards: readonly CardSummary[] = [
-  {
-    cardId: 'sword_strike',
-    version: '1.0.0',
-    definition: {
-      id: 'sword_strike',
-      name: 'Strike',
-      class: 'SWORD',
-      rarity: 'BASIC',
-      cost: 1,
-      type: 'ATTACK',
-      description: 'Deal 6 damage.',
-      keywords: ['damage'],
-    },
-  },
-  {
-    cardId: 'guardian_guard',
-    version: '1.0.0',
-    definition: {
-      id: 'guardian_guard',
-      name: 'Guard',
-      class: 'GUARDIAN',
-      rarity: 'BASIC',
-      cost: 1,
-      type: 'SKILL',
-      description: 'Gain 5 block.',
-      keywords: ['block'],
-    },
-  },
-  {
-    cardId: 'neutral_insight',
-    version: '1.0.0',
-    definition: {
-      id: 'neutral_insight',
-      name: 'Insight',
-      class: 'NEUTRAL',
-      rarity: 'BASIC',
-      cost: 1,
-      type: 'SKILL',
-      description: 'Draw 1 card.',
-      keywords: ['draw'],
-    },
-  },
+  previewCard('sword_strike', 'Strike', 'SWORD', 1, 'ATTACK', 'Deal 6 damage.', ['damage']),
+  previewCard('guardian_guard', 'Guard', 'GUARDIAN', 1, 'SKILL', 'Gain 5 block.', ['block']),
+  previewCard('neutral_insight', 'Insight', 'NEUTRAL', 1, 'SKILL', 'Draw 1 card.', ['draw']),
+  previewCard('sword_lunge', 'Lunge', 'SWORD', 1, 'ATTACK', 'Deal 4 damage.', ['damage']),
+  previewCard('sword_riposte', 'Riposte', 'SWORD', 1, 'ATTACK', 'Deal 5 damage.', ['damage']),
+  previewCard('guardian_bulwark', 'Bulwark', 'GUARDIAN', 1, 'SKILL', 'Gain 7 block.', ['block']),
+  previewCard('guardian_mend', 'Mend', 'GUARDIAN', 1, 'SKILL', 'Restore 3 health.', ['heal']),
+  previewCard('neutral_focus', 'Focus', 'NEUTRAL', 0, 'SKILL', 'Draw 1 card.', ['draw']),
+  previewCard('neutral_spark', 'Spark', 'NEUTRAL', 1, 'ATTACK', 'Deal 3 damage.', ['damage']),
+  previewCard('neutral_recovery', 'Recovery', 'NEUTRAL', 1, 'SKILL', 'Restore 2 health.', ['heal']),
 ];
 
 const previewDeck: Deck = {
@@ -222,10 +257,28 @@ const previewDeck: Deck = {
   cards: previewCards.map((card, position) => ({
     cardVersionId: `preview-${card.cardId}`,
     position,
-    quantity: 10,
+    quantity: 3,
     cardVersion: card,
   })),
 };
+
+let savedPreviewDeck = previewDeck;
+
+function previewDeckFromInput(id: string, input: DeckInput): Deck {
+  const cardsByVersionId = new Map<string, CardSummary>(
+    previewCards.map((card) => [`preview-${card.cardId}`, card] as const),
+  );
+  return {
+    id,
+    name: input.name,
+    cardDataVersion: input.cardDataVersion,
+    cards: input.cards.map((item) => {
+      const cardVersion = cardsByVersionId.get(item.cardVersionId);
+      if (cardVersion === undefined) throw new ApiError(400, 'INVALID_REQUEST');
+      return { ...item, cardVersion };
+    }),
+  };
+}
 
 function previewBattle(matchId: string): BattleState {
   return {
@@ -275,8 +328,23 @@ export const previewApi: DeckDriveClient = {
   async cards() {
     return previewCards;
   },
+  async collection() {
+    return previewCards.map((card) => ({
+      cardVersionId: `preview-${card.cardId}`,
+      quantity: 3,
+      cardVersion: card,
+    }));
+  },
   async decks() {
-    return [previewDeck];
+    return [savedPreviewDeck];
+  },
+  async createDeck(_playerId, input) {
+    savedPreviewDeck = previewDeckFromInput('preview-custom-deck', input);
+    return savedPreviewDeck;
+  },
+  async updateDeck(_playerId, deckId, input) {
+    savedPreviewDeck = previewDeckFromInput(deckId, input);
+    return savedPreviewDeck;
   },
   async startCpuMatch(_playerId, _deckId, difficulty) {
     const id = 'preview-cpu-match';

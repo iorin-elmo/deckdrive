@@ -26,6 +26,8 @@ explicitly for other hosts or containers.
 
 - `GET /api/v1/cards` and `GET /api/v1/cards/:id` expose versioned card data.
 - `GET /api/v1/me` returns the authenticated player and derived ledger balances.
+- `GET /api/v1/collection` returns the authenticated player's owned card versions
+  and quantities for deck construction.
 - `GET /api/v1/decks`, `POST /api/v1/decks`, `PUT /api/v1/decks/:id`, and
   `DELETE /api/v1/decks/:id` manage only the caller's decks.
 - `POST /api/v1/matches` creates a CPU match from an owned deck and accepts

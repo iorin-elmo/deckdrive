@@ -66,6 +66,56 @@ describe('DeckDriveApi', () => {
     );
   });
 
+  it('reads the collection and sends a deck builder payload', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            cards: [
+              {
+                cardVersionId: 'version-1',
+                quantity: 3,
+                cardVersion: { cardId: 'sword_strike', version: '1.0.0', definition: {} },
+              },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'deck-1', name: 'Practice', cards: [] }), {
+          status: 201,
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi();
+
+    await expect(client.collection('player-1')).resolves.toHaveLength(1);
+    await client.createDeck('player-1', {
+      name: 'Practice',
+      cardDataVersion: '1.0.0',
+      cards: [{ cardVersionId: 'version-1', quantity: 3, position: 0 }],
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/collection',
+      expect.objectContaining({ headers: { 'X-Deckdrive-Player-Id': 'player-1' } }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/decks',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Practice',
+          cardDataVersion: '1.0.0',
+          cards: [{ cardVersionId: 'version-1', quantity: 3, position: 0 }],
+        }),
+      }),
+    );
+  });
+
   it('converts API error bodies into a non-leaking client error', async () => {
     vi.stubGlobal(
       'fetch',
@@ -92,6 +142,7 @@ describe('DeckDriveApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const decks = await previewApi.decks('preview-player');
+    const collection = await previewApi.collection('preview-player');
     const deck = decks[0];
     expect(deck).toBeDefined();
     if (deck === undefined) throw new Error('Expected the preview deck');
@@ -100,6 +151,9 @@ describe('DeckDriveApi', () => {
     const persistedMatch = await previewApi.match('preview-player', match.id);
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
+    expect(collection).toHaveLength(10);
+    expect(deck.cards.reduce((total, card) => total + card.quantity, 0)).toBe(30);
+    expect(deck.cards.every((card) => card.quantity <= 3)).toBe(true);
     expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });
     expect(persistedMatch).toMatchObject({
       status: 'IN_PROGRESS',
