@@ -72,6 +72,7 @@ describe('DeckDriveApi', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            cardDataVersion: '1.0.0',
             cards: [
               {
                 cardVersionId: 'version-1',
@@ -90,7 +91,10 @@ describe('DeckDriveApi', () => {
     vi.stubGlobal('fetch', fetchMock);
     const client = new DeckDriveApi();
 
-    await expect(client.collection('player-1')).resolves.toHaveLength(1);
+    await expect(client.collection('player-1')).resolves.toMatchObject({
+      cardDataVersion: '1.0.0',
+      cards: [{ cardVersionId: 'version-1' }],
+    });
     await client.createDeck('player-1', {
       name: 'Practice',
       cardDataVersion: '1.0.0',
@@ -151,7 +155,8 @@ describe('DeckDriveApi', () => {
     const persistedMatch = await previewApi.match('preview-player', match.id);
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
-    expect(collection).toHaveLength(10);
+    expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
+    expect(collection.cards).toHaveLength(10);
     expect(deck.cards.reduce((total, card) => total + card.quantity, 0)).toBe(30);
     expect(deck.cards.every((card) => card.quantity <= 3)).toBe(true);
     expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });

@@ -48,6 +48,11 @@ export interface OwnedCard {
   readonly cardVersion: CardSummary;
 }
 
+export interface Collection {
+  readonly cardDataVersion: string;
+  readonly cards: readonly OwnedCard[];
+}
+
 export interface Player {
   readonly id: string;
   readonly displayName: string;
@@ -82,7 +87,7 @@ export interface DeckDriveClient {
   developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
-  collection(playerId: string): Promise<readonly OwnedCard[]>;
+  collection(playerId: string): Promise<Collection>;
   decks(playerId: string): Promise<readonly Deck[]>;
   createDeck(playerId: string, input: DeckInput): Promise<Deck>;
   updateDeck(playerId: string, deckId: string, input: DeckInput): Promise<Deck>;
@@ -138,11 +143,10 @@ export class DeckDriveApi implements DeckDriveClient {
     return response.decks;
   }
 
-  async collection(playerId: string): Promise<readonly OwnedCard[]> {
-    const response = await this.request<{ cards: readonly OwnedCard[] }>('/api/v1/collection', {
+  async collection(playerId: string): Promise<Collection> {
+    return this.request<Collection>('/api/v1/collection', {
       playerId,
     });
-    return response.cards;
   }
 
   async createDeck(playerId: string, input: DeckInput): Promise<Deck> {
@@ -328,12 +332,15 @@ export const previewApi: DeckDriveClient = {
   async cards() {
     return previewCards;
   },
-  async collection() {
-    return previewCards.map((card) => ({
-      cardVersionId: `preview-${card.cardId}`,
-      quantity: 3,
-      cardVersion: card,
-    }));
+  async collection(): Promise<Collection> {
+    return {
+      cardDataVersion: '1.0.0',
+      cards: previewCards.map((card) => ({
+        cardVersionId: `preview-${card.cardId}`,
+        quantity: 3,
+        cardVersion: card,
+      })),
+    };
   },
   async decks() {
     return [savedPreviewDeck];

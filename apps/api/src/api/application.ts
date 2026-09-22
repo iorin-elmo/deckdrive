@@ -156,6 +156,7 @@ export class ApiApplication {
     return {
       status: 200,
       body: {
+        cardDataVersion: currentCardDataVersion(this.environment),
         cards: cards.map((card) => ({
           cardVersionId: card.cardVersionId,
           quantity: card.quantity,
@@ -425,6 +426,10 @@ function cpuDifficulty(value: unknown): CpuDifficulty {
   if (value === 'EASY' || value === 'NORMAL' || value === 'HARD' || value === 'EXPERT')
     return value;
   throw new BadRequestError('difficulty must be EASY, NORMAL, HARD, or EXPERT.');
+}
+function currentCardDataVersion(environment: NodeJS.ProcessEnv): string {
+  const configured = environment.CARD_DATA_VERSION?.trim();
+  return configured === undefined || configured.length === 0 ? '1.0.0' : configured;
 }
 function deckLimit(value: Prisma.JsonValue): number | null {
   return typeof value === 'object' &&

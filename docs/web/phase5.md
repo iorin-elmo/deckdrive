@@ -43,6 +43,10 @@ LAN or container deployment, set `HOST` to a non-loopback address such as
 `0.0.0.0` and restrict `CORS_ORIGINS` to the allowed web origins. Put the Vite
 variables in the workspace-root `.env` file.
 
+`CARD_DATA_VERSION` selects the card-data snapshot supplied to the deck builder
+for newly created decks. It defaults to `1.0.0` and should match the current
+card definitions seeded into the API database.
+
 ## Offline preview
 
 When the API or local database is unavailable, the development login error

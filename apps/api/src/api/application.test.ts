@@ -88,10 +88,13 @@ describe('ApiApplication authentication', () => {
         },
       },
     ]);
-    const application = new ApiApplication({
-      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
-      playerCard: { findMany },
-    } as unknown as PrismaClient);
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.2.0' },
+    );
 
     await expect(
       application.handle({
@@ -102,6 +105,7 @@ describe('ApiApplication authentication', () => {
     ).resolves.toMatchObject({
       status: 200,
       body: {
+        cardDataVersion: '1.2.0',
         cards: [
           {
             cardVersionId: 'version-1',

@@ -101,8 +101,14 @@ describe('createApiHttpServer', () => {
       expect(preflight.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
       expect(application.handle).not.toHaveBeenCalled();
 
-      const response = await fetch(baseUrl, { headers: { origin: 'http://localhost:5173' } });
+      const response = await fetch(baseUrl, {
+        headers: {
+          origin: 'http://localhost:5173',
+          'x-deckdrive-player-id': 'player-1',
+        },
+      });
       expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
       expect(application.handle).toHaveBeenCalledOnce();
     } finally {
       server.close();

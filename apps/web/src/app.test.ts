@@ -5,9 +5,11 @@ import {
   canOpenOfflinePreview,
   cardDetailHref,
   deckBuilderCardTotal,
+  deckBuilderCardsForVersion,
   deckBuilderCopyLimit,
   deckBuilderInput,
   isCpuReadyDeck,
+  isUnauthorizedApiError,
   loginReturnPath,
   resultTitle,
   selectCardSummary,
@@ -125,6 +127,25 @@ describe('deckBuilderInput', () => {
       ],
     });
     expect(deckBuilderCardTotal({ 'version-1': 3, 'version-2': 2 })).toBe(5);
+  });
+});
+
+describe('deckBuilderCardsForVersion', () => {
+  it('uses only cards from the collection-provided data version', () => {
+    const collection: readonly OwnedCard[] = [
+      { cardVersionId: 'version-1', quantity: 3, cardVersion: cards[0]! },
+      { cardVersionId: 'version-2', quantity: 3, cardVersion: cards[1]! },
+    ];
+
+    expect(deckBuilderCardsForVersion(collection, '1.1.0')).toEqual([collection[1]]);
+    expect(deckBuilderCardsForVersion(collection, undefined)).toEqual([]);
+  });
+});
+
+describe('isUnauthorizedApiError', () => {
+  it('identifies expired player sessions without treating other failures as unauthenticated', () => {
+    expect(isUnauthorizedApiError(new ApiError(401, 'UNAUTHORIZED'))).toBe(true);
+    expect(isUnauthorizedApiError(new ApiError(500, 'INTERNAL_ERROR'))).toBe(false);
   });
 });
 

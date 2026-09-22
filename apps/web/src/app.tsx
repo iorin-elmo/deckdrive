@@ -258,7 +258,15 @@ function AuthenticatedLayout() {
     queryFn: () => client.me(playerId!),
     enabled: playerId !== null,
   });
+  const unauthorized = isUnauthorizedApiError(player.error);
+  useEffect(() => {
+    if (unauthorized) clearPlayerId();
+  }, [clearPlayerId, unauthorized]);
   if (playerId === null) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
+  }
+  if (unauthorized) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
@@ -654,11 +662,12 @@ function DeckBuilderPage() {
     );
   }, [deck]);
 
-  const ownedCards = collection.data ?? [];
-  const cardDataVersion = deck?.cardDataVersion ?? ownedCards[0]?.cardVersion.version ?? '1.0.0';
+  const cardDataVersion = deck?.cardDataVersion ?? collection.data?.cardDataVersion;
+  const ownedCards = deckBuilderCardsForVersion(collection.data?.cards ?? [], cardDataVersion);
   const total = deckBuilderCardTotal(quantities);
   const save = useMutation({
     mutationFn: () => {
+      if (cardDataVersion === undefined) throw new Error('Card data is not available.');
       const input = deckBuilderInput(name, cardDataVersion, ownedCards, quantities);
       return deckId === undefined
         ? client.createDeck(playerId, input)
@@ -675,6 +684,8 @@ function DeckBuilderPage() {
   if (decks.isError) return <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />;
   if (collection.isError)
     return <ApiFailure error={collection.error} onRetry={() => void collection.refetch()} />;
+  if (cardDataVersion === undefined)
+    return <AsyncNotice kind="empty" title="Card data is not available" />;
   if (deckId !== undefined && deck === undefined)
     return (
       <AsyncNotice kind="empty" title="Deck not found">
@@ -1255,6 +1266,15 @@ export function deckBuilderCopyLimit(card: OwnedCard): number {
   return Math.min(card.quantity, card.cardVersion.definition.deckLimit ?? 3, 3);
 }
 
+export function deckBuilderCardsForVersion(
+  cards: readonly OwnedCard[],
+  cardDataVersion: string | undefined,
+): readonly OwnedCard[] {
+  return cardDataVersion === undefined
+    ? []
+    : cards.filter((card) => card.cardVersion.version === cardDataVersion);
+}
+
 export function deckBuilderCardTotal(quantities: Readonly<Record<string, number>>): number {
   return Object.values(quantities).reduce((total, quantity) => total + quantity, 0);
 }
@@ -1278,6 +1298,10 @@ export function deckBuilderInput(
 
 export function loginReturnPath(value: string | null): string {
   return value !== null && /^\/(?!\/)[^\\]*$/u.test(value) ? value : '/home';
+}
+
+export function isUnauthorizedApiError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
 }
 
 export function resultTitle(status: string | undefined): string {

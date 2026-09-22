@@ -23,7 +23,10 @@ export function createApiHttpServer(
   { allowedOrigins = [] }: ApiHttpServerOptions = {},
 ): Server {
   return createServer(async (request, response) => {
-    const responseHeaders = corsResponseHeaders(request, allowedOrigins);
+    const responseHeaders = {
+      ...corsResponseHeaders(request, allowedOrigins),
+      ...authenticatedResponseHeaders(request),
+    };
     try {
       if (request.method === 'OPTIONS') {
         response.writeHead(204, responseHeaders);
@@ -110,6 +113,12 @@ function corsResponseHeaders(
     'access-control-max-age': '600',
     vary: 'Origin',
   };
+}
+
+function authenticatedResponseHeaders(request: IncomingMessage): OutgoingHttpHeaders {
+  return request.headers['x-deckdrive-player-id'] === undefined
+    ? {}
+    : { 'cache-control': 'private, no-store' };
 }
 
 function writeJson(
