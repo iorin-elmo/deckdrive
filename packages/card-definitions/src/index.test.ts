@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -28,14 +30,43 @@ describe('card-definition public contracts', () => {
     expect(strike.effects[0]).toMatchObject({ type: 'DAMAGE', target: 'ENEMY' });
   });
 
-  it('provides one valid basic card for Sword, Guardian, and Neutral', () => {
-    expect(basicCardDefinitions.map((card) => card.class)).toEqual([
-      'SWORD',
-      'GUARDIAN',
-      'NEUTRAL',
+  it('provides the valid versioned catalog used by the development seed', () => {
+    expect(basicCardDefinitions.map((card) => card.id)).toEqual([
+      'sword_strike',
+      'guardian_guard',
+      'neutral_insight',
+      'sword_lunge',
+      'sword_riposte',
+      'guardian_bulwark',
+      'guardian_mend',
+      'neutral_focus',
+      'neutral_spark',
+      'neutral_recovery',
     ]);
     expect(validateCardDefinitions(basicCardDefinitions)).toEqual({ ok: true });
     expect(basicCardDefinitions.every((card) => card.deckLimit === maximumCardCopies)).toBe(true);
+  });
+
+  it('keeps the development database fixture aligned with the canonical catalog', async () => {
+    const fixtureUrl = new URL(
+      '../../../tests/fixtures/database/development-seed.json',
+      import.meta.url,
+    );
+    const fixture = JSON.parse(await readFile(fixtureUrl, 'utf8')) as {
+      readonly cards: readonly {
+        readonly id: string;
+        readonly version: string;
+        readonly definition: unknown;
+      }[];
+    };
+
+    expect(fixture.cards).toEqual(
+      basicCardDefinitions.map((definition) => ({
+        id: definition.id,
+        version: definition.version,
+        definition,
+      })),
+    );
   });
 
   it('rejects invalid versions, copy limits, effects, and duplicate IDs', () => {
