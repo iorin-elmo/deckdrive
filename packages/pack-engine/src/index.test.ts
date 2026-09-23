@@ -46,4 +46,10 @@ describe('openPack', () => {
     ).toBeGreaterThanOrEqual(2);
     expect(result.cards.filter((card) => card.rarity === 'UR').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('does not replace cards when a guarantee is already satisfied', () => {
+    const result = openPack('already-satisfied', { cards: [{ id: 'ur', rarity: 'UR' }] }, 'BOX');
+    expect(result.cards).toHaveLength(50);
+    expect(result.cards.every((card) => card.rarity === 'UR')).toBe(true);
+  });
 });

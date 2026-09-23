@@ -75,6 +75,7 @@ function ensureMinimum(
   if (eligible.length === 0) throw new PackPoolError(`Pool has no ${minimum}-or-higher card.`);
   let missing =
     count - cards.filter((card) => rarityRank(card.rarity) >= rarityRank(minimum)).length;
+  if (missing <= 0) return;
   const replacementIndexes = cards
     .map((card, index) => (rarityRank(card.rarity) < rarityRank(minimum) ? index : undefined))
     .filter((index): index is number => index !== undefined);
