@@ -48,6 +48,24 @@ describe('openPack', () => {
     expect(result.cards.filter((card) => card.rarity === 'UR').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('reserves a UR before satisfying the SR box guarantee', () => {
+    const result = openPack(
+      'box-without-an-initial-ur',
+      {
+        cards: [
+          { id: 'sr', rarity: 'SR' },
+          { id: 'ur', rarity: 'UR' },
+        ],
+      },
+      'BOX',
+    );
+    if (result.product !== 'BOX') throw new Error('Expected box.');
+    expect(result.cards.some((card) => card.rarity === 'UR')).toBe(true);
+    expect(
+      result.cards.filter((card) => rank[card.rarity] >= rank.SR).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
   it('does not replace cards when a guarantee is already satisfied', () => {
     const result = openPack('already-satisfied', { cards: [{ id: 'ur', rarity: 'UR' }] }, 'BOX');
     expect(result.cards).toHaveLength(50);
