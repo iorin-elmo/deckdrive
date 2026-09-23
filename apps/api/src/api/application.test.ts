@@ -188,6 +188,70 @@ describe('ApiApplication authentication', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  it('rejects a deck that does not use the configured card data snapshot', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.0.0' },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Wrong snapshot',
+          cardDataVersion: '9.9.9',
+          cards: Array.from({ length: 10 }, (_, position) => ({
+            cardVersionId: `card-${String(position)}`,
+            quantity: 3,
+            position,
+          })),
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects cards whose versions differ from the selected snapshot', async () => {
+    const findMany = vi.fn().mockResolvedValue(
+      Array.from({ length: 10 }, (_, position) => ({
+        cardVersionId: `card-${String(position)}`,
+        quantity: 3,
+        cardVersion: { version: '0.9.0', definition: { deckLimit: 3 } },
+      })),
+    );
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.0.0' },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Mixed snapshot',
+          cardDataVersion: '1.0.0',
+          cards: Array.from({ length: 10 }, (_, position) => ({
+            cardVersionId: `card-${String(position)}`,
+            quantity: 3,
+            position,
+          })),
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).toHaveBeenCalledOnce();
+  });
+
   it('rejects invalid quantities and positions before querying the player collection', async () => {
     const findMany = vi.fn();
     const application = new ApiApplication({

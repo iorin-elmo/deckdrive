@@ -172,7 +172,7 @@ export class ApiApplication {
 
   private async createDeck(playerId: string, body: unknown): Promise<ApiResponse> {
     const input = deckInput(body);
-    await this.validateOwnedDeck(playerId, input.cards);
+    await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.create({
       data: {
         playerId,
@@ -193,7 +193,7 @@ export class ApiApplication {
 
   private async updateDeck(playerId: string, deckId: string, body: unknown): Promise<ApiResponse> {
     const input = deckInput(body);
-    await this.validateOwnedDeck(playerId, input.cards);
+    await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.findFirst({
       where: { id: deckId, playerId },
       select: { id: true },
@@ -290,8 +290,12 @@ export class ApiApplication {
 
   private async validateOwnedDeck(
     playerId: string,
+    cardDataVersion: string,
     cards: readonly DeckCardInput[],
   ): Promise<void> {
+    if (cardDataVersion !== currentCardDataVersion(this.environment)) {
+      throw new BadRequestError('Deck card data version is not the configured snapshot.');
+    }
     if (cards.length === 0) throw new BadRequestError('A deck requires cards.');
     if (cards.length > deckSize)
       throw new BadRequestError(`A deck cannot contain more than ${deckSize} card entries.`);
@@ -306,7 +310,7 @@ export class ApiApplication {
       throw new BadRequestError(`A deck must contain exactly ${deckSize} cards.`);
     const owned = await this.prisma.playerCard.findMany({
       where: { playerId, cardVersionId: { in: ids } },
-      include: { cardVersion: { select: { definition: true } } },
+      include: { cardVersion: { select: { definition: true, version: true } } },
     });
     if (owned.length !== cards.length)
       throw new BadRequestError('Deck contains a card that is not owned.');
@@ -317,6 +321,9 @@ export class ApiApplication {
           const collectionCard = byId.get(card.cardVersionId);
           if (collectionCard === undefined)
             throw new BadRequestError('Deck contains a card that is not owned.');
+          if (collectionCard.cardVersion.version !== cardDataVersion) {
+            throw new BadRequestError('Deck cards must match the selected card data version.');
+          }
           return {
             ...card,
             ownedQuantity: collectionCard.quantity,
