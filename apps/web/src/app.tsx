@@ -32,6 +32,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
+import { maximumCardCopies } from '@deck-drive/card-definitions';
 import { ActionButton, AsyncNotice, classNames } from '@deck-drive/ui';
 
 import {
@@ -1272,7 +1273,7 @@ export function isCpuReadyDeck(deck: Deck): boolean {
 }
 
 export function deckBuilderCopyLimit(card: OwnedCard): number {
-  return Math.min(card.quantity, card.cardVersion.definition.deckLimit ?? 3, 3);
+  return Math.min(card.quantity, card.cardVersion.definition.deckLimit ?? maximumCardCopies);
 }
 
 export function deckBuilderCardsForVersion(

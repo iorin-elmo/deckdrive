@@ -1,4 +1,8 @@
-import { basicCardDefinitions, type CardDefinition } from '@deck-drive/card-definitions';
+import {
+  basicCardDefinitions,
+  maximumCardCopies,
+  type CardDefinition,
+} from '@deck-drive/card-definitions';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -211,17 +215,42 @@ const previewCards: readonly CardSummary[] = basicCardDefinitions.map((definitio
   definition,
 }));
 
+const previewDeckSize = 30;
+
+function previewCopyLimit(card: CardSummary): number {
+  return card.definition.deckLimit ?? maximumCardCopies;
+}
+
+function createPreviewDeckCards(cards: readonly CardSummary[]): readonly DeckCard[] {
+  let remaining = previewDeckSize;
+  const deckCards: DeckCard[] = [];
+  for (const card of cards) {
+    const quantity = Math.min(previewCopyLimit(card), remaining);
+    if (quantity === 0) continue;
+    deckCards.push({
+      cardVersionId: `preview-${card.cardId}`,
+      position: deckCards.length,
+      quantity,
+      cardVersion: card,
+    });
+    remaining -= quantity;
+    if (remaining === 0) return deckCards;
+  }
+  throw new Error('The preview card catalog cannot create a legal 30-card deck.');
+}
+
 const previewDeck: Deck = {
   id: 'preview-starter-deck',
   name: 'Observatory starter',
   cardDataVersion: '1.0.0',
-  cards: previewCards.map((card, position) => ({
-    cardVersionId: `preview-${card.cardId}`,
-    position,
-    quantity: 3,
-    cardVersion: card,
-  })),
+  cards: createPreviewDeckCards(previewCards),
 };
+
+const previewOwnedCards: readonly OwnedCard[] = previewCards.map((card) => ({
+  cardVersionId: `preview-${card.cardId}`,
+  quantity: previewCopyLimit(card),
+  cardVersion: card,
+}));
 
 let savedPreviewDeck = previewDeck;
 
@@ -292,11 +321,7 @@ export const previewApi: DeckDriveClient = {
   async collection(): Promise<Collection> {
     return {
       cardDataVersion: '1.0.0',
-      cards: previewCards.map((card) => ({
-        cardVersionId: `preview-${card.cardId}`,
-        quantity: 3,
-        cardVersion: card,
-      })),
+      cards: previewOwnedCards,
     };
   },
   async decks() {

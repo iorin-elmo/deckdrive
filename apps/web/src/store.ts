@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 
 interface SessionState {
   readonly playerId: string | null;
@@ -7,6 +7,23 @@ interface SessionState {
   setPlayerId: (playerId: string) => void;
   enablePreview: () => void;
   clearPlayerId: () => void;
+}
+
+const memoryStorage = new Map<string, string>();
+
+const fallbackStorage: StateStorage = {
+  getItem: (name) => memoryStorage.get(name) ?? null,
+  setItem: (name, value) => memoryStorage.set(name, value),
+  removeItem: (name) => memoryStorage.delete(name),
+};
+
+function sessionStateStorage(): StateStorage {
+  if (typeof window === 'undefined') return fallbackStorage;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return fallbackStorage;
+  }
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -18,6 +35,6 @@ export const useSessionStore = create<SessionState>()(
       enablePreview: () => set({ playerId: 'preview-player', previewMode: true }),
       clearPlayerId: () => set({ playerId: null, previewMode: false }),
     }),
-    { name: 'deckdrive-session', storage: createJSONStorage(() => sessionStorage) },
+    { name: 'deckdrive-session', storage: createJSONStorage(sessionStateStorage) },
   ),
 );

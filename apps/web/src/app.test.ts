@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { maximumCardCopies } from '@deck-drive/card-definitions';
+
 import { ApiError, type CardSummary, type Deck, type OwnedCard } from './api.js';
 import {
   canOpenOfflinePreview,
@@ -119,7 +121,7 @@ describe('deckBuilderInput', () => {
   ];
 
   it('limits copies and builds contiguous API positions from selected cards', () => {
-    expect(deckBuilderCopyLimit(collection[0]!)).toBe(3);
+    expect(deckBuilderCopyLimit(collection[0]!)).toBe(maximumCardCopies);
     expect(deckBuilderCopyLimit(collection[1]!)).toBe(2);
     const input = deckBuilderInput(' Practice ', '1.0.0', collection, {
       'version-1': 3,

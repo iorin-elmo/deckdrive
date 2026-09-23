@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { basicCardDefinitions } from '@deck-drive/card-definitions';
+import { basicCardDefinitions, maximumCardCopies } from '@deck-drive/card-definitions';
 
 import { ApiError, DeckDriveApi, previewApi } from './api.js';
 
@@ -158,7 +158,7 @@ describe('DeckDriveApi', () => {
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
-    expect(collection.cards).toHaveLength(10);
+    expect(collection.cards).toHaveLength(basicCardDefinitions.length);
     expect(await previewApi.cards()).toEqual(
       basicCardDefinitions.map((definition) => ({
         cardId: definition.id,
@@ -167,7 +167,19 @@ describe('DeckDriveApi', () => {
       })),
     );
     expect(deck.cards.reduce((total, card) => total + card.quantity, 0)).toBe(30);
-    expect(deck.cards.every((card) => card.quantity <= 3)).toBe(true);
+    expect(
+      deck.cards.every(
+        (card) => card.quantity <= (card.cardVersion.definition.deckLimit ?? maximumCardCopies),
+      ),
+    ).toBe(true);
+    expect(
+      deck.cards.every((card) => {
+        const owned = collection.cards.find(
+          (candidate) => candidate.cardVersionId === card.cardVersionId,
+        );
+        return owned !== undefined && card.quantity <= owned.quantity;
+      }),
+    ).toBe(true);
     expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });
     expect(persistedMatch).toMatchObject({
       status: 'IN_PROGRESS',
