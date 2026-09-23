@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { basicCardDefinitions, maximumCardCopies } from '@deck-drive/card-definitions';
+import {
+  basicCardDefinitions,
+  maximumCardCopies,
+  packCardDefinitions,
+} from '@deck-drive/card-definitions';
 
 import { ApiError, DeckDriveApi, previewApi } from './api.js';
 
@@ -158,9 +162,10 @@ describe('DeckDriveApi', () => {
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
-    expect(collection.cards).toHaveLength(basicCardDefinitions.length);
+    const previewDefinitions = [...basicCardDefinitions, ...packCardDefinitions];
+    expect(collection.cards).toHaveLength(previewDefinitions.length);
     expect(await previewApi.cards()).toEqual(
-      basicCardDefinitions.map((definition) => ({
+      previewDefinitions.map((definition) => ({
         cardId: definition.id,
         version: definition.version,
         definition,
