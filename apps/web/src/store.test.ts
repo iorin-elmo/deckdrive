@@ -18,4 +18,14 @@ describe('useSessionStore', () => {
       previewMode: true,
     });
   });
+
+  it('keeps authenticated player state and clears it after logout or session expiry', async () => {
+    const { useSessionStore } = await import('./store.js');
+
+    useSessionStore.getState().setPlayerId('player-1');
+    expect(useSessionStore.getState()).toMatchObject({ playerId: 'player-1', previewMode: false });
+
+    useSessionStore.getState().clearPlayerId();
+    expect(useSessionStore.getState()).toMatchObject({ playerId: null, previewMode: false });
+  });
 });

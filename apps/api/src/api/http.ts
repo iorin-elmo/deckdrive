@@ -36,10 +36,12 @@ export function createApiHttpServer(
       }
       const path = new URL(request.url ?? '/', 'http://localhost').pathname;
       if (
-        developmentLoginLoopbackOnly &&
-        request.method === 'POST' &&
-        path === '/api/v1/auth/development' &&
-        !isLoopbackAddress(request.socket.remoteAddress)
+        shouldRejectDevelopmentLogin(
+          request.method,
+          path,
+          request.socket.remoteAddress,
+          developmentLoginLoopbackOnly,
+        )
       ) {
         response.setHeader('connection', 'close');
         writeJson(response, 403, { error: 'DEVELOPMENT_AUTH_LOCAL_ONLY' }, responseHeaders);
@@ -83,6 +85,20 @@ export function isLoopbackAddress(address: string | undefined): boolean {
     octets.length === 4 &&
     octets[0] === '127' &&
     octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
+  );
+}
+
+export function shouldRejectDevelopmentLogin(
+  method: string | undefined,
+  path: string,
+  remoteAddress: string | undefined,
+  loopbackOnly: boolean,
+): boolean {
+  return (
+    loopbackOnly &&
+    method === 'POST' &&
+    path === '/api/v1/auth/development' &&
+    !isLoopbackAddress(remoteAddress)
   );
 }
 

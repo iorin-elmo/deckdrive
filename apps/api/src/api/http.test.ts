@@ -3,7 +3,12 @@ import { once } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiApplication } from './application.js';
-import { createApiHttpServer, isLoopbackAddress, maximumRequestBodyBytes } from './http.js';
+import {
+  createApiHttpServer,
+  isLoopbackAddress,
+  maximumRequestBodyBytes,
+  shouldRejectDevelopmentLogin,
+} from './http.js';
 
 describe('isLoopbackAddress', () => {
   it('accepts IPv4, IPv4-mapped IPv6, and IPv6 loopback addresses', () => {
@@ -17,6 +22,21 @@ describe('isLoopbackAddress', () => {
     expect(isLoopbackAddress(undefined)).toBe(false);
     expect(isLoopbackAddress('192.168.1.10')).toBe(false);
     expect(isLoopbackAddress('::ffff:192.168.1.10')).toBe(false);
+  });
+});
+
+describe('shouldRejectDevelopmentLogin', () => {
+  it('rejects development login from a non-loopback address when the guard is enabled', () => {
+    expect(
+      shouldRejectDevelopmentLogin('POST', '/api/v1/auth/development', '192.168.1.10', true),
+    ).toBe(true);
+  });
+
+  it('permits loopback development login and unrelated routes', () => {
+    expect(
+      shouldRejectDevelopmentLogin('POST', '/api/v1/auth/development', '::ffff:127.0.0.1', true),
+    ).toBe(false);
+    expect(shouldRejectDevelopmentLogin('POST', '/api/v1/decks', '192.168.1.10', true)).toBe(false);
   });
 });
 
