@@ -23,7 +23,7 @@
     "test:replay": "vitest run packages/game-engine/src/replay-regression.test.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
-    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/ui build && vitest run --exclude packages/game-engine/src/replay-regression.test.ts --exclude apps/api/src/database/persistence.integration.test.ts --exclude tests/integration/replay/database-replay.integration.test.ts"
+    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/pack-engine build && pnpm --filter @deck-drive/ui build && vitest run --exclude packages/game-engine/src/replay-regression.test.ts --exclude apps/api/src/database/persistence.integration.test.ts --exclude tests/integration/replay/database-replay.integration.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
