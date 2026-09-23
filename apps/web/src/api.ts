@@ -375,14 +375,16 @@ export const previewApi: DeckDriveClient = {
     ];
   },
   async openPack(_playerId, productId) {
+    const cardCount = productId === 'BOX' ? 50 : productId === 'MONTHLY_BUNDLE' ? 55 : 5;
     return {
       openingId: 'preview-opening',
       productId,
       gemCost: productId === 'RARE_PACK' ? 500 : productId === 'NORMAL_PACK' ? 100 : 1000,
-      cards: previewCards.slice(0, productId === 'BOX' ? 10 : 5).map((card) => ({
-        id: card.cardId,
-        rarity: 'N',
-      })),
+      cards: Array.from({ length: cardCount }, (_, index) => {
+        const card = previewCards[index % previewCards.length];
+        if (card === undefined) throw new Error('Preview card catalogue is empty.');
+        return { id: card.cardId, rarity: 'N' };
+      }),
       exchangePoints: 0,
     };
   },

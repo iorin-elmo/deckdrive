@@ -48,6 +48,13 @@ export class PackPoolUnavailableError extends Error {
   }
 }
 
+export class IdempotencyConflictError extends Error {
+  constructor() {
+    super('Idempotency key was already used for a different pack product.');
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
 type TransactionClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 /**
@@ -86,7 +93,7 @@ export class PrismaPackOpeningService {
     });
     if (existing !== null) {
       if (existing.product !== request.productId) {
-        throw new Error('Idempotency key was already used for a different pack product.');
+        throw new IdempotencyConflictError();
       }
       return existing.result as unknown as OpenPackResult;
     }
@@ -223,14 +230,6 @@ function packRarity(definition: Prisma.JsonValue): PackRarity | undefined {
     case 'SSR':
     case 'UR':
       return definition.rarity;
-    case 'BASIC':
-      return 'N';
-    case 'COMMON':
-      return 'R';
-    case 'UNCOMMON':
-      return 'SR';
-    case 'RARE':
-      return 'UR';
     default:
       return undefined;
   }

@@ -16,6 +16,7 @@ import {
 } from '../decks/deck-validation.js';
 import {
   InsufficientGemError,
+  IdempotencyConflictError,
   PackPoolUnavailableError,
   PackPurchaseLimitError,
   PrismaPackOpeningService,
@@ -410,6 +411,8 @@ export class ApiApplication {
       return { status: 402, body: { error: 'INSUFFICIENT_GEM' } };
     if (error instanceof PackPurchaseLimitError)
       return { status: 409, body: { error: 'PACK_PURCHASE_LIMIT_REACHED' } };
+    if (error instanceof IdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof PackPoolUnavailableError)
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
     if (error instanceof DevelopmentAuthenticationDisabledError)

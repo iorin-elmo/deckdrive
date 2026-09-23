@@ -38,6 +38,7 @@ describe('openPack', () => {
     if (result.product !== 'BOX') throw new Error('Expected box.');
     expect(result.packs).toHaveLength(10);
     expect(result.cards).toHaveLength(50);
+    expect(result.packs.flatMap((pack) => pack.cards)).toEqual(result.cards);
     expect(
       result.cards.filter((card) => rank[card.rarity] >= rank.R).length,
     ).toBeGreaterThanOrEqual(10);

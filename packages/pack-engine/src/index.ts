@@ -47,7 +47,11 @@ function openBoxWithRandom(pool: PackPool, random: () => number): OpenedBox {
   const cards = packs.flatMap((pack) => pack.cards);
   ensureMinimum(cards, pool, 'SR', 2, random);
   ensureMinimum(cards, pool, 'UR', 1, random);
-  return { product: 'BOX', packs, cards };
+  const guaranteedPacks = packs.map((pack, index) => ({
+    ...pack,
+    cards: cards.slice(index * packSize, (index + 1) * packSize),
+  }));
+  return { product: 'BOX', packs: guaranteedPacks, cards };
 }
 
 function openSinglePack(
