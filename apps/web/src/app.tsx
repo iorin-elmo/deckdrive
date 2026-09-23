@@ -854,6 +854,9 @@ function CpuSetupPage() {
   const queryDeck = new URLSearchParams(location.search).get('deck');
   const [deckId, setDeckId] = useState(queryDeck ?? '');
   const [difficulty, setDifficulty] = useState<CpuMatch['difficulty']>('NORMAL');
+  useEffect(() => {
+    setDeckId(queryDeck ?? '');
+  }, [queryDeck]);
   const playableDecks = (decks.data ?? []).filter(isCpuReadyDeck);
   const selectedDeck = playableDecks.some((deck) => deck.id === deckId);
   const start = useMutation({
