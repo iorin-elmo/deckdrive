@@ -597,7 +597,7 @@ function PacksPage() {
                 key={`${card.id}-${String(index)}`}
                 className="rounded border border-cyan-300/40 px-3 py-2 text-sm font-bold text-cyan-100"
               >
-                {card.rarity} · {card.id}
+                {card.rarity} card
               </span>
             ))}
           </div>

@@ -1,6 +1,7 @@
 import {
   basicCardDefinitions,
   maximumCardCopies,
+  packCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 
@@ -252,11 +253,13 @@ export class DeckDriveApi implements DeckDriveClient {
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
 
-const previewCards: readonly CardSummary[] = basicCardDefinitions.map((definition) => ({
-  cardId: definition.id,
-  version: definition.version,
-  definition,
-}));
+const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
+  (definition) => ({
+    cardId: definition.id,
+    version: definition.version,
+    definition,
+  }),
+);
 
 const previewDeckSize = 30;
 

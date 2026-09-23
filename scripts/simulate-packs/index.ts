@@ -15,9 +15,9 @@ const rarityCounts = new Map(pool.map((card) => [card.rarity, 0]));
 let totalSr = 0;
 let totalUr = 0;
 let duplicateCards = 0;
-const owned = new Map<string, number>();
 for (let index = 0; index < simulations; index += 1) {
   const result = openPack(`simulation-${String(index)}`, { cards: pool }, 'BOX');
+  const owned = new Map<string, number>();
   for (const card of result.cards) {
     rarityCounts.set(card.rarity, (rarityCounts.get(card.rarity) ?? 0) + 1);
     if (card.rarity === 'SR' || card.rarity === 'SSR' || card.rarity === 'UR') totalSr += 1;
