@@ -655,7 +655,11 @@ function DeckBuilderPage() {
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
 
   useEffect(() => {
-    if (deck === undefined) return;
+    if (deck === undefined) {
+      setName('New deck');
+      setQuantities({});
+      return;
+    }
     setName(deck.name);
     setQuantities(
       Object.fromEntries(deck.cards.map((card) => [card.cardVersionId, card.quantity])),
