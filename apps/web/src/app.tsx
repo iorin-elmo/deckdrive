@@ -20,7 +20,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -653,18 +653,23 @@ function DeckBuilderPage() {
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
   const [name, setName] = useState('New deck');
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
+  const initializedDeckId = useRef<string | null | undefined>(null);
 
   useEffect(() => {
-    if (deck === undefined) {
+    if (initializedDeckId.current === deckId) return;
+    if (deckId === undefined) {
       setName('New deck');
       setQuantities({});
+      initializedDeckId.current = deckId;
       return;
     }
+    if (deck === undefined) return;
     setName(deck.name);
     setQuantities(
       Object.fromEntries(deck.cards.map((card) => [card.cardVersionId, card.quantity])),
     );
-  }, [deck]);
+    initializedDeckId.current = deckId;
+  }, [deck, deckId]);
 
   const cardDataVersion = deck?.cardDataVersion ?? collection.data?.cardDataVersion;
   const ownedCards = deckBuilderCardsForVersion(collection.data?.cards ?? [], cardDataVersion);
