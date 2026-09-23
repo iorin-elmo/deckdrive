@@ -178,7 +178,7 @@ export class PrismaPackOpeningService {
         amount: -generated.product.gemCost,
         reason: 'PACK_OPEN',
         referenceId: opening.id,
-        idempotencyKey: `${request.idempotencyKey}:gem`,
+        idempotencyKey: `pack:${opening.id}:gem`,
       },
     });
     for (const grant of grants) {
@@ -206,7 +206,7 @@ export class PrismaPackOpeningService {
           amount: exchangePoints,
           reason: 'DUPLICATE_CONVERSION',
           referenceId: opening.id,
-          idempotencyKey: `${request.idempotencyKey}:duplicates`,
+          idempotencyKey: `pack:${opening.id}:duplicates`,
         },
       });
     }
