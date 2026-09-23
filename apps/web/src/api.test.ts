@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { basicCardDefinitions } from '@deck-drive/card-definitions';
+
 import { ApiError, DeckDriveApi, previewApi } from './api.js';
 
 describe('DeckDriveApi', () => {
@@ -157,6 +159,13 @@ describe('DeckDriveApi', () => {
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
     expect(collection.cards).toHaveLength(10);
+    expect(await previewApi.cards()).toEqual(
+      basicCardDefinitions.map((definition) => ({
+        cardId: definition.id,
+        version: definition.version,
+        definition,
+      })),
+    );
     expect(deck.cards.reduce((total, card) => total + card.quantity, 0)).toBe(30);
     expect(deck.cards.every((card) => card.quantity <= 3)).toBe(true);
     expect(match).toMatchObject({ id: 'preview-cpu-match', difficulty: 'NORMAL' });

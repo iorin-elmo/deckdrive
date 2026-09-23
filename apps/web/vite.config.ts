@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
+        '@deck-drive/card-definitions': fileURLToPath(
+          new URL('../../packages/card-definitions/src/index.ts', import.meta.url),
+        ),
         '@deck-drive/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),
       },
     },

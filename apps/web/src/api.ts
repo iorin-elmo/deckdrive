@@ -1,14 +1,4 @@
-export interface CardDefinition {
-  readonly id: string;
-  readonly name: string;
-  readonly class: string;
-  readonly rarity: string;
-  readonly cost: number;
-  readonly type: string;
-  readonly description: string;
-  readonly keywords: readonly string[];
-  readonly deckLimit?: number | null;
-}
+import { basicCardDefinitions, type CardDefinition } from '@deck-drive/card-definitions';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -215,44 +205,11 @@ export class DeckDriveApi implements DeckDriveClient {
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
 
-function previewCard(
-  cardId: string,
-  name: string,
-  cardClass: string,
-  cost: number,
-  type: string,
-  description: string,
-  keywords: readonly string[],
-): CardSummary {
-  return {
-    cardId,
-    version: '1.0.0',
-    definition: {
-      id: cardId,
-      name,
-      class: cardClass,
-      rarity: 'BASIC',
-      cost,
-      type,
-      description,
-      keywords,
-      deckLimit: 3,
-    },
-  };
-}
-
-const previewCards: readonly CardSummary[] = [
-  previewCard('sword_strike', 'Strike', 'SWORD', 1, 'ATTACK', 'Deal 6 damage.', ['damage']),
-  previewCard('guardian_guard', 'Guard', 'GUARDIAN', 1, 'SKILL', 'Gain 5 block.', ['block']),
-  previewCard('neutral_insight', 'Insight', 'NEUTRAL', 1, 'SKILL', 'Draw 1 card.', ['draw']),
-  previewCard('sword_lunge', 'Lunge', 'SWORD', 1, 'ATTACK', 'Deal 4 damage.', ['damage']),
-  previewCard('sword_riposte', 'Riposte', 'SWORD', 1, 'ATTACK', 'Deal 5 damage.', ['damage']),
-  previewCard('guardian_bulwark', 'Bulwark', 'GUARDIAN', 1, 'SKILL', 'Gain 7 block.', ['block']),
-  previewCard('guardian_mend', 'Mend', 'GUARDIAN', 1, 'SKILL', 'Restore 3 health.', ['heal']),
-  previewCard('neutral_focus', 'Focus', 'NEUTRAL', 0, 'SKILL', 'Draw 1 card.', ['draw']),
-  previewCard('neutral_spark', 'Spark', 'NEUTRAL', 1, 'ATTACK', 'Deal 3 damage.', ['damage']),
-  previewCard('neutral_recovery', 'Recovery', 'NEUTRAL', 1, 'SKILL', 'Restore 2 health.', ['heal']),
-];
+const previewCards: readonly CardSummary[] = basicCardDefinitions.map((definition) => ({
+  cardId: definition.id,
+  version: definition.version,
+  definition,
+}));
 
 const previewDeck: Deck = {
   id: 'preview-starter-deck',
