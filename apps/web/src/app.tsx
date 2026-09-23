@@ -47,6 +47,7 @@ import {
   type DeckInput,
   type DeckDriveClient,
   type OwnedCard,
+  type PackOpening,
 } from './api.js';
 import { useSessionStore } from './store.js';
 
@@ -54,6 +55,7 @@ const navigation = [
   { to: '/home', label: 'Home', icon: Sparkles },
   { to: '/cards', label: 'Cards', icon: LibraryBig },
   { to: '/decks', label: 'Decks', icon: BookOpen },
+  { to: '/packs', label: 'Packs', icon: Trophy },
   { to: '/battle/cpu', label: 'CPU', icon: Swords },
 ] as const;
 
@@ -70,6 +72,7 @@ export function App() {
         <Route path="/decks/new" element={<DeckBuilderPage />} />
         <Route path="/decks/:deckId" element={<DeckDetailPage />} />
         <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
+        <Route path="/packs" element={<PacksPage />} />
         <Route path="/battle/cpu" element={<CpuSetupPage />} />
         <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
         <Route path="/result/:matchId" element={<ResultPage />} />
@@ -507,6 +510,101 @@ function CardDetailPage() {
       </AsyncNotice>
     );
   return <CardDetail card={card} />;
+}
+
+function PacksPage() {
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const [opening, setOpening] = useState<PackOpening | null>(null);
+  const packs = useQuery({
+    queryKey: ['packs', playerId, previewMode],
+    queryFn: () => client.packs(playerId),
+  });
+  const open = useMutation({
+    mutationFn: (productId: Parameters<DeckDriveClient['openPack']>[1]) =>
+      client.openPack(playerId, productId, crypto.randomUUID()),
+    onSuccess: (result) => {
+      setOpening(result);
+      void queryClient.invalidateQueries({ queryKey: ['me', playerId, previewMode] });
+      void queryClient.invalidateQueries({ queryKey: ['collection', playerId, previewMode] });
+    },
+  });
+  return (
+    <>
+      <PageHeading
+        eyebrow="PACK VAULT"
+        title="Open packs"
+        description="Purchases spend Gems atomically. Fourth and later copies convert to Exchange Points."
+      />
+      {packs.isLoading ? (
+        <div className="mt-7">
+          <LoadingNotice title="Loading pack catalogue" />
+        </div>
+      ) : null}
+      {packs.isError ? (
+        <div className="mt-7">
+          <ApiFailure error={packs.error} onRetry={() => void packs.refetch()} />
+        </div>
+      ) : null}
+      <section className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {packs.data?.map((product) => (
+          <article key={product.id} className="surface-panel p-5">
+            <p className="eyebrow">
+              {product.limit === null ? 'STANDARD' : `${product.limit.period} LIMITED`}
+            </p>
+            <h2 className="mt-2 text-xl font-black text-stone-50">
+              {product.id.replaceAll('_', ' ')}
+            </h2>
+            <p className="mt-2 text-sm text-amber-200">{product.gemCost} Gems</p>
+            {product.limit === null ? null : (
+              <p className="mt-2 text-sm text-stone-300">
+                {product.limit.maximum} purchase per {product.limit.period.toLowerCase()}.
+              </p>
+            )}
+            <ActionButton
+              className="mt-5 w-full"
+              disabled={open.isPending}
+              onClick={() => open.mutate(product.id)}
+            >
+              {open.isPending ? (
+                <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
+              ) : (
+                <Trophy size={17} aria-hidden="true" />
+              )}
+              Open pack
+            </ActionButton>
+          </article>
+        ))}
+      </section>
+      {open.isError ? (
+        <div className="mt-6">
+          <ApiFailure error={open.error} />
+        </div>
+      ) : null}
+      {opening === null ? null : (
+        <section className="surface-panel mt-7 p-6" aria-live="polite">
+          <p className="eyebrow">OPENED</p>
+          <h2 className="mt-2 text-2xl font-black">{opening.cards.length} cards received</h2>
+          <p className="mt-2 text-sm text-stone-300">
+            Spent {opening.gemCost} Gems. Duplicate conversion: {opening.exchangePoints} Exchange
+            Points.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {opening.cards.map((card, index) => (
+              <span
+                key={`${card.id}-${String(index)}`}
+                className="rounded border border-cyan-300/40 px-3 py-2 text-sm font-bold text-cyan-100"
+              >
+                {card.rarity} · {card.id}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
 }
 
 function DecksPage() {

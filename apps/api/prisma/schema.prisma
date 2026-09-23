@@ -18,6 +18,14 @@ enum Currency {
   EXCHANGE_POINT
 }
 
+enum PackProduct {
+  NORMAL_PACK
+  RARE_PACK
+  BOX
+  WEEKLY_BOX
+  MONTHLY_BUNDLE
+}
+
 model User {
   id          String   @id @default(uuid()) @db.Uuid
   email       String   @unique @db.Citext
@@ -39,6 +47,7 @@ model Player {
   decks     Deck[]
   matches   MatchPlayer[]
   currencyTransactions CurrencyTransaction[]
+  packOpenings         PackOpening[]
 
   @@map("players")
 }
@@ -49,6 +58,7 @@ model CurrencyTransaction {
   currency       Currency
   amount         Int
   reason         String
+  referenceId    String?  @map("reference_id") @db.Uuid
   idempotencyKey String   @map("idempotency_key")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
@@ -56,6 +66,22 @@ model CurrencyTransaction {
   @@unique([playerId, idempotencyKey])
   @@index([playerId, createdAt])
   @@map("currency_transactions")
+}
+
+model PackOpening {
+  id             String      @id @default(uuid()) @db.Uuid
+  playerId       String      @map("player_id") @db.Uuid
+  product        PackProduct
+  gemCost        Int         @map("gem_cost")
+  seed           String
+  result         Json
+  idempotencyKey String      @map("idempotency_key")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  player         Player      @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, createdAt])
+  @@map("pack_openings")
 }
 
 model Card {

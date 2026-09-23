@@ -3,7 +3,7 @@ export const packageName = '@deck-drive/card-definitions' as const;
 
 export type CardClass =
   'SWORD' | 'GUARDIAN' | 'MAGE' | 'ALCHEMIST' | 'HUNTER' | 'TRICKSTER' | 'NEUTRAL';
-export type CardRarity = 'BASIC' | 'COMMON' | 'UNCOMMON' | 'RARE';
+export type CardRarity = 'BASIC' | 'COMMON' | 'UNCOMMON' | 'RARE' | 'N' | 'R' | 'SR' | 'SSR' | 'UR';
 export type CardType = 'ATTACK' | 'SKILL' | 'POWER' | 'REACTION' | 'CURSE';
 export type EffectTarget = 'SELF' | 'ENEMY';
 
@@ -87,7 +87,17 @@ const cardClasses = new Set<string>([
   'NEUTRAL',
 ]);
 const cardTypes = new Set<string>(['ATTACK', 'SKILL', 'POWER', 'REACTION', 'CURSE']);
-const cardRarities = new Set<string>(['BASIC', 'COMMON', 'UNCOMMON', 'RARE']);
+const cardRarities = new Set<string>([
+  'BASIC',
+  'COMMON',
+  'UNCOMMON',
+  'RARE',
+  'N',
+  'R',
+  'SR',
+  'SSR',
+  'UR',
+]);
 
 export const basicCardDefinitions: readonly CardDefinition[] = [
   {
@@ -226,6 +236,80 @@ export const basicCardDefinitions: readonly CardDefinition[] = [
     type: 'SKILL',
     description: 'Heal 2 health.',
     effects: [{ type: 'HEAL', amount: 2, target: 'SELF' }],
+    keywords: ['heal'],
+    artwork: null,
+    deckLimit: maximumCardCopies,
+  },
+];
+
+/** Minimal Phase 6 pool, kept separate so starter cards remain always available. */
+export const packCardDefinitions: readonly CardDefinition[] = [
+  {
+    id: 'pack_scout',
+    version: '1.0.0',
+    name: 'Scout',
+    class: 'HUNTER',
+    rarity: 'N',
+    cost: 1,
+    type: 'ATTACK',
+    description: 'Deal 3 damage.',
+    effects: [{ type: 'DAMAGE', amount: 3, target: 'ENEMY' }],
+    keywords: [],
+    artwork: null,
+    deckLimit: maximumCardCopies,
+  },
+  {
+    id: 'pack_vanguard',
+    version: '1.0.0',
+    name: 'Vanguard',
+    class: 'SWORD',
+    rarity: 'R',
+    cost: 2,
+    type: 'ATTACK',
+    description: 'Deal 7 damage.',
+    effects: [{ type: 'DAMAGE', amount: 7, target: 'ENEMY' }],
+    keywords: [],
+    artwork: null,
+    deckLimit: maximumCardCopies,
+  },
+  {
+    id: 'pack_aegis',
+    version: '1.0.0',
+    name: 'Aegis',
+    class: 'GUARDIAN',
+    rarity: 'SR',
+    cost: 2,
+    type: 'SKILL',
+    description: 'Gain 11 block.',
+    effects: [{ type: 'GAIN_BLOCK', amount: 11, target: 'SELF' }],
+    keywords: ['block'],
+    artwork: null,
+    deckLimit: maximumCardCopies,
+  },
+  {
+    id: 'pack_starfall',
+    version: '1.0.0',
+    name: 'Starfall',
+    class: 'MAGE',
+    rarity: 'SSR',
+    cost: 3,
+    type: 'ATTACK',
+    description: 'Deal 12 damage.',
+    effects: [{ type: 'DAMAGE', amount: 12, target: 'ENEMY' }],
+    keywords: [],
+    artwork: null,
+    deckLimit: maximumCardCopies,
+  },
+  {
+    id: 'pack_eternal_mend',
+    version: '1.0.0',
+    name: 'Eternal Mend',
+    class: 'ALCHEMIST',
+    rarity: 'UR',
+    cost: 3,
+    type: 'SKILL',
+    description: 'Restore 10 health.',
+    effects: [{ type: 'HEAL', amount: 10, target: 'SELF' }],
     keywords: ['heal'],
     artwork: null,
     deckLimit: maximumCardCopies,

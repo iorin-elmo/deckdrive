@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm run prisma:generate && tsc -p tsconfig.json",
-    "dev": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsx src/server.ts",
-    "typecheck": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
+    "build": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/pack-engine build && pnpm run prisma:generate && tsc -p tsconfig.json",
+    "dev": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/pack-engine build && pnpm run prisma:generate && tsx src/server.ts",
+    "typecheck": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/pack-engine build && pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
     "prisma:generate": "tsx src/database/generate.ts",
     "prisma:validate": "prisma validate",
     "prisma:migrate:dev": "tsx src/database/migrate.ts",
@@ -18,7 +18,9 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@deck-drive/card-definitions": "workspace:*",
     "@deck-drive/game-engine": "workspace:*",
+    "@deck-drive/pack-engine": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "pg": "8.16.3"
