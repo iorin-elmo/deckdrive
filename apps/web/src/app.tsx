@@ -25,6 +25,7 @@ import {
   Link,
   NavLink,
   Navigate,
+  Outlet,
   Route,
   Routes,
   useLocation,
@@ -252,6 +253,7 @@ function AuthenticatedLayout() {
   const playerId = useSessionStore((state) => state.playerId);
   const previewMode = useSessionStore((state) => state.previewMode);
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
+  const queryClient = useQueryClient();
   const client = useApiClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const player = useQuery({
@@ -261,8 +263,14 @@ function AuthenticatedLayout() {
   });
   const unauthorized = isUnauthorizedApiError(player.error);
   useEffect(() => {
-    if (unauthorized) clearPlayerId();
-  }, [clearPlayerId, unauthorized]);
+    if (!unauthorized) return;
+    queryClient.clear();
+    clearPlayerId();
+  }, [clearPlayerId, queryClient, unauthorized]);
+  const signOut = () => {
+    queryClient.clear();
+    clearPlayerId();
+  };
   if (playerId === null) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
@@ -314,7 +322,7 @@ function AuthenticatedLayout() {
                 {label}
               </NavLink>
             ))}
-            <button className="nav-link sm:ml-3" type="button" onClick={clearPlayerId}>
+            <button className="nav-link sm:ml-3" type="button" onClick={signOut}>
               <DoorOpen size={16} aria-hidden="true" />
               Sign out
             </button>
@@ -330,24 +338,9 @@ function AuthenticatedLayout() {
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
-        {player.isError ? <ApiFailure error={player.error} /> : <RoutesContent />}
+        {player.isError ? <ApiFailure error={player.error} /> : <Outlet />}
       </main>
     </div>
-  );
-}
-
-function RoutesContent() {
-  return (
-    <Routes>
-      <Route path="/home" element={<HomePage />} />
-      <Route path="/decks" element={<DecksPage />} />
-      <Route path="/decks/new" element={<DeckBuilderPage />} />
-      <Route path="/decks/:deckId" element={<DeckDetailPage />} />
-      <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
-      <Route path="/battle/cpu" element={<CpuSetupPage />} />
-      <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
-      <Route path="/result/:matchId" element={<ResultPage />} />
-    </Routes>
   );
 }
 
