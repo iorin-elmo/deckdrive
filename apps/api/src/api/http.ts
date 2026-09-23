@@ -15,12 +15,13 @@ const corsHeaders = 'content-type, x-deckdrive-player-id';
 
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
+  readonly developmentLoginLoopbackOnly?: boolean;
 }
 
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(
   application: ApiApplication,
-  { allowedOrigins = [] }: ApiHttpServerOptions = {},
+  { allowedOrigins = [], developmentLoginLoopbackOnly = false }: ApiHttpServerOptions = {},
 ): Server {
   return createServer(async (request, response) => {
     const responseHeaders = {
@@ -33,9 +34,20 @@ export function createApiHttpServer(
         response.end();
         return;
       }
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      if (
+        developmentLoginLoopbackOnly &&
+        request.method === 'POST' &&
+        path === '/api/v1/auth/development' &&
+        !isLoopbackAddress(request.socket.remoteAddress)
+      ) {
+        response.setHeader('connection', 'close');
+        writeJson(response, 403, { error: 'DEVELOPMENT_AUTH_LOCAL_ONLY' }, responseHeaders);
+        return;
+      }
       const apiRequest: ApiRequest = {
         method: request.method ?? 'GET',
-        path: new URL(request.url ?? '/', 'http://localhost').pathname,
+        path,
         headers: Object.fromEntries(
           Object.entries(request.headers).map(([name, value]) => [
             name,
@@ -59,6 +71,19 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false;
+  const normalized = address.trim().toLowerCase();
+  if (normalized === '::1') return true;
+  const ipv4 = normalized.startsWith('::ffff:') ? normalized.slice('::ffff:'.length) : normalized;
+  const octets = ipv4.split('.');
+  return (
+    octets.length === 4 &&
+    octets[0] === '127' &&
+    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
+  );
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {

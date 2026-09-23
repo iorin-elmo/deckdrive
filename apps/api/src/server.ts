@@ -15,6 +15,7 @@ if (databaseUrl === undefined || databaseUrl.length === 0)
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
 const server = createApiHttpServer(new ApiApplication(prisma), {
   allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
+  developmentLoginLoopbackOnly: true,
 });
 const host = apiHost(process.env.HOST);
 const port = apiPort(process.env.PORT);

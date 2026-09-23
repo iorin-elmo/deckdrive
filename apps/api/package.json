@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm run prisma:generate && tsc -p tsconfig.json",
-    "dev": "tsx src/server.ts",
+    "dev": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsx src/server.ts",
     "typecheck": "pnpm --filter @deck-drive/game-engine build && pnpm run prisma:generate && tsc -p tsconfig.json --noEmit && pnpm run prisma:seed:check",
     "prisma:generate": "tsx src/database/generate.ts",
     "prisma:validate": "prisma validate",

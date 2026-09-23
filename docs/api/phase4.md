@@ -19,8 +19,9 @@ The native HTTP adapter handles browser CORS preflight and allows
 `http://localhost:5173` by default. Set `CORS_ORIGINS` to a comma-separated
 allowlist when serving the web client from another origin. The allowlist covers
 the JSON content type and `X-Deckdrive-Player-Id` request header used by
-authenticated web requests. The server binds `127.0.0.1` by default; set `HOST`
-explicitly for other hosts or containers.
+authenticated web requests. The server binds `127.0.0.1` by default. Even when
+`HOST` is explicitly set for another host or container, development login accepts
+loopback clients only; use an authenticated reverse proxy for any remote access.
 
 ## Implemented endpoints
 

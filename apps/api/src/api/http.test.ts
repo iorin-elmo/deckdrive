@@ -3,7 +3,22 @@ import { once } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiApplication } from './application.js';
-import { createApiHttpServer, maximumRequestBodyBytes } from './http.js';
+import { createApiHttpServer, isLoopbackAddress, maximumRequestBodyBytes } from './http.js';
+
+describe('isLoopbackAddress', () => {
+  it('accepts IPv4, IPv4-mapped IPv6, and IPv6 loopback addresses', () => {
+    expect(isLoopbackAddress('127.0.0.1')).toBe(true);
+    expect(isLoopbackAddress('127.0.0.2')).toBe(true);
+    expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(true);
+    expect(isLoopbackAddress('::1')).toBe(true);
+  });
+
+  it('rejects missing and non-loopback client addresses', () => {
+    expect(isLoopbackAddress(undefined)).toBe(false);
+    expect(isLoopbackAddress('192.168.1.10')).toBe(false);
+    expect(isLoopbackAddress('::ffff:192.168.1.10')).toBe(false);
+  });
+});
 
 describe('createApiHttpServer', () => {
   it('returns a client error for malformed JSON instead of leaving the request open', async () => {

@@ -27,6 +27,10 @@ Start the API in one terminal:
 corepack pnpm --filter @deck-drive/api dev
 ```
 
+The API `dev` command builds the game-engine workspace dependency and generates
+the Prisma client before it starts the server; database migration and seed remain
+explicit setup steps above.
+
 Start the web client in a second terminal:
 
 ```powershell
@@ -38,9 +42,10 @@ Vite serves the client at `http://localhost:5173` and proxies `/api` to
 API origin instead, or set `VITE_API_PROXY` to change the local proxy target.
 For a cross-origin `VITE_API_URL`, configure the API's `CORS_ORIGINS` to
 include the web application's origin (the default permits
-`http://localhost:5173`). The API binds `127.0.0.1` by default. For an explicit
-LAN or container deployment, set `HOST` to a non-loopback address such as
-`0.0.0.0` and restrict `CORS_ORIGINS` to the allowed web origins. Put the Vite
+`http://localhost:5173`). The API binds `127.0.0.1` by default. A non-loopback
+`HOST` is not a development-login deployment mode: `POST /api/v1/auth/development`
+accepts loopback clients only. Put a LAN or container API behind an authenticated
+reverse proxy rather than exposing development authentication. Put the Vite
 variables in the workspace-root `.env` file.
 
 `CARD_DATA_VERSION` selects the card-data snapshot supplied to the deck builder
