@@ -4,6 +4,55 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('sorts listCards responses by numeric semantic version for the same card', async () => {
+    const application = new ApiApplication({
+      cardVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          { cardId: 'sword_strike', version: '1.2.0', definition: { id: 'older' } },
+          { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+        ]),
+      },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/cards',
+      headers: {},
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        cards: [
+          { cardId: 'sword_strike', version: '1.10.0' },
+          { cardId: 'sword_strike', version: '1.2.0' },
+        ],
+      },
+    });
+  });
+
+  it('returns the numerically latest card version for card detail requests', async () => {
+    const application = new ApiApplication({
+      cardVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          { cardId: 'sword_strike', version: '1.2.0', definition: { id: 'older' } },
+          { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+        ]),
+      },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/cards/sword_strike',
+      headers: {},
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: { cardId: 'sword_strike', version: '1.10.0', definition: { id: 'newer' } },
+    });
+  });
+
   it('accepts the player header with any casing', async () => {
     const findUnique = vi.fn().mockResolvedValue({ id: 'player-1' });
     const application = new ApiApplication({
@@ -25,6 +74,52 @@ describe('ApiApplication authentication', () => {
       }),
     ).resolves.toMatchObject({ status: 200 });
     expect(findUnique).toHaveBeenCalledWith({ where: { id: 'player-1' }, select: { id: true } });
+  });
+
+  it('returns only the authenticated player collection with card version IDs', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        cardVersionId: 'version-1',
+        quantity: 3,
+        cardVersion: {
+          cardId: 'sword_strike',
+          version: '1.0.0',
+          definition: { id: 'sword_strike' },
+        },
+      },
+    ]);
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.2.0' },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/collection',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        cardDataVersion: '1.2.0',
+        cards: [
+          {
+            cardVersionId: 'version-1',
+            quantity: 3,
+            cardVersion: { cardId: 'sword_strike', version: '1.0.0' },
+          },
+        ],
+      },
+    });
+    expect(findMany).toHaveBeenCalledWith({
+      where: { playerId: 'player-1' },
+      orderBy: { updatedAt: 'asc' },
+      include: { cardVersion: true },
+    });
   });
 
   it('does not expose unexpected infrastructure errors as client errors', async () => {
@@ -91,6 +186,70 @@ describe('ApiApplication authentication', () => {
       }),
     ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deck that does not use the configured card data snapshot', async () => {
+    const findMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.0.0' },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Wrong snapshot',
+          cardDataVersion: '9.9.9',
+          cards: Array.from({ length: 10 }, (_, position) => ({
+            cardVersionId: `card-${String(position)}`,
+            quantity: 3,
+            position,
+          })),
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects cards whose versions differ from the selected snapshot', async () => {
+    const findMany = vi.fn().mockResolvedValue(
+      Array.from({ length: 10 }, (_, position) => ({
+        cardVersionId: `card-${String(position)}`,
+        quantity: 3,
+        cardVersion: { version: '0.9.0', definition: { deckLimit: 3 } },
+      })),
+    );
+    const application = new ApiApplication(
+      {
+        player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+        playerCard: { findMany },
+      } as unknown as PrismaClient,
+      { CARD_DATA_VERSION: '1.0.0' },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/decks',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: {
+          name: 'Mixed snapshot',
+          cardDataVersion: '1.0.0',
+          cards: Array.from({ length: 10 }, (_, position) => ({
+            cardVersionId: `card-${String(position)}`,
+            quantity: 3,
+            position,
+          })),
+        },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(findMany).toHaveBeenCalledOnce();
   });
 
   it('rejects invalid quantities and positions before querying the player collection', async () => {
@@ -190,7 +349,7 @@ describe('ApiApplication authentication', () => {
           cardDataVersion: '1.0.0',
           cards: [
             {
-              quantity: 1,
+              quantity: 30,
               position: 0,
               cardVersion: {
                 cardId: 'database-card-id',
@@ -217,5 +376,30 @@ describe('ApiApplication authentication', () => {
     expect(response.status).toBe(201);
     const state = (response.body as { state: { players: { hand: unknown[] }[] } }).state;
     expect(state.players[0]?.hand[0]).toMatchObject({ definitionId: 'engine-definition-id' });
+  });
+
+  it('rejects an incomplete deck before creating a CPU match', async () => {
+    const create = vi.fn();
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      deck: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'deck-1',
+          cardDataVersion: '1.0.0',
+          cards: [{ quantity: 2 }],
+        }),
+      },
+      match: { create },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/matches',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+        body: { deckId: 'deck-1', difficulty: 'EASY' },
+      }),
+    ).resolves.toEqual({ status: 400, body: { error: 'INVALID_REQUEST' } });
+    expect(create).not.toHaveBeenCalled();
   });
 });

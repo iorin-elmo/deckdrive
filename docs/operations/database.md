@@ -31,7 +31,7 @@ history through `pnpm db:migrate:deploy`; they must never use `migrate dev`,
 `db push`, or a direct schema edit.
 
 `db:seed` is deliberately restricted to `NODE_ENV=development`. It installs
-the fixture-backed debug user, sample cards, a deck, and a sample match, and
+the fixture-backed debug user, canonical card catalog, a deck, and a sample match and
 refuses `production`, test, or an unset environment. It also refuses a
 non-loopback database host, so an accidentally supplied production connection
 cannot be seeded by a local `.env` development setting. The fixture is written

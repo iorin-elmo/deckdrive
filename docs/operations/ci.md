@@ -28,6 +28,15 @@ pnpm build
 sufficient for a clean checkout. The workflow caches pnpm's store, never
 `node_modules`.
 
+## Copilot review
+
+The `Request Copilot review` workflow requests the review-only account
+`copilot-pull-request-reviewer[bot]` for pull requests. For a fresh review of
+an existing pull request, request that same reviewer through the GitHub review
+API or UI. Do not post `@copilot review` as a pull-request comment: that
+invokes the Copilot SWE agent, which can commit changes to the branch rather
+than providing an independent review.
+
 ## Test gates by delivery phase
 
 Only checks that execute a real command and can fail are present in CI. An

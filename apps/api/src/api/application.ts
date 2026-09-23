@@ -47,7 +47,8 @@ export class ApiApplication {
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const authenticatedRoute =
-        (request.method === 'GET' && (path === '/api/v1/me' || path === '/api/v1/decks')) ||
+        (request.method === 'GET' &&
+          (path === '/api/v1/me' || path === '/api/v1/collection' || path === '/api/v1/decks')) ||
         (request.method === 'POST' && (path === '/api/v1/decks' || path === '/api/v1/matches')) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
@@ -55,6 +56,8 @@ export class ApiApplication {
 
       const player = await this.requirePlayer(request);
       if (request.method === 'GET' && path === '/api/v1/me') return await this.me(player.id);
+      if (request.method === 'GET' && path === '/api/v1/collection')
+        return await this.collection(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
@@ -92,20 +95,23 @@ export class ApiApplication {
   }
 
   private async listCards(): Promise<ApiResponse> {
-    const cards = await this.prisma.cardVersion.findMany({
-      orderBy: [{ cardId: 'asc' }, { version: 'desc' }],
-      select: { cardId: true, version: true, definition: true },
-    });
+    const cards = sortVersionedCards(
+      await this.prisma.cardVersion.findMany({
+        orderBy: { cardId: 'asc' },
+        select: { cardId: true, version: true, definition: true },
+      }),
+    );
     return { status: 200, body: { cards } };
   }
 
   private async getCard(cardId: string): Promise<ApiResponse> {
-    const card = await this.prisma.cardVersion.findFirst({
-      where: { cardId },
-      orderBy: { version: 'desc' },
-      select: { cardId: true, version: true, definition: true },
-    });
-    return card === null
+    const [card] = sortVersionedCards(
+      await this.prisma.cardVersion.findMany({
+        where: { cardId },
+        select: { cardId: true, version: true, definition: true },
+      }),
+    );
+    return card === undefined
       ? { status: 404, body: { error: 'CARD_NOT_FOUND' } }
       : { status: 200, body: card };
   }
@@ -141,9 +147,32 @@ export class ApiApplication {
     return { status: 200, body: { decks } };
   }
 
+  private async collection(playerId: string): Promise<ApiResponse> {
+    const cards = await this.prisma.playerCard.findMany({
+      where: { playerId },
+      orderBy: { updatedAt: 'asc' },
+      include: { cardVersion: true },
+    });
+    return {
+      status: 200,
+      body: {
+        cardDataVersion: currentCardDataVersion(this.environment),
+        cards: cards.map((card) => ({
+          cardVersionId: card.cardVersionId,
+          quantity: card.quantity,
+          cardVersion: {
+            cardId: card.cardVersion.cardId,
+            version: card.cardVersion.version,
+            definition: card.cardVersion.definition,
+          },
+        })),
+      },
+    };
+  }
+
   private async createDeck(playerId: string, body: unknown): Promise<ApiResponse> {
     const input = deckInput(body);
-    await this.validateOwnedDeck(playerId, input.cards);
+    await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.create({
       data: {
         playerId,
@@ -164,7 +193,7 @@ export class ApiApplication {
 
   private async updateDeck(playerId: string, deckId: string, body: unknown): Promise<ApiResponse> {
     const input = deckInput(body);
-    await this.validateOwnedDeck(playerId, input.cards);
+    await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.findFirst({
       where: { id: deckId, playerId },
       select: { id: true },
@@ -207,6 +236,9 @@ export class ApiApplication {
       include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
     if (deck === null) return { status: 404, body: { error: 'DECK_NOT_FOUND' } };
+    const totalCards = deck.cards.reduce((total, card) => total + card.quantity, 0);
+    if (totalCards !== deckSize)
+      throw new BadRequestError(`A CPU match requires exactly ${deckSize} cards.`);
     const cards = deck.cards.flatMap((deckCard) => {
       const definition = toEngineDefinition(deckCard.cardVersion.definition);
       return Array.from({ length: deckCard.quantity }, (_, index) => ({
@@ -258,8 +290,12 @@ export class ApiApplication {
 
   private async validateOwnedDeck(
     playerId: string,
+    cardDataVersion: string,
     cards: readonly DeckCardInput[],
   ): Promise<void> {
+    if (cardDataVersion !== currentCardDataVersion(this.environment)) {
+      throw new BadRequestError('Deck card data version is not the configured snapshot.');
+    }
     if (cards.length === 0) throw new BadRequestError('A deck requires cards.');
     if (cards.length > deckSize)
       throw new BadRequestError(`A deck cannot contain more than ${deckSize} card entries.`);
@@ -274,7 +310,7 @@ export class ApiApplication {
       throw new BadRequestError(`A deck must contain exactly ${deckSize} cards.`);
     const owned = await this.prisma.playerCard.findMany({
       where: { playerId, cardVersionId: { in: ids } },
-      include: { cardVersion: { select: { definition: true } } },
+      include: { cardVersion: { select: { definition: true, version: true } } },
     });
     if (owned.length !== cards.length)
       throw new BadRequestError('Deck contains a card that is not owned.');
@@ -285,6 +321,9 @@ export class ApiApplication {
           const collectionCard = byId.get(card.cardVersionId);
           if (collectionCard === undefined)
             throw new BadRequestError('Deck contains a card that is not owned.');
+          if (collectionCard.cardVersion.version !== cardDataVersion) {
+            throw new BadRequestError('Deck cards must match the selected card data version.');
+          }
           return {
             ...card,
             ownedQuantity: collectionCard.quantity,
@@ -321,6 +360,33 @@ export class ApiApplication {
 
 class UnauthorizedError extends Error {}
 class BadRequestError extends Error {}
+
+function sortVersionedCards<T extends { readonly cardId: string; readonly version: string }>(
+  cards: readonly T[],
+): T[] {
+  return [...cards].sort((left, right) => {
+    const cardIdOrder = left.cardId.localeCompare(right.cardId);
+    if (cardIdOrder !== 0) return cardIdOrder;
+    return compareSemanticVersions(right.version, left.version);
+  });
+}
+
+function compareSemanticVersions(left: string, right: string): number {
+  const leftParts = parseSemanticVersion(left);
+  const rightParts = parseSemanticVersion(right);
+  if (leftParts === undefined || rightParts === undefined) return left.localeCompare(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function parseSemanticVersion(version: string): number[] | undefined {
+  const parts = version.split('.').map((part) => Number(part));
+  return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : undefined;
+}
 
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
@@ -367,6 +433,10 @@ function cpuDifficulty(value: unknown): CpuDifficulty {
   if (value === 'EASY' || value === 'NORMAL' || value === 'HARD' || value === 'EXPERT')
     return value;
   throw new BadRequestError('difficulty must be EASY, NORMAL, HARD, or EXPERT.');
+}
+function currentCardDataVersion(environment: NodeJS.ProcessEnv): string {
+  const configured = environment.CARD_DATA_VERSION?.trim();
+  return configured === undefined || configured.length === 0 ? '1.0.0' : configured;
 }
 function deckLimit(value: Prisma.JsonValue): number | null {
   return typeof value === 'object' &&

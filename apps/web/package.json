@@ -4,7 +4,29 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/ui build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@deck-drive/card-definitions": "workspace:*",
+    "@deck-drive/ui": "workspace:*",
+    "@tanstack/react-query": "5.66.8",
+    "lucide-react": "0.468.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-router-dom": "7.1.5",
+    "zustand": "5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.0.8",
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "25.0.1",
+    "tailwindcss": "4.0.8",
+    "vite": "6.1.0"
   }
 }
