@@ -106,7 +106,7 @@ async function main(): Promise<void> {
             target: mission.target,
             rewardCurrency: mission.reward.currency,
             rewardAmount: mission.reward.amount,
-            active: true,
+            active: mission.active,
           },
           create: {
             id: mission.id,
@@ -115,6 +115,7 @@ async function main(): Promise<void> {
             target: mission.target,
             rewardCurrency: mission.reward.currency,
             rewardAmount: mission.reward.amount,
+            active: mission.active,
           },
         });
       }

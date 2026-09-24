@@ -31,6 +31,7 @@ import {
   MissionNotReadyError,
   PrismaMissionService,
 } from '../missions/prisma-mission-service.js';
+import { PrismaProgressionService } from '../missions/prisma-progression-service.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -409,6 +410,12 @@ export class ApiApplication {
         'CPU_BATTLE',
         1,
       );
+      await new PrismaProgressionService(this.prisma).grantExperienceInTransaction(transaction, {
+        playerId,
+        amount: 10,
+        reason: 'CPU_MATCH_STARTED',
+        idempotencyKey: `match:${matchId}:xp`,
+      });
     });
     return { status: 201, body: { id: matchId, difficulty, state } };
   }

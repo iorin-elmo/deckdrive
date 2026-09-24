@@ -1,10 +1,8 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { addExperience } from './progression.js';
 
-type ProgressionClient = Pick<
-  PrismaClient,
-  'player' | 'experienceTransaction' | '$transaction' | '$queryRaw'
->;
+type ProgressionOperations = Pick<PrismaClient, 'player' | 'experienceTransaction' | '$queryRaw'>;
+type ProgressionClient = ProgressionOperations & Pick<PrismaClient, '$transaction'>;
 
 export interface ExperienceGrant {
   readonly playerId: string;
@@ -19,40 +17,46 @@ export class PrismaProgressionService {
 
   async grantExperience(grant: ExperienceGrant) {
     validateExperienceGrant(grant);
-    return this.prisma.$transaction(async (transaction) => {
-      const inserted = await transaction.experienceTransaction.createMany({
-        data: grant,
-        skipDuplicates: true,
-      });
-      if (inserted.count === 0) {
-        const existing = await transaction.experienceTransaction.findUniqueOrThrow({
-          where: {
-            playerId_idempotencyKey: {
-              playerId: grant.playerId,
-              idempotencyKey: grant.idempotencyKey,
-            },
+    return this.prisma.$transaction((transaction) =>
+      this.grantExperienceInTransaction(transaction, grant),
+    );
+  }
+
+  /** Allows an authoritative match event and its XP grant to commit atomically. */
+  async grantExperienceInTransaction(transaction: ProgressionOperations, grant: ExperienceGrant) {
+    validateExperienceGrant(grant);
+    const inserted = await transaction.experienceTransaction.createMany({
+      data: grant,
+      skipDuplicates: true,
+    });
+    if (inserted.count === 0) {
+      const existing = await transaction.experienceTransaction.findUniqueOrThrow({
+        where: {
+          playerId_idempotencyKey: {
+            playerId: grant.playerId,
+            idempotencyKey: grant.idempotencyKey,
           },
-        });
-        if (existing.amount !== grant.amount || existing.reason !== grant.reason)
-          throw new Error('Idempotency key was already used for a different experience grant.');
-        return transaction.player.findUniqueOrThrow({
-          where: { id: grant.playerId },
-          select: { experience: true, level: true },
-        });
-      }
-      // Different idempotency keys may be granted concurrently. This serializes the
-      // read/level-calculation/write sequence without involving game state.
-      await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${grant.playerId} FOR UPDATE`;
-      const current = await transaction.player.findUniqueOrThrow({
+        },
+      });
+      if (existing.amount !== grant.amount || existing.reason !== grant.reason)
+        throw new Error('Idempotency key was already used for a different experience grant.');
+      return transaction.player.findUniqueOrThrow({
         where: { id: grant.playerId },
         select: { experience: true, level: true },
       });
-      const next = addExperience(current, grant.amount);
-      return transaction.player.update({
-        where: { id: grant.playerId },
-        data: next,
-        select: { experience: true, level: true },
-      });
+    }
+    // Different idempotency keys may be granted concurrently. This serializes the
+    // read/level-calculation/write sequence without involving game state.
+    await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${grant.playerId} FOR UPDATE`;
+    const current = await transaction.player.findUniqueOrThrow({
+      where: { id: grant.playerId },
+      select: { experience: true, level: true },
+    });
+    const next = addExperience(current, grant.amount);
+    return transaction.player.update({
+      where: { id: grant.playerId },
+      data: next,
+      select: { experience: true, level: true },
     });
   }
 }

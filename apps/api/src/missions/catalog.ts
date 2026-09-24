@@ -18,6 +18,7 @@ export interface MissionCatalogEntry {
   readonly metric: MissionMetric;
   readonly target: number;
   readonly reward: { readonly currency: RewardCurrency; readonly amount: number };
+  readonly active: boolean;
 }
 
 /** Server-managed mission definitions. Clients only receive progress and may never submit it. */
@@ -28,6 +29,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'CPU_BATTLE',
     target: 1,
     reward: { currency: 'GEM', amount: 20 },
+    active: true,
   },
   {
     id: 'daily.pvp-battle',
@@ -35,6 +37,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'PVP_BATTLE',
     target: 1,
     reward: { currency: 'GEM', amount: 30 },
+    active: false,
   },
   {
     id: 'daily.card-play',
@@ -42,6 +45,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'CARD_PLAY',
     target: 10,
     reward: { currency: 'GEM', amount: 20 },
+    active: false,
   },
   {
     id: 'daily.damage',
@@ -49,6 +53,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'DAMAGE',
     target: 40,
     reward: { currency: 'GEM', amount: 25 },
+    active: false,
   },
   {
     id: 'daily.block',
@@ -56,6 +61,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'BLOCK',
     target: 20,
     reward: { currency: 'GEM', amount: 20 },
+    active: false,
   },
   {
     id: 'daily.win',
@@ -63,6 +69,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'WIN',
     target: 1,
     reward: { currency: 'GEM', amount: 40 },
+    active: false,
   },
   {
     id: 'weekly.ranked-battle',
@@ -70,6 +77,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'RANKED_BATTLE',
     target: 5,
     reward: { currency: 'GEM', amount: 120 },
+    active: false,
   },
   {
     id: 'weekly.class-usage',
@@ -77,6 +85,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'CLASS_USAGE',
     target: 3,
     reward: { currency: 'EXCHANGE_POINT', amount: 80 },
+    active: false,
   },
   {
     id: 'weekly.deck-objective',
@@ -84,6 +93,7 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
     metric: 'DECK_OBJECTIVE',
     target: 3,
     reward: { currency: 'GEM', amount: 100 },
+    active: false,
   },
 ];
 

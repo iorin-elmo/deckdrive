@@ -436,6 +436,12 @@ describe('ApiApplication authentication', () => {
           match: { create: vi.fn() },
           mission: { findMany: vi.fn().mockResolvedValue([]) },
           playerMission: { findUnique: vi.fn(), upsert: vi.fn() },
+          experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+          $queryRaw: vi.fn(),
+          player: {
+            findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 0, level: 1 }),
+            update: vi.fn(),
+          },
         }),
       ),
     } as unknown as PrismaClient);

@@ -3,14 +3,14 @@
 INSERT INTO "missions" ("id", "cadence", "metric", "target", "reward_currency", "reward_amount", "active", "created_at", "updated_at")
 VALUES
   ('daily.cpu-battle', 'DAILY', 'CPU_BATTLE', 1, 'GEM', 20, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('daily.pvp-battle', 'DAILY', 'PVP_BATTLE', 1, 'GEM', 30, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('daily.card-play', 'DAILY', 'CARD_PLAY', 10, 'GEM', 20, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('daily.damage', 'DAILY', 'DAMAGE', 40, 'GEM', 25, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('daily.block', 'DAILY', 'BLOCK', 20, 'GEM', 20, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('daily.win', 'DAILY', 'WIN', 1, 'GEM', 40, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('weekly.ranked-battle', 'WEEKLY', 'RANKED_BATTLE', 5, 'GEM', 120, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('weekly.class-usage', 'WEEKLY', 'CLASS_USAGE', 3, 'EXCHANGE_POINT', 80, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('weekly.deck-objective', 'WEEKLY', 'DECK_OBJECTIVE', 3, 'GEM', 100, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  ('daily.pvp-battle', 'DAILY', 'PVP_BATTLE', 1, 'GEM', 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('daily.card-play', 'DAILY', 'CARD_PLAY', 10, 'GEM', 20, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('daily.damage', 'DAILY', 'DAMAGE', 40, 'GEM', 25, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('daily.block', 'DAILY', 'BLOCK', 20, 'GEM', 20, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('daily.win', 'DAILY', 'WIN', 1, 'GEM', 40, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('weekly.ranked-battle', 'WEEKLY', 'RANKED_BATTLE', 5, 'GEM', 120, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('weekly.class-usage', 'WEEKLY', 'CLASS_USAGE', 3, 'EXCHANGE_POINT', 80, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('weekly.deck-objective', 'WEEKLY', 'DECK_OBJECTIVE', 3, 'GEM', 100, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT ("id") DO UPDATE SET
   "cadence" = EXCLUDED."cadence", "metric" = EXCLUDED."metric", "target" = EXCLUDED."target",
   "reward_currency" = EXCLUDED."reward_currency", "reward_amount" = EXCLUDED."reward_amount",
