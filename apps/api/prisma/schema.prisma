@@ -38,6 +38,9 @@ enum MissionMetric {
   DAMAGE
   BLOCK
   WIN
+  RANKED_BATTLE
+  CLASS_USAGE
+  DECK_OBJECTIVE
 }
 
 enum CosmeticKind {
