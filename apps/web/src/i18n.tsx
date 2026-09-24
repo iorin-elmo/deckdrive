@@ -544,3 +544,11 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
 export function localizeValue(value: string, locale: Locale): string {
   return localizedValues[locale][value] ?? value;
 }
+
+const battlePhaseValues = ['PLAYER_TURN', 'MATCH_END'] as const;
+
+export function localizeBattlePhase(phase: string, locale: Locale): string {
+  return battlePhaseValues.includes(phase as (typeof battlePhaseValues)[number])
+    ? localizeValue(phase, locale)
+    : phase;
+}

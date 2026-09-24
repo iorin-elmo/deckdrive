@@ -54,6 +54,7 @@ import { useSessionStore } from './store.js';
 import {
   I18nProvider,
   localizeCard,
+  localizeBattlePhase,
   localizeCardMetadata,
   localizeValue,
   localizedCardName,
@@ -1223,7 +1224,7 @@ function BattleBoard({
         title={t('cpuArena')}
         description={t('turn')
           .replace('{count}', String(state.turn))
-          .replace('{phase}', localizeValue(state.phase, locale))}
+          .replace('{phase}', localizeBattlePhase(state.phase, locale))}
       />
       <section className="battle-board mt-7" aria-label={t('battleState')}>
         <Combatant label={t('opponent')} player={opponent} tone="enemy" />

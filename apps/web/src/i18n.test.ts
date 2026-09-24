@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { basicCardDefinitions } from '@deck-drive/card-definitions';
 
-import { localizeCard, localizeCardMetadata } from './i18n.js';
+import { localizeBattlePhase, localizeCard, localizeCardMetadata } from './i18n.js';
 
 describe('localizeCard', () => {
   const strike = basicCardDefinitions.find((card) => card.id === 'sword_strike')!;
@@ -28,5 +28,11 @@ describe('localizeCardMetadata', () => {
     expect(localizeCardMetadata('ATTACK', 'ja')).toBe('攻撃');
     expect(localizeCardMetadata('RARE', 'ja')).toBe('レア');
     expect(localizeCardMetadata('SSR', 'ja')).toBe('SSR');
+  });
+});
+
+describe('localizeBattlePhase', () => {
+  it('translates terminal phases', () => {
+    expect(localizeBattlePhase('MATCH_END', 'ja')).toBe('対戦終了');
   });
 });
