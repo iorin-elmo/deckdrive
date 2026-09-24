@@ -1,0 +1,50 @@
+import type { PrismaClient } from '../generated/prisma/client.js';
+
+type CosmeticClient = Pick<PrismaClient, 'cosmetic' | 'playerCosmetic' | '$transaction'>;
+
+export interface CosmeticGrant {
+  readonly playerId: string;
+  readonly cosmeticId: string;
+  readonly source: string;
+  readonly idempotencyKey: string;
+}
+
+/** Idempotently grants presentation-only cosmetics; this service never touches battle state. */
+export class PrismaCosmeticService {
+  constructor(private readonly prisma: CosmeticClient) {}
+
+  async grant(grant: CosmeticGrant) {
+    validateGrant(grant);
+    return this.prisma.$transaction(async (transaction) => {
+      const cosmetic = await transaction.cosmetic.findUnique({ where: { id: grant.cosmeticId } });
+      if (cosmetic === null) throw new Error('Cosmetic was not found.');
+      const existing = await transaction.playerCosmetic.findUnique({
+        where: {
+          playerId_idempotencyKey: {
+            playerId: grant.playerId,
+            idempotencyKey: grant.idempotencyKey,
+          },
+        },
+      });
+      if (existing !== null) {
+        if (existing.cosmeticId !== grant.cosmeticId || existing.source !== grant.source)
+          throw new Error('Idempotency key was already used for a different cosmetic grant.');
+        return existing;
+      }
+      return transaction.playerCosmetic.upsert({
+        where: {
+          playerId_cosmeticId: { playerId: grant.playerId, cosmeticId: grant.cosmeticId },
+        },
+        update: {},
+        create: grant,
+      });
+    });
+  }
+}
+
+function validateGrant(grant: CosmeticGrant): void {
+  if (grant.playerId.trim().length === 0) throw new Error('A player ID is required.');
+  if (grant.cosmeticId.trim().length === 0) throw new Error('A cosmetic ID is required.');
+  if (grant.source.trim().length === 0) throw new Error('A cosmetic source is required.');
+  if (grant.idempotencyKey.trim().length === 0) throw new Error('An idempotency key is required.');
+}

@@ -82,6 +82,7 @@ model Player {
   missions             PlayerMission[]
   loginRewardClaims    LoginRewardClaim[]
   cosmetics            PlayerCosmetic[]
+  experienceTransactions ExperienceTransaction[]
 
   @@map("players")
 }
@@ -141,16 +142,33 @@ model Cosmetic {
 }
 
 model PlayerCosmetic {
-  id         String   @id @default(uuid()) @db.Uuid
-  playerId   String   @map("player_id") @db.Uuid
-  cosmeticId String   @map("cosmetic_id")
-  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
-  player     Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
-  cosmetic   Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  cosmeticId     String   @map("cosmetic_id")
+  source         String   @default("UNSPECIFIED")
+  idempotencyKey String?  @map("idempotency_key")
+  acquiredAt     DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  cosmetic       Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
 
   @@unique([playerId, cosmeticId])
+  @@unique([playerId, idempotencyKey])
   @@index([playerId, acquiredAt])
   @@map("player_cosmetics")
+}
+
+model ExperienceTransaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  amount         Int
+  reason         String
+  idempotencyKey String   @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, createdAt])
+  @@map("experience_transactions")
 }
 
 model CurrencyTransaction {
