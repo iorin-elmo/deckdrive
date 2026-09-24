@@ -69,7 +69,7 @@ export class PrismaPackOpeningService {
     const seed = request.seed ?? randomUUID();
     return this.prisma.$transaction(
       (transaction) => this.openInTransaction(transaction, { ...request, seed }),
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
   }
 
