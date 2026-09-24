@@ -4,6 +4,7 @@ import {
   packCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
+import { openPack, type PackCard } from '@deck-drive/pack-engine';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -378,16 +379,25 @@ export const previewApi: DeckDriveClient = {
     ];
   },
   async openPack(_playerId, productId) {
-    const cardCount = productId === 'BOX' ? 50 : productId === 'MONTHLY_BUNDLE' ? 55 : 5;
+    const openingProducts =
+      productId === 'MONTHLY_BUNDLE'
+        ? (['BOX', 'RARE_PACK'] as const)
+        : productId === 'WEEKLY_BOX'
+          ? (['BOX'] as const)
+          : ([productId] as const);
+    const pool: readonly PackCard[] = packCardDefinitions.map((definition) => ({
+      id: definition.id,
+      rarity: definition.rarity as PackCard['rarity'],
+    }));
+    const cards = openingProducts.flatMap(
+      (openingProduct, index) =>
+        openPack(`preview-${productId}-${String(index)}`, { cards: pool }, openingProduct).cards,
+    );
     return {
       openingId: 'preview-opening',
       productId,
       gemCost: productId === 'RARE_PACK' ? 500 : productId === 'NORMAL_PACK' ? 100 : 1000,
-      cards: Array.from({ length: cardCount }, (_, index) => {
-        const card = previewCards[index % previewCards.length];
-        if (card === undefined) throw new Error('Preview card catalogue is empty.');
-        return { id: card.cardId, rarity: 'N' };
-      }),
+      cards,
       exchangePoints: 0,
     };
   },

@@ -46,7 +46,7 @@ function openBoxWithRandom(pool: PackPool, random: () => number): OpenedBox {
   );
   const cards = packs.flatMap((pack) => pack.cards);
   ensureMinimum(cards, pool, 'UR', 1, random);
-  ensureMinimum(cards, pool, 'SR', 2, random);
+  ensureExactMinimum(cards, pool, 'SR', 2, random);
   const guaranteedPacks = packs.map((pack, index) => ({
     ...pack,
     cards: cards.slice(index * packSize, (index + 1) * packSize),
@@ -85,6 +85,24 @@ function ensureMinimum(
     .filter((index): index is number => index !== undefined);
   for (const index of replacementIndexes) {
     if (missing === 0) return;
+    cards[index] = pick(eligible, random);
+    missing -= 1;
+  }
+}
+
+function ensureExactMinimum(
+  cards: PackCard[],
+  pool: PackPool,
+  rarity: PackRarity,
+  count: number,
+  random: () => number,
+): void {
+  const eligible = pool.cards.filter((card) => card.rarity === rarity);
+  if (eligible.length === 0) throw new PackPoolError(`Pool has no ${rarity} card.`);
+  let missing = count - cards.filter((card) => card.rarity === rarity).length;
+  if (missing <= 0) return;
+  for (let index = 0; index < cards.length && missing > 0; index += 1) {
+    if (cards[index]?.rarity === rarity) continue;
     cards[index] = pick(eligible, random);
     missing -= 1;
   }
