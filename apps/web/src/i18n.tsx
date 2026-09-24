@@ -545,10 +545,11 @@ export function localizeValue(value: string, locale: Locale): string {
   return localizedValues[locale][value] ?? value;
 }
 
-const battlePhaseValues = ['PLAYER_TURN', 'MATCH_END'] as const;
+const battlePhases = {
+  en: { PLAYER_TURN: 'Player turn', MATCH_END: 'Match end' },
+  ja: { PLAYER_TURN: 'プレイヤーのターン', MATCH_END: '対戦終了' },
+} as const;
 
 export function localizeBattlePhase(phase: string, locale: Locale): string {
-  return battlePhaseValues.includes(phase as (typeof battlePhaseValues)[number])
-    ? localizeValue(phase, locale)
-    : phase;
+  return battlePhases[locale][phase as keyof (typeof battlePhases)[typeof locale]] ?? phase;
 }
