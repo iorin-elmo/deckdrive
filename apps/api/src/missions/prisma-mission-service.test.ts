@@ -121,4 +121,33 @@ describe('PrismaMissionService', () => {
       }),
     );
   });
+
+  it('creates first-time mission progress and uses an atomic increment for later events', async () => {
+    const upsert = vi.fn().mockResolvedValue({ progress: 1 });
+    const transaction = {
+      mission: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'daily.cpu-battle', cadence: 'DAILY', target: 3 }]),
+      },
+      playerMission: { findUnique: vi.fn().mockResolvedValue(null), upsert, update: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await new PrismaMissionService(prisma).recordProgress(
+      'player-1',
+      'CPU_BATTLE',
+      1,
+      new Date('2026-09-25T10:00:00.000Z'),
+    );
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { progress: { increment: 1 } },
+        create: expect.objectContaining({ progress: 1 }),
+      }),
+    );
+  });
 });

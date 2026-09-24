@@ -1,7 +1,10 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { addExperience } from './progression.js';
 
-type ProgressionClient = Pick<PrismaClient, 'player' | 'experienceTransaction' | '$transaction'>;
+type ProgressionClient = Pick<
+  PrismaClient,
+  'player' | 'experienceTransaction' | '$transaction' | '$queryRaw'
+>;
 
 export interface ExperienceGrant {
   readonly playerId: string;
@@ -37,6 +40,9 @@ export class PrismaProgressionService {
           select: { experience: true, level: true },
         });
       }
+      // Different idempotency keys may be granted concurrently. This serializes the
+      // read/level-calculation/write sequence without involving game state.
+      await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${grant.playerId} FOR UPDATE`;
       const current = await transaction.player.findUniqueOrThrow({
         where: { id: grant.playerId },
         select: { experience: true, level: true },

@@ -111,18 +111,26 @@ export class PrismaMissionService {
             playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
           },
         });
-        if (existing?.claimedAt !== null && existing !== null) return existing;
-        return transaction.playerMission.upsert({
+        if (existing !== null && existing.claimedAt !== null) return existing;
+        const progress = await transaction.playerMission.upsert({
           where: {
             playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
           },
-          update: { progress: Math.min(mission.target, (existing?.progress ?? 0) + amount) },
+          // Prisma emits an atomic SQL increment, so simultaneous server events cannot lose progress.
+          update: { progress: { increment: amount } },
           create: {
             playerId,
             missionId: mission.id,
             periodStart,
             progress: Math.min(mission.target, amount),
           },
+        });
+        if (progress.progress <= mission.target) return progress;
+        return transaction.playerMission.update({
+          where: {
+            playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
+          },
+          data: { progress: mission.target },
         });
       }),
     );

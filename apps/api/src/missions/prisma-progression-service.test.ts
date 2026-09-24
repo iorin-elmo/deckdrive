@@ -8,6 +8,7 @@ describe('PrismaProgressionService', () => {
     const update = vi.fn().mockResolvedValue({ experience: 210, level: 2 });
     const transaction = {
       experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      $queryRaw: vi.fn(),
       player: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 190, level: 1 }),
         update,
@@ -37,6 +38,7 @@ describe('PrismaProgressionService', () => {
         createMany: vi.fn().mockResolvedValue({ count: 0 }),
         findUniqueOrThrow: vi.fn().mockResolvedValue({ amount: 20, reason: 'MATCH_COMPLETE' }),
       },
+      $queryRaw: vi.fn(),
       player: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 210, level: 2 }),
         update,
