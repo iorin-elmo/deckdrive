@@ -20,7 +20,7 @@ for (let index = 0; index < simulations; index += 1) {
   const owned = new Map<string, number>();
   for (const card of result.cards) {
     rarityCounts.set(card.rarity, (rarityCounts.get(card.rarity) ?? 0) + 1);
-    if (card.rarity === 'SR' || card.rarity === 'SSR' || card.rarity === 'UR') totalSr += 1;
+    if (card.rarity === 'SR') totalSr += 1;
     if (card.rarity === 'UR') totalUr += 1;
     const quantity = owned.get(card.id) ?? 0;
     if (quantity >= 3) duplicateCards += 1;
