@@ -459,16 +459,28 @@ interface CardText {
 }
 
 export function localizeCard(definition: CardDefinition, locale: Locale): CardText {
-  return localizedCardTextByVersion[locale][`${definition.id}@${definition.version}`] ?? definition;
+  const configuredTranslation = locale === 'ja' ? definition.translations?.ja : undefined;
+  return (
+    configuredTranslation ??
+    localizedCardTextByVersion[locale][`${definition.id}@${definition.version}`] ??
+    definition
+  );
 }
 
-export function localizedCardName(cardId: string, cardDataVersion: string, locale: Locale): string {
+export function localizedCardName(
+  cardId: string,
+  cardDataVersion: string,
+  locale: Locale,
+  definition?: CardDefinition,
+): string {
+  if (definition?.id === cardId && definition.version === cardDataVersion)
+    return localizeCard(definition, locale).name;
   const versionedText = localizedCardTextByVersion[locale][`${cardId}@${cardDataVersion}`];
   if (versionedText !== undefined) return versionedText.name;
-  const definition = [...basicCardDefinitions, ...packCardDefinitions].find(
+  const bundledDefinition = [...basicCardDefinitions, ...packCardDefinitions].find(
     (card) => card.id === cardId && card.version === cardDataVersion,
   );
-  return definition === undefined ? cardId : localizeCard(definition, locale).name;
+  return bundledDefinition === undefined ? cardId : localizeCard(bundledDefinition, locale).name;
 }
 
 const cardMetadata: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {

@@ -39,6 +39,19 @@ describe('localizeCard', () => {
   it('does not use a different card version when resolving a battle card name', () => {
     expect(localizedCardName('sword_strike', '1.1.0', 'ja')).toBe('一閃+');
   });
+
+  it('uses a configured translation for a non-bundled card-data version', () => {
+    const configuredCard = {
+      ...strike,
+      id: 'custom_strike',
+      version: '2.0.0',
+      name: 'Custom strike',
+      description: 'Deal custom damage.',
+      translations: { ja: { name: '特注の一撃', description: '特別なダメージを与える。' } },
+    };
+
+    expect(localizedCardName('custom_strike', '2.0.0', 'ja', configuredCard)).toBe('特注の一撃');
+  });
 });
 
 describe('localizeCardMetadata', () => {

@@ -30,6 +30,21 @@ describe('card-definition public contracts', () => {
     expect(strike.effects[0]).toMatchObject({ type: 'DAMAGE', target: 'ENEMY' });
   });
 
+  it('accepts Japanese display translations for configurable card-data versions', () => {
+    expect(
+      validateCardDefinition({
+        ...basicCardDefinitions[0],
+        version: '2.0.0',
+        translations: { ja: { name: '一閃・改', description: '敵に7ダメージを与える。' } },
+      }),
+    ).toEqual({ ok: true });
+
+    expect(validateCardDefinition({ ...basicCardDefinitions[0], translations: {} })).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_TRANSLATIONS' })]),
+    });
+  });
+
   it('provides the valid versioned catalog used by the development seed', () => {
     expect(basicCardDefinitions.map((card) => card.id)).toEqual([
       'sword_strike',

@@ -1218,6 +1218,12 @@ function BattleBoard({
   readonly difficulty?: CpuMatch['difficulty'];
 }) {
   const { locale, t } = useI18n();
+  const client = useApiClient();
+  const previewMode = useSessionStore((session) => session.previewMode);
+  const cards = useQuery({
+    queryKey: ['cards', previewMode],
+    queryFn: () => client.cards(),
+  });
   const player = state.players[0];
   const opponent = state.players[1];
   if (player === undefined || opponent === undefined)
@@ -1265,7 +1271,16 @@ function BattleBoard({
               <article className="hand-card" key={card.id}>
                 <p className="text-xs font-semibold text-amber-200">{t('card')}</p>
                 <p className="mt-5 font-bold text-stone-50">
-                  {localizedCardName(card.definitionId, state.cardDataVersion, locale)}
+                  {localizedCardName(
+                    card.definitionId,
+                    state.cardDataVersion,
+                    locale,
+                    cards.data?.find(
+                      (candidate) =>
+                        candidate.cardId === card.definitionId &&
+                        candidate.version === state.cardDataVersion,
+                    )?.definition,
+                  )}
                 </p>
                 <p className="mt-2 text-xs text-stone-400">
                   {t('instance').replace('{id}', card.id)}
