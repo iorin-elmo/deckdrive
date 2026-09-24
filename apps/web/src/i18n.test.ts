@@ -37,7 +37,7 @@ describe('localizeCard', () => {
   });
 
   it('does not use a different card version when resolving a battle card name', () => {
-    expect(localizedCardName('sword_strike', '1.1.0', 'ja')).toBe('sword_strike');
+    expect(localizedCardName('sword_strike', '1.1.0', 'ja')).toBe('一閃+');
   });
 });
 

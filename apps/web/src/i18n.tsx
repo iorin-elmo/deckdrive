@@ -463,6 +463,8 @@ export function localizeCard(definition: CardDefinition, locale: Locale): CardTe
 }
 
 export function localizedCardName(cardId: string, cardDataVersion: string, locale: Locale): string {
+  const versionedText = localizedCardTextByVersion[locale][`${cardId}@${cardDataVersion}`];
+  if (versionedText !== undefined) return versionedText.name;
   const definition = [...basicCardDefinitions, ...packCardDefinitions].find(
     (card) => card.id === cardId && card.version === cardDataVersion,
   );
