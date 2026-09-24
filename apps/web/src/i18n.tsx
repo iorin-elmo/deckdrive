@@ -565,6 +565,15 @@ export function localizeValue(value: string, locale: Locale): string {
   return localizedValues[locale][value] ?? value;
 }
 
+const purchaseFrequencyPeriods: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
+  en: { WEEK: 'week', MONTH: 'month' },
+  ja: { WEEK: '週', MONTH: '月' },
+};
+
+export function localizePurchaseFrequencyPeriod(period: string, locale: Locale): string {
+  return purchaseFrequencyPeriods[locale][period] ?? localizeValue(period, locale);
+}
+
 const battlePhases = {
   en: { PLAYER_TURN: 'Player turn', MATCH_END: 'Match end' },
   ja: { PLAYER_TURN: 'プレイヤーのターン', MATCH_END: '対戦終了' },

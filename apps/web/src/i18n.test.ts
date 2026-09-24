@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { basicCardDefinitions } from '@deck-drive/card-definitions';
 
-import { localizeBattlePhase, localizeCard, localizeCardMetadata } from './i18n.js';
+import {
+  localizeBattlePhase,
+  localizeCard,
+  localizeCardMetadata,
+  localizePurchaseFrequencyPeriod,
+} from './i18n.js';
 
 describe('localizeCard', () => {
   const strike = basicCardDefinitions.find((card) => card.id === 'sword_strike')!;
@@ -43,5 +48,12 @@ describe('localizeCardMetadata', () => {
 describe('localizeBattlePhase', () => {
   it('translates terminal phases', () => {
     expect(localizeBattlePhase('MATCH_END', 'ja')).toBe('対戦終了');
+  });
+});
+
+describe('localizePurchaseFrequencyPeriod', () => {
+  it('uses singular English nouns in purchase-frequency messages', () => {
+    expect(localizePurchaseFrequencyPeriod('WEEK', 'en')).toBe('week');
+    expect(localizePurchaseFrequencyPeriod('MONTH', 'en')).toBe('month');
   });
 });

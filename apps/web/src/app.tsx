@@ -56,6 +56,7 @@ import {
   localizeCard,
   localizeBattlePhase,
   localizeCardMetadata,
+  localizePurchaseFrequencyPeriod,
   localizeValue,
   localizedCardName,
   useI18n,
@@ -628,7 +629,10 @@ function PacksPage() {
               <p className="mt-2 text-sm text-stone-300">
                 {t('purchaseLimit')
                   .replace('{count}', String(product.limit.maximum))
-                  .replace('{period}', localizeValue(product.limit.period, locale))}
+                  .replace(
+                    '{period}',
+                    localizePurchaseFrequencyPeriod(product.limit.period, locale),
+                  )}
               </p>
             )}
             <ActionButton
