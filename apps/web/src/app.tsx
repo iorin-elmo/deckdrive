@@ -812,14 +812,14 @@ function DeckBuilderPage() {
     queryFn: () => client.collection(playerId),
   });
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
-  const [name, setName] = useState('New deck');
+  const [name, setName] = useState(() => t('newDeck'));
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
   const initializedDeckId = useRef<string | null | undefined>(null);
 
   useEffect(() => {
     if (initializedDeckId.current === deckId) return;
     if (deckId === undefined) {
-      setName('New deck');
+      setName(t('newDeck'));
       setQuantities({});
       initializedDeckId.current = deckId;
       return;
