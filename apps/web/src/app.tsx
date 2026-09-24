@@ -1283,7 +1283,7 @@ function Combatant({
   readonly player: BattleState['players'][number];
   readonly tone: 'player' | 'enemy';
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   return (
     <article
       className={classNames('combatant', tone === 'enemy' ? 'combatant-enemy' : 'combatant-player')}
@@ -1310,7 +1310,9 @@ function Combatant({
       {player.statuses.length > 0 ? (
         <p className="mt-4 text-xs text-stone-300">
           {t('statuses')}:{' '}
-          {player.statuses.map((status) => `${status.id} x${String(status.stacks)}`).join(', ')}
+          {player.statuses
+            .map((status) => `${localizeValue(status.id, locale)} x${String(status.stacks)}`)
+            .join(', ')}
         </p>
       ) : null}
     </article>
@@ -1395,7 +1397,9 @@ function DeckTile({ deck }: { readonly deck: Deck }) {
         </span>
       </div>
       <p className="mt-3 text-sm text-stone-300">
-        {String(deck.cards.length)} distinct card versions - {deck.cardDataVersion}
+        {t('deckTileSummary')
+          .replace('{count}', String(deck.cards.length))
+          .replace('{version}', deck.cardDataVersion)}
       </p>
       <div className="mt-6 flex gap-3">
         <Link className="hero-secondary" to={`/decks/${deck.id}`}>
