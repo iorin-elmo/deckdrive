@@ -7,6 +7,7 @@ import {
   localizeCard,
   localizeCardMetadata,
   localizePurchaseFrequencyPeriod,
+  localizedCardName,
 } from './i18n.js';
 
 describe('localizeCard', () => {
@@ -33,6 +34,10 @@ describe('localizeCard', () => {
         'ja',
       ),
     ).toEqual({ name: '一閃+', description: '敵に7ダメージを与える。' });
+  });
+
+  it('does not use a different card version when resolving a battle card name', () => {
+    expect(localizedCardName('sword_strike', '1.1.0', 'ja')).toBe('sword_strike');
   });
 });
 

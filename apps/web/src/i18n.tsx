@@ -462,9 +462,9 @@ export function localizeCard(definition: CardDefinition, locale: Locale): CardTe
   return localizedCardTextByVersion[locale][`${definition.id}@${definition.version}`] ?? definition;
 }
 
-export function localizedCardName(cardId: string, locale: Locale): string {
+export function localizedCardName(cardId: string, cardDataVersion: string, locale: Locale): string {
   const definition = [...basicCardDefinitions, ...packCardDefinitions].find(
-    (card) => card.id === cardId,
+    (card) => card.id === cardId && card.version === cardDataVersion,
   );
   return definition === undefined ? cardId : localizeCard(definition, locale).name;
 }

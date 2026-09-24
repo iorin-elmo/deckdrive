@@ -1265,7 +1265,7 @@ function BattleBoard({
               <article className="hand-card" key={card.id}>
                 <p className="text-xs font-semibold text-amber-200">{t('card')}</p>
                 <p className="mt-5 font-bold text-stone-50">
-                  {localizedCardName(card.definitionId, locale)}
+                  {localizedCardName(card.definitionId, state.cardDataVersion, locale)}
                 </p>
                 <p className="mt-2 text-xs text-stone-400">
                   {t('instance').replace('{id}', card.id)}

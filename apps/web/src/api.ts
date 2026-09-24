@@ -82,6 +82,7 @@ export interface BattlePlayer {
 
 export interface BattleState {
   readonly matchId: string;
+  readonly cardDataVersion: string;
   readonly turn: number;
   readonly phase: string;
   readonly players: readonly BattlePlayer[];
@@ -320,6 +321,7 @@ function previewDeckFromInput(id: string, input: DeckInput): Deck {
 function previewBattle(matchId: string): BattleState {
   return {
     matchId,
+    cardDataVersion: '1.0.0',
     turn: 1,
     phase: 'PLAYER_TURN',
     players: [
