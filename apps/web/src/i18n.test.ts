@@ -27,5 +27,6 @@ describe('localizeCardMetadata', () => {
     expect(localizeCardMetadata('SWORD', 'ja')).toBe('剣士');
     expect(localizeCardMetadata('ATTACK', 'ja')).toBe('攻撃');
     expect(localizeCardMetadata('RARE', 'ja')).toBe('レア');
+    expect(localizeCardMetadata('SSR', 'ja')).toBe('SSR');
   });
 });
