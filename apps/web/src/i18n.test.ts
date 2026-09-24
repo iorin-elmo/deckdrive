@@ -20,6 +20,15 @@ describe('localizeCard', () => {
       description: '敵に6ダメージを与える。',
     });
   });
+
+  it('uses version-specific Japanese text when a translated card changes', () => {
+    expect(
+      localizeCard(
+        { ...strike, version: '1.1.0', name: 'Strike+', description: 'Deal a bit more damage.' },
+        'ja',
+      ),
+    ).toEqual({ name: '一閃+', description: '敵に7ダメージを与える。' });
+  });
 });
 
 describe('localizeCardMetadata', () => {

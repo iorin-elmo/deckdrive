@@ -813,14 +813,17 @@ function DeckBuilderPage() {
     queryFn: () => client.collection(playerId),
   });
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
-  const [name, setName] = useState(() => t('newDeck'));
+  const defaultDeckName = t('newDeck');
+  const [name, setName] = useState(defaultDeckName);
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
   const initializedDeckId = useRef<string | null | undefined>(null);
+  const defaultDeckNameRef = useRef(defaultDeckName);
 
   useEffect(() => {
     if (initializedDeckId.current === deckId) return;
     if (deckId === undefined) {
-      setName(t('newDeck'));
+      setName(defaultDeckName);
+      defaultDeckNameRef.current = defaultDeckName;
       setQuantities({});
       initializedDeckId.current = deckId;
       return;
@@ -831,7 +834,13 @@ function DeckBuilderPage() {
       Object.fromEntries(deck.cards.map((card) => [card.cardVersionId, card.quantity])),
     );
     initializedDeckId.current = deckId;
-  }, [deck, deckId]);
+  }, [deck, deckId, defaultDeckName]);
+
+  useEffect(() => {
+    if (deckId !== undefined || name !== defaultDeckNameRef.current) return;
+    defaultDeckNameRef.current = defaultDeckName;
+    setName(defaultDeckName);
+  }, [deckId, defaultDeckName, name]);
 
   const cardDataVersion = deck?.cardDataVersion ?? collection.data?.cardDataVersion;
   const ownedCards = deckBuilderCardsForVersion(collection.data?.cards ?? [], cardDataVersion);

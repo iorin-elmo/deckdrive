@@ -445,9 +445,12 @@ const localizedCardText: Readonly<Record<Locale, Readonly<Record<string, CardTex
 
 const localizedCardTextByVersion: Readonly<Record<Locale, Readonly<Record<string, CardText>>>> = {
   en: {},
-  ja: Object.fromEntries(
-    Object.entries(localizedCardText.ja).map(([id, text]) => [`${id}@1.0.0`, text]),
-  ),
+  ja: {
+    ...Object.fromEntries(
+      Object.entries(localizedCardText.ja).map(([id, text]) => [`${id}@1.0.0`, text]),
+    ),
+    'sword_strike@1.1.0': { name: '一閃+', description: '敵に7ダメージを与える。' },
+  },
 };
 
 interface CardText {
@@ -507,8 +510,11 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     BOX: 'Box',
     WEEKLY_BOX: 'Weekly box',
     MONTHLY_BUNDLE: 'Monthly bundle',
+    DAY: 'Daily',
     WEEK: 'Weekly',
     MONTH: 'Monthly',
+    DAILY: 'Daily',
+    WEEKLY: 'Weekly',
     EASY: 'Easy',
     NORMAL: 'Normal',
     HARD: 'Hard',
@@ -516,6 +522,13 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     PLAYER_TURN: 'Player turn',
     CPU_TURN: 'CPU turn',
     MATCH_END: 'Match end',
+    BURN: 'Burn',
+    POISON: 'Poison',
+    WEAK: 'Weak',
+    VULNERABLE: 'Vulnerable',
+    STRENGTH: 'Strength',
+    REGEN: 'Regeneration',
+    THORNS: 'Thorns',
   },
   ja: {
     NORMAL_PACK: '通常パック',
@@ -534,6 +547,13 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     EXPERT: 'エキスパート',
     PLAYER_TURN: 'プレイヤーのターン',
     CPU_TURN: 'CPUのターン',
+    BURN: '火傷',
+    POISON: '毒',
+    WEAK: '弱体',
+    VULNERABLE: '脆弱',
+    STRENGTH: '筋力',
+    REGEN: '再生',
+    THORNS: '棘',
     DRAW: 'ドロー',
     MAIN: 'メイン',
     END: '終了',
