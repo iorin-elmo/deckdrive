@@ -76,6 +76,30 @@ describe('ApiApplication authentication', () => {
     expect(findUnique).toHaveBeenCalledWith({ where: { id: 'player-1' }, select: { id: true } });
   });
 
+  it('reports login-claim state for the current UTC day only', async () => {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const application = new ApiApplication({
+      player: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 100, level: 1 }),
+      },
+      loginRewardClaim: { findUnique },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/progression',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { loginClaimedToday: false } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { playerId_day: { playerId: 'player-1', day: today } },
+    });
+  });
+
   it('returns only the authenticated player mission progress for the current server period', async () => {
     const now = new Date();
     const periodStart = new Date(
@@ -407,7 +431,13 @@ describe('ApiApplication authentication', () => {
           ],
         }),
       },
-      match: { create: vi.fn() },
+      $transaction: vi.fn((operation) =>
+        operation({
+          match: { create: vi.fn() },
+          mission: { findMany: vi.fn().mockResolvedValue([]) },
+          playerMission: { findUnique: vi.fn(), upsert: vi.fn() },
+        }),
+      ),
     } as unknown as PrismaClient);
 
     const response = await application.handle({

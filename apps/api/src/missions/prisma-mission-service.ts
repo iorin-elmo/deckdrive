@@ -2,10 +2,11 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { loginRewardForCycleDay, type MissionMetric } from './catalog.js';
 import { missionPeriodStart, nextLoginCycle } from './progression.js';
 
-type MissionClient = Pick<
+type MissionOperations = Pick<
   PrismaClient,
-  'mission' | 'playerMission' | 'loginRewardClaim' | 'currencyTransaction' | '$transaction'
+  'mission' | 'playerMission' | 'loginRewardClaim' | 'currencyTransaction'
 >;
+type MissionClient = MissionOperations & Pick<PrismaClient, '$transaction'>;
 
 export class MissionNotFoundError extends Error {}
 export class MissionNotReadyError extends Error {}
@@ -86,34 +87,45 @@ export class PrismaMissionService {
   async recordProgress(playerId: string, metric: MissionMetric, amount: number, now = new Date()) {
     if (!Number.isInteger(amount) || amount <= 0)
       throw new Error('Mission progress must be positive.');
-    return this.prisma.$transaction(async (transaction) => {
-      const definitions = await transaction.mission.findMany({
-        where: { active: true, metric },
-      });
-      return Promise.all(
-        definitions.map(async (mission) => {
-          const periodStart = missionPeriodStart(mission.cadence, now);
-          const existing = await transaction.playerMission.findUnique({
-            where: {
-              playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
-            },
-          });
-          if (existing?.claimedAt !== null && existing !== null) return existing;
-          return transaction.playerMission.upsert({
-            where: {
-              playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
-            },
-            update: { progress: Math.min(mission.target, (existing?.progress ?? 0) + amount) },
-            create: {
-              playerId,
-              missionId: mission.id,
-              periodStart,
-              progress: Math.min(mission.target, amount),
-            },
-          });
-        }),
-      );
-    });
+    return this.prisma.$transaction((transaction) =>
+      this.recordProgressInTransaction(transaction, playerId, metric, amount, now),
+    );
+  }
+
+  /** Allows an authoritative match event and its mission progress to commit atomically. */
+  async recordProgressInTransaction(
+    transaction: MissionOperations,
+    playerId: string,
+    metric: MissionMetric,
+    amount: number,
+    now = new Date(),
+  ) {
+    if (!Number.isInteger(amount) || amount <= 0)
+      throw new Error('Mission progress must be positive.');
+    const definitions = await transaction.mission.findMany({ where: { active: true, metric } });
+    return Promise.all(
+      definitions.map(async (mission) => {
+        const periodStart = missionPeriodStart(mission.cadence, now);
+        const existing = await transaction.playerMission.findUnique({
+          where: {
+            playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
+          },
+        });
+        if (existing?.claimedAt !== null && existing !== null) return existing;
+        return transaction.playerMission.upsert({
+          where: {
+            playerId_missionId_periodStart: { playerId, missionId: mission.id, periodStart },
+          },
+          update: { progress: Math.min(mission.target, (existing?.progress ?? 0) + amount) },
+          create: {
+            playerId,
+            missionId: mission.id,
+            periodStart,
+            progress: Math.min(mission.target, amount),
+          },
+        });
+      }),
+    );
   }
 
   async claimLoginReward(playerId: string, now = new Date()) {
@@ -137,8 +149,10 @@ export class PrismaMissionService {
             },
       );
       const rewardDefinition = loginRewardForCycleDay(cycle.cycleDay).reward;
-      const claim = await transaction.loginRewardClaim.create({
-        data: { playerId, day, cycleDay: cycle.cycleDay, claimedAt: now },
+      const claim = await transaction.loginRewardClaim.upsert({
+        where: { playerId_day: { playerId, day } },
+        update: {},
+        create: { playerId, day, cycleDay: cycle.cycleDay, claimedAt: now },
       });
       const idempotencyKey = `login:${day.toISOString()}`;
       const reward = await transaction.currencyTransaction.upsert({

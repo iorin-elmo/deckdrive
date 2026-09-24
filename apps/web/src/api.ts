@@ -108,7 +108,7 @@ export interface Mission {
 export interface Progression {
   readonly experience: number;
   readonly level: number;
-  readonly lastLoginClaim: { readonly cycleDay: number; readonly day: string } | null;
+  readonly loginClaimedToday: boolean;
 }
 
 export interface Cosmetic {
@@ -508,7 +508,7 @@ export const previewApi: DeckDriveClient = {
     return {};
   },
   async progression() {
-    return { experience: 0, level: 1, lastLoginClaim: null };
+    return { experience: 0, level: 1, loginClaimedToday: false };
   },
   async claimLoginReward() {
     return {};

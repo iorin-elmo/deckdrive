@@ -520,8 +520,7 @@ function MissionsPage() {
     mutationFn: () => client.claimLoginReward(playerId),
     onSuccess: refresh,
   });
-  const lastLogin = progression.data?.lastLoginClaim;
-  const loginAlreadyClaimed = lastLogin !== null && lastLogin !== undefined;
+  const loginAlreadyClaimed = progression.data?.loginClaimedToday ?? false;
 
   return (
     <>

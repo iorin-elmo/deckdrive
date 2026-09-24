@@ -248,14 +248,19 @@ export class ApiApplication {
   }
 
   private async progression(playerId: string): Promise<ApiResponse> {
+    const today = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()),
+    );
     const [player, lastLoginClaim] = await Promise.all([
       this.prisma.player.findUniqueOrThrow({
         where: { id: playerId },
         select: { experience: true, level: true },
       }),
-      this.prisma.loginRewardClaim.findFirst({ where: { playerId }, orderBy: { day: 'desc' } }),
+      this.prisma.loginRewardClaim.findUnique({
+        where: { playerId_day: { playerId, day: today } },
+      }),
     ]);
-    return { status: 200, body: { ...player, lastLoginClaim } };
+    return { status: 200, body: { ...player, loginClaimedToday: lastLoginClaim !== null } };
   }
 
   private async listCosmetics(playerId: string): Promise<ApiResponse> {
@@ -386,16 +391,24 @@ export class ApiApplication {
         },
       ],
     });
-    await this.prisma.match.create({
-      data: {
-        id: matchId,
-        engineVersion: state.engineVersion,
-        rulesVersion: state.rulesVersion,
-        cardDataVersion: state.cardDataVersion,
-        seed: state.seed,
-        initialState: json(state),
-        players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
-      },
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.match.create({
+        data: {
+          id: matchId,
+          engineVersion: state.engineVersion,
+          rulesVersion: state.rulesVersion,
+          cardDataVersion: state.cardDataVersion,
+          seed: state.seed,
+          initialState: json(state),
+          players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
+        },
+      });
+      await new PrismaMissionService(this.prisma).recordProgressInTransaction(
+        transaction,
+        playerId,
+        'CPU_BATTLE',
+        1,
+      );
     });
     return { status: 201, body: { id: matchId, difficulty, state } };
   }

@@ -93,4 +93,32 @@ describe('PrismaMissionService', () => {
     expect(result).toMatchObject({ alreadyClaimed: true, claim: { id: 'claim-1' } });
     expect(create).not.toHaveBeenCalled();
   });
+
+  it('uses an atomic upsert for a concurrent first login claim', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 1 });
+    const transaction = {
+      loginRewardClaim: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue(null),
+        upsert,
+      },
+      currencyTransaction: { upsert: vi.fn().mockResolvedValue({ id: 'reward-1' }) },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await new PrismaMissionService(prisma).claimLoginReward(
+      'player-1',
+      new Date('2026-09-25T10:00:00.000Z'),
+    );
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          playerId_day: { playerId: 'player-1', day: new Date('2026-09-25T00:00:00.000Z') },
+        },
+      }),
+    );
+  });
 });
