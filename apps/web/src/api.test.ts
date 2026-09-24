@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { basicCardDefinitions, maximumCardCopies } from '@deck-drive/card-definitions';
+import {
+  basicCardDefinitions,
+  maximumCardCopies,
+  packCardDefinitions,
+} from '@deck-drive/card-definitions';
 
 import { ApiError, DeckDriveApi, previewApi } from './api.js';
 
@@ -155,12 +159,20 @@ describe('DeckDriveApi', () => {
 
     const match = await previewApi.startCpuMatch('preview-player', deck.id, 'NORMAL');
     const persistedMatch = await previewApi.match('preview-player', match.id);
+    const packs = await previewApi.packs('preview-player');
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
-    expect(collection.cards).toHaveLength(basicCardDefinitions.length);
+    const previewDefinitions = [...basicCardDefinitions, ...packCardDefinitions];
+    expect(collection.cards).toHaveLength(previewDefinitions.length);
+    expect(packs).toEqual(
+      expect.arrayContaining([
+        { id: 'WEEKLY_BOX', gemCost: 900, limit: { period: 'WEEK', maximum: 1 } },
+        { id: 'MONTHLY_BUNDLE', gemCost: 1000, limit: { period: 'MONTH', maximum: 1 } },
+      ]),
+    );
     expect(await previewApi.cards()).toEqual(
-      basicCardDefinitions.map((definition) => ({
+      previewDefinitions.map((definition) => ({
         cardId: definition.id,
         version: definition.version,
         definition,

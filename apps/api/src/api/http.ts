@@ -11,7 +11,7 @@ import { ApiApplication, type ApiRequest } from './application.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
-const corsHeaders = 'content-type, x-deckdrive-player-id';
+const corsHeaders = 'content-type, idempotency-key, x-deckdrive-player-id';
 
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];

@@ -14,6 +14,18 @@ import {
   validateDeckCards,
   type DeckCardInput,
 } from '../decks/deck-validation.js';
+import {
+  InsufficientGemError,
+  IdempotencyConflictError,
+  PackPoolUnavailableError,
+  PackPurchaseLimitError,
+  PrismaPackOpeningService,
+} from '../packs/prisma-pack-opening.js';
+import {
+  PackOpeningValidationError,
+  packProducts,
+  type ApiPackProduct,
+} from '../packs/pack-opening.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -46,10 +58,17 @@ export class ApiApplication {
 
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
+      const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
       const authenticatedRoute =
         (request.method === 'GET' &&
-          (path === '/api/v1/me' || path === '/api/v1/collection' || path === '/api/v1/decks')) ||
-        (request.method === 'POST' && (path === '/api/v1/decks' || path === '/api/v1/matches')) ||
+          (path === '/api/v1/me' ||
+            path === '/api/v1/collection' ||
+            path === '/api/v1/decks' ||
+            path === '/api/v1/packs')) ||
+        (request.method === 'POST' &&
+          (path === '/api/v1/decks' ||
+            path === '/api/v1/matches' ||
+            packProductId !== undefined)) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
       if (!authenticatedRoute) return { status: 404, body: { error: 'NOT_FOUND' } };
@@ -60,6 +79,9 @@ export class ApiApplication {
         return await this.collection(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
+      if (request.method === 'GET' && path === '/api/v1/packs') return this.listPacks();
+      if (request.method === 'POST' && packProductId !== undefined)
+        return await this.openPack(player.id, packProductId, request);
       if (request.method === 'POST' && path === '/api/v1/decks')
         return await this.createDeck(player.id, request.body);
       if (deckId !== undefined && request.method === 'PUT')
@@ -168,6 +190,37 @@ export class ApiApplication {
         })),
       },
     };
+  }
+
+  private listPacks(): ApiResponse {
+    return {
+      status: 200,
+      body: {
+        products: packProducts.map((product) => ({
+          id: product.id,
+          gemCost: product.gemCost,
+          limit: product.limit,
+        })),
+      },
+    };
+  }
+
+  private async openPack(
+    playerId: string,
+    productId: string,
+    request: ApiRequest,
+  ): Promise<ApiResponse> {
+    if (!packProducts.some((product) => product.id === productId))
+      throw new BadRequestError('Unknown pack product.');
+    const idempotencyKey = header(request.headers, 'idempotency-key');
+    if (idempotencyKey === undefined || idempotencyKey.trim().length === 0)
+      throw new BadRequestError('idempotency-key is required.');
+    const result = await new PrismaPackOpeningService(this.prisma).open({
+      playerId,
+      productId: productId as ApiPackProduct,
+      idempotencyKey,
+    });
+    return { status: 200, body: result };
   }
 
   private async createDeck(playerId: string, body: unknown): Promise<ApiResponse> {
@@ -352,6 +405,16 @@ export class ApiApplication {
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
     if (error instanceof BadRequestError)
       return { status: 400, body: { error: 'INVALID_REQUEST' } };
+    if (error instanceof PackOpeningValidationError)
+      return { status: 400, body: { error: 'INVALID_REQUEST' } };
+    if (error instanceof InsufficientGemError)
+      return { status: 402, body: { error: 'INSUFFICIENT_GEM' } };
+    if (error instanceof PackPurchaseLimitError)
+      return { status: 409, body: { error: 'PACK_PURCHASE_LIMIT_REACHED' } };
+    if (error instanceof IdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof PackPoolUnavailableError)
+      return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
     if (error instanceof DevelopmentAuthenticationDisabledError)
       return { status: 404, body: { error: 'NOT_FOUND' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };

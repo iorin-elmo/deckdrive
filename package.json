@@ -18,11 +18,12 @@
     "db:seed": "pnpm --filter @deck-drive/api prisma:seed",
     "db:reset": "pnpm --filter @deck-drive/api prisma:reset",
     "replay": "pnpm --filter @deck-drive/api replay",
+    "simulate:packs": "pnpm --filter @deck-drive/pack-engine build && pnpm --filter @deck-drive/api exec tsx ../../scripts/simulate-packs/index.ts",
     "test:integration": "pnpm --filter @deck-drive/api prisma:generate && pnpm --filter @deck-drive/game-engine build && vitest run apps/api/src/database/persistence.integration.test.ts tests/integration/replay/database-replay.integration.test.ts",
     "test:replay": "vitest run packages/game-engine/src/replay-regression.test.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "build": "pnpm -r --if-present run build",
-    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/ui build && vitest run --exclude packages/game-engine/src/replay-regression.test.ts --exclude apps/api/src/database/persistence.integration.test.ts --exclude tests/integration/replay/database-replay.integration.test.ts"
+    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/game-engine build && pnpm --filter @deck-drive/pack-engine build && pnpm --filter @deck-drive/ui build && vitest run --exclude packages/game-engine/src/replay-regression.test.ts --exclude apps/api/src/database/persistence.integration.test.ts --exclude tests/integration/replay/database-replay.integration.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

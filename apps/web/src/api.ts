@@ -1,8 +1,10 @@
 import {
   basicCardDefinitions,
   maximumCardCopies,
+  packCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
+import { openPack, type PackCard } from '@deck-drive/pack-engine';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -53,6 +55,20 @@ export interface Player {
   readonly balances: Readonly<Record<string, number>>;
 }
 
+export interface PackProduct {
+  readonly id: 'NORMAL_PACK' | 'RARE_PACK' | 'BOX' | 'WEEKLY_BOX' | 'MONTHLY_BUNDLE';
+  readonly gemCost: number;
+  readonly limit: { readonly period: 'WEEK' | 'MONTH'; readonly maximum: number } | null;
+}
+
+export interface PackOpening {
+  readonly openingId: string;
+  readonly productId: PackProduct['id'];
+  readonly gemCost: number;
+  readonly cards: readonly { readonly id: string; readonly rarity: string }[];
+  readonly exchangePoints: number;
+}
+
 export interface BattlePlayer {
   readonly id: string;
   readonly hp: number;
@@ -82,6 +98,12 @@ export interface DeckDriveClient {
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
   collection(playerId: string): Promise<Collection>;
+  packs(playerId: string): Promise<readonly PackProduct[]>;
+  openPack(
+    playerId: string,
+    productId: PackProduct['id'],
+    idempotencyKey: string,
+  ): Promise<PackOpening>;
   decks(playerId: string): Promise<readonly Deck[]>;
   createDeck(playerId: string, input: DeckInput): Promise<Deck>;
   updateDeck(playerId: string, deckId: string, input: DeckInput): Promise<Deck>;
@@ -143,6 +165,25 @@ export class DeckDriveApi implements DeckDriveClient {
     });
   }
 
+  async packs(playerId: string): Promise<readonly PackProduct[]> {
+    const response = await this.request<{ products: readonly PackProduct[] }>('/api/v1/packs', {
+      playerId,
+    });
+    return response.products;
+  }
+
+  async openPack(
+    playerId: string,
+    productId: PackProduct['id'],
+    idempotencyKey: string,
+  ): Promise<PackOpening> {
+    return this.request(`/api/v1/packs/${encodeURIComponent(productId)}/open`, {
+      method: 'POST',
+      playerId,
+      idempotencyKey,
+    });
+  }
+
   async createDeck(playerId: string, input: DeckInput): Promise<Deck> {
     return this.request('/api/v1/decks', { method: 'POST', playerId, body: input });
   }
@@ -177,6 +218,7 @@ export class DeckDriveApi implements DeckDriveClient {
       readonly method?: 'GET' | 'POST' | 'PUT';
       readonly playerId?: string;
       readonly body?: unknown;
+      readonly idempotencyKey?: string;
     } = {},
   ): Promise<Result> {
     let response: Response;
@@ -185,6 +227,9 @@ export class DeckDriveApi implements DeckDriveClient {
         method: options.method ?? 'GET',
         headers: {
           ...(options.playerId === undefined ? {} : { 'X-Deckdrive-Player-Id': options.playerId }),
+          ...(options.idempotencyKey === undefined
+            ? {}
+            : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
@@ -209,11 +254,13 @@ export class DeckDriveApi implements DeckDriveClient {
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
 
-const previewCards: readonly CardSummary[] = basicCardDefinitions.map((definition) => ({
-  cardId: definition.id,
-  version: definition.version,
-  definition,
-}));
+const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
+  (definition) => ({
+    cardId: definition.id,
+    version: definition.version,
+    definition,
+  }),
+);
 
 const previewDeckSize = 30;
 
@@ -322,6 +369,45 @@ export const previewApi: DeckDriveClient = {
     return {
       cardDataVersion: '1.0.0',
       cards: previewOwnedCards,
+    };
+  },
+  async packs() {
+    return [
+      { id: 'NORMAL_PACK', gemCost: 100, limit: null },
+      { id: 'RARE_PACK', gemCost: 500, limit: null },
+      { id: 'BOX', gemCost: 1000, limit: null },
+      { id: 'WEEKLY_BOX', gemCost: 900, limit: { period: 'WEEK', maximum: 1 } },
+      { id: 'MONTHLY_BUNDLE', gemCost: 1000, limit: { period: 'MONTH', maximum: 1 } },
+    ];
+  },
+  async openPack(_playerId, productId) {
+    const openingProducts =
+      productId === 'MONTHLY_BUNDLE'
+        ? (['BOX', 'RARE_PACK'] as const)
+        : productId === 'WEEKLY_BOX'
+          ? (['BOX'] as const)
+          : ([productId] as const);
+    const pool: readonly PackCard[] = packCardDefinitions.map((definition) => ({
+      id: definition.id,
+      rarity: definition.rarity as PackCard['rarity'],
+    }));
+    const cards = openingProducts.flatMap(
+      (openingProduct, index) =>
+        openPack(`preview-${productId}-${String(index)}`, { cards: pool }, openingProduct).cards,
+    );
+    return {
+      openingId: 'preview-opening',
+      productId,
+      gemCost:
+        productId === 'NORMAL_PACK'
+          ? 100
+          : productId === 'RARE_PACK'
+            ? 500
+            : productId === 'WEEKLY_BOX'
+              ? 900
+              : 1000,
+      cards,
+      exchangePoints: 0,
     };
   },
   async decks() {

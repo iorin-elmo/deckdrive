@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { PrismaPg } from '@prisma/adapter-pg';
+import { packCardDefinitions } from '@deck-drive/card-definitions';
 
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { loadRootEnvironment } from '../src/database/load-environment.js';
@@ -95,7 +96,15 @@ async function main(): Promise<void> {
       }
 
       const cardVersions = new Map<string, string>();
-      for (const cardFixture of fixture.cards) {
+      const seedCards = [
+        ...fixture.cards,
+        ...packCardDefinitions.map((definition) => ({
+          id: definition.id,
+          version: definition.version,
+          definition: definition as unknown as Prisma.InputJsonValue,
+        })),
+      ];
+      for (const cardFixture of seedCards) {
         await transaction.card.upsert({
           where: { id: cardFixture.id },
           update: {},
@@ -116,6 +125,23 @@ async function main(): Promise<void> {
       const debugPlayerId = players.get('debug@deckdrive.local');
       if (debugPlayerId === undefined)
         throw new Error('Development fixture must contain the debug user.');
+
+      await transaction.currencyTransaction.upsert({
+        where: {
+          playerId_idempotencyKey: {
+            playerId: debugPlayerId,
+            idempotencyKey: 'development-starter-gems',
+          },
+        },
+        update: {},
+        create: {
+          playerId: debugPlayerId,
+          currency: 'GEM',
+          amount: 10000,
+          reason: 'DEVELOPMENT_STARTER',
+          idempotencyKey: 'development-starter-gems',
+        },
+      });
 
       const deck = await transaction.deck.upsert({
         where: { id: fixture.deck.id },

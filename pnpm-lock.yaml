@@ -141,9 +141,15 @@ importers:
 
   apps/api:
     dependencies:
+      '@deck-drive/card-definitions':
+        specifier: workspace:*
+        version: link:../../packages/card-definitions
       '@deck-drive/game-engine':
         specifier: workspace:*
         version: link:../../packages/game-engine
+      '@deck-drive/pack-engine':
+        specifier: workspace:*
+        version: link:../../packages/pack-engine
       '@prisma/adapter-pg':
         specifier: 7.10.0
         version: 7.10.0
@@ -172,6 +178,9 @@ importers:
       '@deck-drive/card-definitions':
         specifier: workspace:*
         version: link:../../packages/card-definitions
+      '@deck-drive/pack-engine':
+        specifier: workspace:*
+        version: link:../../packages/pack-engine
       '@deck-drive/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -223,6 +232,8 @@ importers:
   packages/game-engine: {}
 
   packages/logger: {}
+
+  packages/pack-engine: {}
 
   packages/shared: {}
 
