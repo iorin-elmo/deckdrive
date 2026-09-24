@@ -821,13 +821,13 @@ function DeckBuilderPage() {
   const [name, setName] = useState(defaultDeckName);
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
   const initializedDeckId = useRef<string | null | undefined>(null);
-  const defaultDeckNameRef = useRef(defaultDeckName);
+  const newDeckNameEdited = useRef(false);
 
   useEffect(() => {
     if (initializedDeckId.current === deckId) return;
     if (deckId === undefined) {
       setName(defaultDeckName);
-      defaultDeckNameRef.current = defaultDeckName;
+      newDeckNameEdited.current = false;
       setQuantities({});
       initializedDeckId.current = deckId;
       return;
@@ -841,10 +841,9 @@ function DeckBuilderPage() {
   }, [deck, deckId, defaultDeckName]);
 
   useEffect(() => {
-    if (deckId !== undefined || name !== defaultDeckNameRef.current) return;
-    defaultDeckNameRef.current = defaultDeckName;
+    if (deckId !== undefined || newDeckNameEdited.current) return;
     setName(defaultDeckName);
-  }, [deckId, defaultDeckName, name]);
+  }, [deckId, defaultDeckName]);
 
   const cardDataVersion = deck?.cardDataVersion ?? collection.data?.cardDataVersion;
   const ownedCards = deckBuilderCardsForVersion(collection.data?.cards ?? [], cardDataVersion);
@@ -903,7 +902,10 @@ function DeckBuilderPage() {
             {t('deckName')}
             <input
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                newDeckNameEdited.current = true;
+                setName(event.target.value);
+              }}
               maxLength={80}
               required
             />
