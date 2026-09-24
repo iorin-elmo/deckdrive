@@ -426,7 +426,11 @@ interface CardText {
 }
 
 export function localizeCard(definition: CardDefinition, locale: Locale): CardText {
-  return localizedCardText[locale][definition.id] ?? definition;
+  return (
+    localizedCardText[locale][`${definition.id}@${definition.version}`] ??
+    (definition.version === '1.0.0' ? localizedCardText[locale][definition.id] : undefined) ??
+    definition
+  );
 }
 
 export function localizedCardName(cardId: string, locale: Locale): string {
@@ -477,6 +481,7 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     MONTHLY_BUNDLE: 'マンスリーバンドル',
     DAY: 'デイリー',
     WEEK: 'ウィークリー',
+    MONTH: 'マンスリー',
     DAILY: 'デイリー',
     WEEKLY: 'ウィークリー',
     EASY: 'かんたん',
@@ -488,6 +493,7 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     DRAW: 'ドロー',
     MAIN: 'メイン',
     END: '終了',
+    MATCH_END: '対戦終了',
   },
 };
 

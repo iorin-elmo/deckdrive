@@ -615,7 +615,7 @@ function PacksPage() {
             <p className="eyebrow">
               {product.limit === null
                 ? t('standard')
-                : t('limited').replace('{period}', product.limit.period)}
+                : t('limited').replace('{period}', localizeValue(product.limit.period, locale))}
             </p>
             <h2 className="mt-2 text-xl font-black text-stone-50">
               {localizeValue(product.id, locale)}
@@ -627,7 +627,7 @@ function PacksPage() {
               <p className="mt-2 text-sm text-stone-300">
                 {t('purchaseLimit')
                   .replace('{count}', String(product.limit.maximum))
-                  .replace('{period}', product.limit.period.toLowerCase())}
+                  .replace('{period}', localizeValue(product.limit.period, locale))}
               </p>
             )}
             <ActionButton
@@ -1597,7 +1597,7 @@ function formatBalances(
   t: ReturnType<typeof useI18n>['t'],
 ): string {
   if (balances === undefined) return t('balancesLoading');
-  return `${String(balances.GEM ?? 0)} gems - ${String(balances.EXCHANGE_POINT ?? 0)} exchange`;
+  return `${String(balances.GEM ?? 0)} ${t('gems')} - ${String(balances.EXCHANGE_POINT ?? 0)} ${t('exchange')}`;
 }
 
 function deckCardTotal(deck: Deck): number {

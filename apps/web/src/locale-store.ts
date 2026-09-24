@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 
 export type Locale = 'en' | 'ja';
+const isLocale = (value: unknown): value is Locale => value === 'en' || value === 'ja';
 
 interface LocaleState {
   readonly locale: Locale;
@@ -28,5 +29,9 @@ export const useLocaleStore = create<LocaleState>()(
   persist((set) => ({ locale: 'ja', setLocale: (locale) => set({ locale }) }), {
     name: 'deckdrive-locale',
     storage: createJSONStorage(localeStorage),
+    merge: (persisted, current) => {
+      const locale = (persisted as Partial<LocaleState> | undefined)?.locale;
+      return { ...current, locale: isLocale(locale) ? locale : current.locale };
+    },
   }),
 );
