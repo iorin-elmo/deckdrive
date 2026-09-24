@@ -50,7 +50,7 @@ export interface CardDefinition {
   readonly type: CardType;
   readonly description: string;
   /** Optional display translations for card-data versions not bundled in the web app. */
-  readonly translations?: Readonly<Partial<Record<'ja', CardTranslation>>>;
+  readonly translations?: Readonly<{ ja: CardTranslation }>;
   readonly effects: readonly CardEffect[];
   readonly keywords: readonly string[];
   readonly artwork: string | null;
