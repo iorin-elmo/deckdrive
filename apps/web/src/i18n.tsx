@@ -1,5 +1,9 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
-import type { CardDefinition } from '@deck-drive/card-definitions';
+import {
+  basicCardDefinitions,
+  packCardDefinitions,
+  type CardDefinition,
+} from '@deck-drive/card-definitions';
 
 import { useLocaleStore, type Locale } from './locale-store.js';
 
@@ -435,21 +439,27 @@ const localizedCardText: Readonly<Record<Locale, Readonly<Record<string, CardTex
   },
 };
 
+const localizedCardTextByVersion: Readonly<Record<Locale, Readonly<Record<string, CardText>>>> = {
+  en: {},
+  ja: Object.fromEntries(
+    Object.entries(localizedCardText.ja).map(([id, text]) => [`${id}@1.0.0`, text]),
+  ),
+};
+
 interface CardText {
   readonly name: string;
   readonly description: string;
 }
 
 export function localizeCard(definition: CardDefinition, locale: Locale): CardText {
-  return (
-    localizedCardText[locale][`${definition.id}@${definition.version}`] ??
-    localizedCardText[locale][definition.id] ??
-    definition
-  );
+  return localizedCardTextByVersion[locale][`${definition.id}@${definition.version}`] ?? definition;
 }
 
 export function localizedCardName(cardId: string, locale: Locale): string {
-  return localizedCardText[locale][cardId]?.name ?? cardId;
+  const definition = [...basicCardDefinitions, ...packCardDefinitions].find(
+    (card) => card.id === cardId,
+  );
+  return definition === undefined ? cardId : localizeCard(definition, locale).name;
 }
 
 const cardMetadata: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
@@ -487,7 +497,22 @@ export function localizeCardMetadata(value: string, locale: Locale): string {
 }
 
 const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
-  en: {},
+  en: {
+    NORMAL_PACK: 'Normal pack',
+    RARE_PACK: 'Rare pack',
+    BOX: 'Box',
+    WEEKLY_BOX: 'Weekly box',
+    MONTHLY_BUNDLE: 'Monthly bundle',
+    WEEK: 'Weekly',
+    MONTH: 'Monthly',
+    EASY: 'Easy',
+    NORMAL: 'Normal',
+    HARD: 'Hard',
+    EXPERT: 'Expert',
+    PLAYER_TURN: 'Player turn',
+    CPU_TURN: 'CPU turn',
+    MATCH_END: 'Match end',
+  },
   ja: {
     NORMAL_PACK: '通常パック',
     RARE_PACK: 'レアパック',
