@@ -94,6 +94,31 @@ export interface CpuMatch {
   readonly state: BattleState;
 }
 
+export interface Mission {
+  readonly id: string;
+  readonly cadence: 'DAILY' | 'WEEKLY';
+  readonly metric: string;
+  readonly target: number;
+  readonly progress: number;
+  readonly claimedAt: string | null;
+  readonly periodStart: string;
+  readonly reward: { readonly currency: 'GEM' | 'EXCHANGE_POINT'; readonly amount: number };
+}
+
+export interface Progression {
+  readonly experience: number;
+  readonly level: number;
+  readonly lastLoginClaim: { readonly cycleDay: number; readonly day: string } | null;
+}
+
+export interface Cosmetic {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly description: string;
+  readonly acquiredAt: string | null;
+}
+
 export interface DeckDriveClient {
   developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
   me(playerId: string): Promise<Player>;
@@ -114,6 +139,11 @@ export interface DeckDriveClient {
     difficulty: CpuMatch['difficulty'],
   ): Promise<CpuMatch>;
   match(playerId: string, matchId: string): Promise<MatchState>;
+  missions(playerId: string): Promise<readonly Mission[]>;
+  claimMission(playerId: string, missionId: string): Promise<unknown>;
+  progression(playerId: string): Promise<Progression>;
+  claimLoginReward(playerId: string): Promise<unknown>;
+  cosmetics(playerId: string): Promise<readonly Cosmetic[]>;
 }
 
 export interface MatchState {
@@ -211,6 +241,35 @@ export class DeckDriveApi implements DeckDriveClient {
 
   async match(playerId: string, matchId: string): Promise<MatchState> {
     return this.request(`/api/v1/matches/${encodeURIComponent(matchId)}`, { playerId });
+  }
+
+  async missions(playerId: string): Promise<readonly Mission[]> {
+    const response = await this.request<{ missions: readonly Mission[] }>('/api/v1/missions', {
+      playerId,
+    });
+    return response.missions;
+  }
+
+  async claimMission(playerId: string, missionId: string): Promise<unknown> {
+    return this.request(`/api/v1/missions/${encodeURIComponent(missionId)}/claim`, {
+      method: 'POST',
+      playerId,
+    });
+  }
+
+  async progression(playerId: string): Promise<Progression> {
+    return this.request('/api/v1/progression', { playerId });
+  }
+
+  async claimLoginReward(playerId: string): Promise<unknown> {
+    return this.request('/api/v1/login-rewards/claim', { method: 'POST', playerId });
+  }
+
+  async cosmetics(playerId: string): Promise<readonly Cosmetic[]> {
+    const response = await this.request<{ cosmetics: readonly Cosmetic[] }>('/api/v1/cosmetics', {
+      playerId,
+    });
+    return response.cosmetics;
   }
 
   private async request<Result>(
@@ -430,5 +489,31 @@ export const previewApi: DeckDriveClient = {
   async match(_playerId, matchId) {
     const state = previewBattle(matchId);
     return { id: matchId, status: 'IN_PROGRESS', initialState: state, finalState: null };
+  },
+  async missions() {
+    return [
+      {
+        id: 'daily.cpu-battle',
+        cadence: 'DAILY' as const,
+        metric: 'CPU_BATTLE',
+        target: 1,
+        progress: 0,
+        claimedAt: null,
+        periodStart: new Date().toISOString(),
+        reward: { currency: 'GEM' as const, amount: 20 },
+      },
+    ];
+  },
+  async claimMission() {
+    return {};
+  },
+  async progression() {
+    return { experience: 0, level: 1, lastLoginClaim: null };
+  },
+  async claimLoginReward() {
+    return {};
+  },
+  async cosmetics() {
+    return [];
   },
 };

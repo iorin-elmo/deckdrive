@@ -12,6 +12,7 @@ import {
   Minus,
   Plus,
   Play,
+  Palette,
   RotateCcw,
   Search,
   Settings as SettingsIcon,
@@ -67,6 +68,7 @@ const navigation = [
   { to: '/cards', labelKey: 'navCards', icon: LibraryBig },
   { to: '/decks', labelKey: 'navDecks', icon: BookOpen },
   { to: '/packs', labelKey: 'navPacks', icon: Trophy },
+  { to: '/missions', labelKey: 'navMissions', icon: BadgeCheck },
   { to: '/battle/cpu', labelKey: 'navCpu', icon: Swords },
   { to: '/settings', labelKey: 'navSettings', icon: SettingsIcon },
 ] as const;
@@ -86,6 +88,7 @@ export function App() {
           <Route path="/decks/:deckId" element={<DeckDetailPage />} />
           <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
           <Route path="/packs" element={<PacksPage />} />
+          <Route path="/missions" element={<MissionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/battle/cpu" element={<CpuSetupPage />} />
           <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
@@ -480,6 +483,153 @@ function HomePage() {
           <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
         </div>
       ) : null}
+    </>
+  );
+}
+
+function MissionsPage() {
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { locale, t } = useI18n();
+  const missions = useQuery({
+    queryKey: ['missions', playerId, previewMode],
+    queryFn: () => client.missions(playerId),
+  });
+  const progression = useQuery({
+    queryKey: ['progression', playerId, previewMode],
+    queryFn: () => client.progression(playerId),
+  });
+  const cosmetics = useQuery({
+    queryKey: ['cosmetics', playerId, previewMode],
+    queryFn: () => client.cosmetics(playerId),
+  });
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['missions', playerId, previewMode] }),
+      queryClient.invalidateQueries({ queryKey: ['progression', playerId, previewMode] }),
+      queryClient.invalidateQueries({ queryKey: ['me', playerId, previewMode] }),
+      queryClient.invalidateQueries({ queryKey: ['cosmetics', playerId, previewMode] }),
+    ]);
+  const claimMission = useMutation({
+    mutationFn: (missionId: string) => client.claimMission(playerId, missionId),
+    onSuccess: refresh,
+  });
+  const claimLogin = useMutation({
+    mutationFn: () => client.claimLoginReward(playerId),
+    onSuccess: refresh,
+  });
+  const lastLogin = progression.data?.lastLoginClaim;
+  const loginAlreadyClaimed = lastLogin !== null && lastLogin !== undefined;
+
+  return (
+    <>
+      <PageHeading
+        eyebrow={t('missions')}
+        title={t('missionHub')}
+        description={t('missionHubDescription')}
+      />
+      <section className="mt-8 grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
+        <article className="surface-panel p-6">
+          <p className="eyebrow">{t('loginRewards')}</p>
+          <p className="mt-3 text-sm leading-6 text-stone-300">{t('loginRewardDescription')}</p>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <Metric label={t('level')} value={String(progression.data?.level ?? '-')} />
+            <Metric label={t('experience')} value={String(progression.data?.experience ?? '-')} />
+          </div>
+          <ActionButton
+            className="mt-5 w-full"
+            disabled={loginAlreadyClaimed || claimLogin.isPending}
+            onClick={() => claimLogin.mutate()}
+          >
+            {loginAlreadyClaimed ? t('claimedToday') : t('claimLogin')}
+          </ActionButton>
+          {claimLogin.isError ? (
+            <div className="mt-4">
+              <ApiFailure error={claimLogin.error} />
+            </div>
+          ) : null}
+        </article>
+        <article className="surface-panel p-6">
+          <p className="eyebrow">{t('missions')}</p>
+          {missions.isLoading ? <LoadingNotice title={t('missions')} /> : null}
+          {missions.isError ? (
+            <ApiFailure error={missions.error} onRetry={() => void missions.refetch()} />
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {missions.data?.map((mission) => {
+              const complete = mission.progress >= mission.target;
+              const claimed = mission.claimedAt !== null;
+              return (
+                <div
+                  className="rounded-lg border border-stone-700 bg-zinc-950/40 p-4"
+                  key={mission.id}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-stone-100">{mission.id}</p>
+                      <p className="mt-1 text-sm text-stone-400">
+                        {localizeValue(mission.cadence, locale)} ·{' '}
+                        {mission.metric.replaceAll('_', ' ')}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-amber-200">
+                      {String(mission.reward.amount)}{' '}
+                      {mission.reward.currency === 'GEM' ? t('gems') : t('exchange')}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-sm text-stone-300">
+                      {String(mission.progress)} / {String(mission.target)}
+                    </span>
+                    <ActionButton
+                      tone="quiet"
+                      disabled={!complete || claimed || claimMission.isPending}
+                      onClick={() => claimMission.mutate(mission.id)}
+                    >
+                      {claimed ? t('claimed') : complete ? t('claim') : t('inProgress')}
+                    </ActionButton>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {claimMission.isError ? (
+            <div className="mt-4">
+              <ApiFailure error={claimMission.error} />
+            </div>
+          ) : null}
+        </article>
+      </section>
+      <section className="mt-8">
+        <p className="eyebrow">{t('cosmetics')}</p>
+        <h2 className="mt-2 text-3xl font-black">{t('cosmetics')}</h2>
+        <p className="mt-3 text-sm text-stone-300">{t('cosmeticsDescription')}</p>
+        {cosmetics.isError ? (
+          <div className="mt-4">
+            <ApiFailure error={cosmetics.error} onRetry={() => void cosmetics.refetch()} />
+          </div>
+        ) : null}
+        {cosmetics.data?.length === 0 ? (
+          <p className="mt-5 text-stone-400">{t('noCosmetics')}</p>
+        ) : null}
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {cosmetics.data?.map((cosmetic) => (
+            <article className="surface-panel p-5" key={cosmetic.id}>
+              <Palette className="text-cyan-200" size={20} aria-hidden="true" />
+              <p className="mt-5 text-xs font-bold tracking-wide text-amber-200">
+                {cosmetic.kind.replaceAll('_', ' ')}
+              </p>
+              <h3 className="mt-2 text-xl font-black">{cosmetic.name}</h3>
+              <p className="mt-2 text-sm leading-6 text-stone-300">{cosmetic.description}</p>
+              <p className="mt-4 text-xs text-stone-400">
+                {cosmetic.acquiredAt === null ? t('inProgress') : t('claimed')}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
     </>
   );
 }
