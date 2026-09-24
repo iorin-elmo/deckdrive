@@ -14,6 +14,7 @@ import {
   Play,
   RotateCcw,
   Search,
+  Settings as SettingsIcon,
   Shield,
   Sparkles,
   Swords,
@@ -50,79 +51,124 @@ import {
   type PackOpening,
 } from './api.js';
 import { useSessionStore } from './store.js';
+import {
+  I18nProvider,
+  localizeCard,
+  localizeBattlePhase,
+  localizeCardMetadata,
+  localizePurchaseFrequencyPeriod,
+  localizeValue,
+  localizedCardName,
+  useI18n,
+} from './i18n.js';
 
 const navigation = [
-  { to: '/home', label: 'Home', icon: Sparkles },
-  { to: '/cards', label: 'Cards', icon: LibraryBig },
-  { to: '/decks', label: 'Decks', icon: BookOpen },
-  { to: '/packs', label: 'Packs', icon: Trophy },
-  { to: '/battle/cpu', label: 'CPU', icon: Swords },
+  { to: '/home', labelKey: 'navHome', icon: Sparkles },
+  { to: '/cards', labelKey: 'navCards', icon: LibraryBig },
+  { to: '/decks', labelKey: 'navDecks', icon: BookOpen },
+  { to: '/packs', labelKey: 'navPacks', icon: Trophy },
+  { to: '/battle/cpu', labelKey: 'navCpu', icon: Swords },
+  { to: '/settings', labelKey: 'navSettings', icon: SettingsIcon },
 ] as const;
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<TitlePage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/cards" element={<PublicCardsPage />} />
-      <Route path="/cards/:cardId" element={<PublicCardDetailPage />} />
-      <Route element={<AuthenticatedLayout />}>
-        <Route path="/home" element={<HomePage />} />
-        <Route path="/decks" element={<DecksPage />} />
-        <Route path="/decks/new" element={<DeckBuilderPage />} />
-        <Route path="/decks/:deckId" element={<DeckDetailPage />} />
-        <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
-        <Route path="/packs" element={<PacksPage />} />
-        <Route path="/battle/cpu" element={<CpuSetupPage />} />
-        <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
-        <Route path="/result/:matchId" element={<ResultPage />} />
-      </Route>
-      <Route path="*" element={<Navigate replace to="/" />} />
-    </Routes>
+    <I18nProvider>
+      <Routes>
+        <Route path="/" element={<TitlePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/cards" element={<PublicCardsPage />} />
+        <Route path="/cards/:cardId" element={<PublicCardDetailPage />} />
+        <Route element={<AuthenticatedLayout />}>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/decks" element={<DecksPage />} />
+          <Route path="/decks/new" element={<DeckBuilderPage />} />
+          <Route path="/decks/:deckId" element={<DeckDetailPage />} />
+          <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
+          <Route path="/packs" element={<PacksPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/battle/cpu" element={<CpuSetupPage />} />
+          <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
+          <Route path="/result/:matchId" element={<ResultPage />} />
+        </Route>
+        <Route path="*" element={<Navigate replace to="/" />} />
+      </Routes>
+    </I18nProvider>
   );
 }
 
 function TitlePage() {
   const playerId = useSessionStore((state) => state.playerId);
+  const { t } = useI18n();
   return (
     <main className="title-scene min-h-screen px-5 py-6 text-stone-100">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col justify-between gap-12">
         <header className="flex items-center justify-between">
           <span className="text-sm font-bold tracking-[0.18em] text-cyan-200">DECKDRIVE</span>
           <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
-            {playerId === null ? 'Development login' : 'Enter game'}
+            {playerId === null ? t('developmentLogin') : t('enterGame')}
             <ChevronRight size={16} aria-hidden="true" />
           </Link>
         </header>
         <section className="max-w-2xl pb-8 sm:pb-16">
           <p className="mb-4 text-sm font-semibold tracking-[0.14em] text-amber-200">
-            TACTICAL CARD BATTLES
+            {t('titleEyebrow')}
           </p>
           <h1 className="max-w-xl text-5xl font-black tracking-normal text-stone-50 sm:text-7xl">
-            Read the field.
+            {t('titleHeadline').split('\n').at(0)}
             <br />
-            Shape the turn.
+            {t('titleHeadline').split('\n').at(1)}
           </h1>
           <p className="mt-6 max-w-lg text-base leading-7 text-stone-200 sm:text-lg">
-            Build a precise deck, challenge a CPU rival, and study every decision from the arena.
+            {t('titleDescription')}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link className="hero-command" to={playerId === null ? '/login' : '/home'}>
               <Play size={18} fill="currentColor" aria-hidden="true" />
-              {playerId === null ? 'Start in development' : 'Continue'}
+              {playerId === null ? t('startDevelopment') : t('continue')}
             </Link>
             <Link className="hero-secondary" to="/cards">
-              Explore cards
+              {t('exploreCards')}
             </Link>
           </div>
         </section>
+        <LanguageControl className="self-start" />
         <footer className="flex flex-wrap gap-x-8 gap-y-2 text-xs font-medium tracking-wide text-stone-300">
-          <span>CPU practice</span>
-          <span>Deck workshop</span>
-          <span>Replay-ready rules</span>
+          <span>{t('titleFooterCpu')}</span>
+          <span>{t('titleFooterDecks')}</span>
+          <span>{t('titleFooterRules')}</span>
         </footer>
       </div>
     </main>
+  );
+}
+
+function SettingsPage() {
+  const { t } = useI18n();
+  return (
+    <>
+      <PageHeading
+        eyebrow={t('settingsEyebrow')}
+        title={t('settings')}
+        description={t('settingsDescription')}
+      />
+      <section className="surface-panel mt-7 max-w-xl p-6">
+        <LanguageControl />
+      </section>
+    </>
+  );
+}
+
+function LanguageControl({ className }: { readonly className?: string }) {
+  const { locale, setLocale, t } = useI18n();
+  return (
+    <label className={classNames('field-label', className)}>
+      {t('language')}
+      <select value={locale} onChange={(event) => setLocale(event.target.value as 'en' | 'ja')}>
+        <option value="en">{t('english')}</option>
+        <option value="ja">{t('japanese')}</option>
+      </select>
+    </label>
   );
 }
 
@@ -131,6 +177,7 @@ function LoginPage() {
   const location = useLocation();
   const setPlayerId = useSessionStore((state) => state.setPlayerId);
   const enablePreview = useSessionStore((state) => state.enablePreview);
+  const { t } = useI18n();
   const returnTo = loginReturnPath(new URLSearchParams(location.search).get('returnTo'));
   const [email, setEmail] = useState('debug@deckdrive.local');
   const [displayName, setDisplayName] = useState('Debug Player');
@@ -146,15 +193,13 @@ function LoginPage() {
       <section aria-labelledby="login-title" className="surface-panel w-full max-w-md p-6 sm:p-8">
         <Link className="quiet-link mb-8" to="/">
           <ChevronRight className="rotate-180" size={16} aria-hidden="true" />
-          Back to title
+          {t('backToTitle')}
         </Link>
-        <p className="eyebrow">DEVELOPMENT ACCESS</p>
+        <p className="eyebrow">{t('developmentAccess')}</p>
         <h1 id="login-title" className="mt-2 text-3xl font-black text-stone-50">
-          Enter the arena
+          {t('enterArena')}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-stone-300">
-          This placeholder is available only while the API runs in development mode.
-        </p>
+        <p className="mt-3 text-sm leading-6 text-stone-300">{t('developmentLoginDescription')}</p>
         <form
           className="mt-7 space-y-5"
           onSubmit={(event) => {
@@ -163,7 +208,7 @@ function LoginPage() {
           }}
         >
           <label className="field-label">
-            Email
+            {t('email')}
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -172,7 +217,7 @@ function LoginPage() {
             />
           </label>
           <label className="field-label">
-            Display name
+            {t('displayName')}
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
@@ -199,7 +244,7 @@ function LoginPage() {
             ) : (
               <LogIn size={17} aria-hidden="true" />
             )}
-            Sign in for development
+            {t('signInDevelopment')}
           </ActionButton>
         </form>
       </section>
@@ -210,6 +255,7 @@ function LoginPage() {
 function PublicCardLayout({ children }: { children: ReactNode }) {
   const playerId = useSessionStore((state) => state.playerId);
   const previewMode = useSessionStore((state) => state.previewMode);
+  const { t } = useI18n();
   return (
     <div className="app-background min-h-screen text-stone-100">
       <header className="border-b border-stone-800 bg-zinc-950/90">
@@ -220,11 +266,11 @@ function PublicCardLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             {previewMode ? (
               <span className="rounded border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100">
-                Offline preview
+                {t('offlinePreview')}
               </span>
             ) : null}
             <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
-              {playerId === null ? 'Development login' : 'Enter game'}
+              {playerId === null ? t('developmentLogin') : t('enterGame')}
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
           </div>
@@ -258,6 +304,7 @@ function AuthenticatedLayout() {
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
   const queryClient = useQueryClient();
   const client = useApiClient();
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const player = useQuery({
     queryKey: ['me', playerId, previewMode],
@@ -291,13 +338,13 @@ function AuthenticatedLayout() {
           </Link>
           {previewMode ? (
             <span className="ml-auto rounded border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100 sm:hidden">
-              Offline preview
+              {t('offlinePreview')}
             </span>
           ) : null}
           <ActionButton
             tone="quiet"
             className="sm:hidden"
-            aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-label={menuOpen ? t('closeNavigation') : t('openNavigation')}
             aria-controls="primary-navigation"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
@@ -306,7 +353,7 @@ function AuthenticatedLayout() {
           </ActionButton>
           <nav
             id="primary-navigation"
-            aria-label="Primary navigation"
+            aria-label={t('primaryNavigation')}
             className={classNames(
               'items-center gap-1 sm:flex',
               menuOpen
@@ -314,7 +361,7 @@ function AuthenticatedLayout() {
                 : 'hidden',
             )}
           >
-            {navigation.map(({ to, label, icon: Icon }) => (
+            {navigation.map(({ to, labelKey, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -322,20 +369,20 @@ function AuthenticatedLayout() {
                 className={({ isActive }) => classNames('nav-link', isActive && 'nav-link-active')}
               >
                 <Icon size={16} aria-hidden="true" />
-                {label}
+                {t(labelKey)}
               </NavLink>
             ))}
             <button className="nav-link sm:ml-3" type="button" onClick={signOut}>
               <DoorOpen size={16} aria-hidden="true" />
-              Sign out
+              {t('signOut')}
             </button>
           </nav>
           <div className="hidden text-right text-xs sm:block">
             <p className="font-semibold text-stone-100">
-              {player.data?.displayName ?? 'Loading player'}
+              {player.data?.displayName ?? t('loadingPlayer')}
             </p>
             <p className="text-amber-200">
-              {previewMode ? 'Offline preview' : formatBalances(player.data?.balances)}
+              {previewMode ? t('offlinePreview') : formatBalances(player.data?.balances, t)}
             </p>
           </div>
         </div>
@@ -351,6 +398,7 @@ function HomePage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { t } = useI18n();
   const player = useQuery({
     queryKey: ['me', playerId, previewMode],
     queryFn: () => client.me(playerId),
@@ -362,37 +410,37 @@ function HomePage() {
   return (
     <>
       <PageHeading
-        eyebrow="COMMAND DECK"
-        title="Home"
-        description="Choose a lane, then make the next clean move."
+        eyebrow={t('homeEyebrow')}
+        title={t('homeTitle')}
+        description={t('homeDescription')}
       />
       <section className="mt-8 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <article className="arena-panel min-h-72 p-6 sm:p-8">
           <div className="max-w-md">
-            <p className="eyebrow">NEXT PRACTICE</p>
-            <h2 className="mt-2 text-3xl font-black text-stone-50">CPU arena</h2>
-            <p className="mt-3 leading-7 text-stone-200">
-              Test the deck you know, choose a difficulty, and inspect the battle state after
-              launch.
-            </p>
+            <p className="eyebrow">{t('nextPractice')}</p>
+            <h2 className="mt-2 text-3xl font-black text-stone-50">{t('cpuArena')}</h2>
+            <p className="mt-3 leading-7 text-stone-200">{t('cpuArenaDescription')}</p>
             <Link className="hero-command mt-7" to="/battle/cpu">
               <Crosshair size={18} aria-hidden="true" />
-              Start a CPU match
+              {t('startCpuMatch')}
             </Link>
           </div>
         </article>
         <article className="surface-panel p-6">
-          <p className="eyebrow">PLAYER STATUS</p>
-          {player.isLoading ? <LoadingNotice title="Loading player status" /> : null}
+          <p className="eyebrow">{t('playerStatus')}</p>
+          {player.isLoading ? <LoadingNotice title={t('loadingPlayer')} /> : null}
           {player.data ? (
             <div className="mt-5 space-y-5">
               <div>
                 <p className="text-2xl font-black">{player.data.displayName}</p>
-                <p className="mt-1 text-sm text-stone-400">Development profile</p>
+                <p className="mt-1 text-sm text-stone-400">{t('developmentProfile')}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Metric label="Gems" value={String(player.data.balances.GEM ?? 0)} />
-                <Metric label="Exchange" value={String(player.data.balances.EXCHANGE_POINT ?? 0)} />
+                <Metric label={t('gems')} value={String(player.data.balances.GEM ?? 0)} />
+                <Metric
+                  label={t('exchange')}
+                  value={String(player.data.balances.EXCHANGE_POINT ?? 0)}
+                />
               </div>
             </div>
           ) : null}
@@ -402,26 +450,29 @@ function HomePage() {
         <QuickLink
           to="/cards"
           icon={<LibraryBig size={20} aria-hidden="true" />}
-          title="Card library"
-          text="Browse the available versioned card definitions."
+          title={t('cardLibrary')}
+          text={t('cardLibraryDescription')}
         />
         <QuickLink
           to="/decks"
           icon={<BookOpen size={20} aria-hidden="true" />}
-          title="Deck workshop"
+          title={t('deckWorkshop')}
           text={
             decks.isError
-              ? 'Deck information is unavailable.'
+              ? t('deckUnavailable')
               : decks.data === undefined
-                ? 'Loading decks.'
-                : `${String(decks.data.length)} deck${decks.data.length === 1 ? '' : 's'} ready for review.`
+                ? t('loadingDecks')
+                : t(decks.data.length === 1 ? 'deckReady' : 'decksReady').replace(
+                    '{count}',
+                    String(decks.data.length),
+                  )
           }
         />
         <QuickLink
           to="/battle/cpu"
           icon={<Swords size={20} aria-hidden="true" />}
-          title="CPU battle"
-          text="Launch the selected deck against one of four CPU difficulties."
+          title={t('cpuBattle')}
+          text={t('cpuBattleDescription')}
         />
       </section>
       {decks.isError ? (
@@ -436,35 +487,37 @@ function HomePage() {
 function CardsPage() {
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { locale, t } = useI18n();
   const cards = useQuery({ queryKey: ['cards', previewMode], queryFn: () => client.cards() });
   const [search, setSearch] = useState('');
   const visibleCards = cards.data?.filter((card) => {
-    const text =
-      `${card.definition.name} ${card.definition.description} ${card.definition.class}`.toLowerCase();
-    return text.includes(search.trim().toLowerCase());
+    const localText = localizeCard(card.definition, locale);
+    const searchableText =
+      `${localText.name} ${localText.description} ${localizeCardMetadata(card.definition.class, locale)} ${localizeCardMetadata(card.definition.type, locale)} ${localizeCardMetadata(card.definition.rarity, locale)}`.toLowerCase();
+    return searchableText.includes(search.trim().toLowerCase());
   });
   return (
     <>
       <PageHeading
-        eyebrow="REFERENCE"
-        title="Card library"
-        description="Versioned definitions available to the current build."
+        eyebrow={t('reference')}
+        title={t('cardLibraryTitle')}
+        description={t('cardLibraryDescriptionLong')}
       />
       <label className="search-field mt-7">
         <Search size={18} aria-hidden="true" />
-        <span className="sr-only">Search cards</span>
+        <span className="sr-only">{t('searchCards')}</span>
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search card name, class, or text"
+          placeholder={t('searchCards')}
         />
       </label>
       <section aria-live="polite" className="mt-6">
-        {cards.isLoading ? <LoadingNotice title="Loading card library" /> : null}
+        {cards.isLoading ? <LoadingNotice title={t('loadingCardLibrary')} /> : null}
         {cards.isError ? <ApiFailure error={cards.error} /> : null}
         {visibleCards?.length === 0 ? (
-          <AsyncNotice kind="empty" title="No cards match that search">
-            Try a shorter name or clear the filter.
+          <AsyncNotice kind="empty" title={t('noMatchingCards')}>
+            {t('noMatchingCardsDescription')}
           </AsyncNotice>
         ) : null}
         {visibleCards !== undefined && visibleCards.length > 0 ? (
@@ -495,17 +548,18 @@ function CardDetailPage() {
   const [searchParams] = useSearchParams();
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { t } = useI18n();
   const cards = useQuery({ queryKey: ['cards', previewMode], queryFn: () => client.cards() });
   const card = cards.data
     ? selectCardSummary(cards.data, cardId, searchParams.get('version'))
     : undefined;
-  if (cards.isLoading) return <LoadingNotice title="Loading card" />;
+  if (cards.isLoading) return <LoadingNotice title={t('loadingCard')} />;
   if (cards.isError) return <ApiFailure error={cards.error} />;
   if (card === undefined)
     return (
-      <AsyncNotice kind="empty" title="Card not found">
+      <AsyncNotice kind="empty" title={t('cardNotFound')}>
         <Link className="quiet-link mt-3" to="/cards">
-          Return to card library
+          {t('returnToCardLibrary')}
         </Link>
       </AsyncNotice>
     );
@@ -517,6 +571,7 @@ function PacksPage() {
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
   const queryClient = useQueryClient();
+  const { locale, t } = useI18n();
   const [opening, setOpening] = useState<PackOpening | null>(null);
   const openingIdempotencyKeys = useRef(new Map<string, string>());
   const packs = useQuery({
@@ -542,13 +597,13 @@ function PacksPage() {
   return (
     <>
       <PageHeading
-        eyebrow="PACK VAULT"
-        title="Open packs"
-        description="Purchases spend Gems atomically. Fourth and later copies convert to Exchange Points."
+        eyebrow={t('packVault')}
+        title={t('openPacks')}
+        description={t('packDescription')}
       />
       {packs.isLoading ? (
         <div className="mt-7">
-          <LoadingNotice title="Loading pack catalogue" />
+          <LoadingNotice title={t('loadingPacks')} />
         </div>
       ) : null}
       {packs.isError ? (
@@ -560,15 +615,24 @@ function PacksPage() {
         {packs.data?.map((product) => (
           <article key={product.id} className="surface-panel p-5">
             <p className="eyebrow">
-              {product.limit === null ? 'STANDARD' : `${product.limit.period} LIMITED`}
+              {product.limit === null
+                ? t('standard')
+                : t('limited').replace('{period}', localizeValue(product.limit.period, locale))}
             </p>
             <h2 className="mt-2 text-xl font-black text-stone-50">
-              {product.id.replaceAll('_', ' ')}
+              {localizeValue(product.id, locale)}
             </h2>
-            <p className="mt-2 text-sm text-amber-200">{product.gemCost} Gems</p>
+            <p className="mt-2 text-sm text-amber-200">
+              {t('gemsCost').replace('{count}', String(product.gemCost))}
+            </p>
             {product.limit === null ? null : (
               <p className="mt-2 text-sm text-stone-300">
-                {product.limit.maximum} purchase per {product.limit.period.toLowerCase()}.
+                {t('purchaseLimit')
+                  .replace('{count}', String(product.limit.maximum))
+                  .replace(
+                    '{period}',
+                    localizePurchaseFrequencyPeriod(product.limit.period, locale),
+                  )}
               </p>
             )}
             <ActionButton
@@ -581,7 +645,7 @@ function PacksPage() {
               ) : (
                 <Trophy size={17} aria-hidden="true" />
               )}
-              Open pack
+              {t('openPack')}
             </ActionButton>
           </article>
         ))}
@@ -593,11 +657,14 @@ function PacksPage() {
       ) : null}
       {opening === null ? null : (
         <section className="surface-panel mt-7 p-6" aria-live="polite">
-          <p className="eyebrow">OPENED</p>
-          <h2 className="mt-2 text-2xl font-black">{opening.cards.length} cards received</h2>
+          <p className="eyebrow">{t('opened')}</p>
+          <h2 className="mt-2 text-2xl font-black">
+            {t('cardsReceived').replace('{count}', String(opening.cards.length))}
+          </h2>
           <p className="mt-2 text-sm text-stone-300">
-            Spent {opening.gemCost} Gems. Duplicate conversion: {opening.exchangePoints} Exchange
-            Points.
+            {t('packResult')
+              .replace('{gems}', String(opening.gemCost))
+              .replace('{points}', String(opening.exchangePoints))}
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             {opening.cards.map((card, index) => (
@@ -605,7 +672,7 @@ function PacksPage() {
                 key={`${card.id}-${String(index)}`}
                 className="rounded border border-cyan-300/40 px-3 py-2 text-sm font-bold text-cyan-100"
               >
-                {card.rarity} card
+                {t('cardRarity').replace('{rarity}', localizeCardMetadata(card.rarity, locale))}
               </span>
             ))}
           </div>
@@ -619,27 +686,24 @@ function DecksPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { t } = useI18n();
   const decks = useQuery({
     queryKey: ['decks', playerId, previewMode],
     queryFn: () => client.decks(playerId),
   });
   return (
     <>
-      <PageHeading
-        eyebrow="WORKSHOP"
-        title="Decks"
-        description="Review your saved lists before taking one into the CPU arena."
-      />
+      <PageHeading eyebrow={t('workshop')} title={t('decks')} description={t('decksDescription')} />
       <Link className="hero-command mt-6" to="/decks/new">
         <Plus size={18} aria-hidden="true" />
-        Build a deck
+        {t('buildDeck')}
       </Link>
       <section className="mt-7" aria-live="polite">
-        {decks.isLoading ? <LoadingNotice title="Loading decks" /> : null}
+        {decks.isLoading ? <LoadingNotice title={t('loadingDecks')} /> : null}
         {decks.isError ? <ApiFailure error={decks.error} /> : null}
         {decks.data?.length === 0 ? (
-          <AsyncNotice kind="empty" title="No decks yet">
-            Build a valid 30-card deck from your collection to begin CPU practice.
+          <AsyncNotice kind="empty" title={t('noDecks')}>
+            {t('noDecksDescription')}
           </AsyncNotice>
         ) : null}
         {decks.data !== undefined && decks.data.length > 0 ? (
@@ -659,36 +723,39 @@ function DeckDetailPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { locale, t } = useI18n();
   const decks = useQuery({
     queryKey: ['decks', playerId, previewMode],
     queryFn: () => client.decks(playerId),
   });
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
-  if (decks.isLoading) return <LoadingNotice title="Loading deck" />;
+  if (decks.isLoading) return <LoadingNotice title={t('loadingDeck')} />;
   if (decks.isError) return <ApiFailure error={decks.error} />;
   if (deck === undefined)
     return (
-      <AsyncNotice kind="empty" title="Deck not found">
+      <AsyncNotice kind="empty" title={t('deckNotFound')}>
         <Link className="quiet-link mt-3" to="/decks">
-          Return to decks
+          {t('returnToDecks')}
         </Link>
       </AsyncNotice>
     );
   return (
     <>
       <PageHeading
-        eyebrow="DECK WORKSHOP"
+        eyebrow={t('deckDetail')}
         title={deck.name}
-        description={`${String(deckCardTotal(deck))} cards - data version ${deck.cardDataVersion}`}
+        description={t('deckSummary')
+          .replace('{count}', String(deckCardTotal(deck)))
+          .replace('{version}', deck.cardDataVersion)}
       />
       <section className="mt-7 grid gap-4 lg:grid-cols-[1fr_0.4fr]">
         <div className="surface-panel overflow-hidden">
           <table className="deck-table">
             <thead>
               <tr>
-                <th>Card</th>
-                <th>Cost</th>
-                <th>Copies</th>
+                <th>{t('card')}</th>
+                <th>{t('cost').replace('{count}', '')}</th>
+                <th>{t('copies')}</th>
               </tr>
             </thead>
             <tbody>
@@ -699,9 +766,9 @@ function DeckDetailPage() {
                       to={cardDetailHref(item.cardVersion)}
                       className="font-semibold text-cyan-100 hover:text-cyan-200"
                     >
-                      {item.cardVersion.definition.name}
+                      {localizeCard(item.cardVersion.definition, locale).name}
                     </Link>
-                    <span>{item.cardVersion.definition.type}</span>
+                    <span>{localizeCardMetadata(item.cardVersion.definition.type, locale)}</span>
                   </td>
                   <td>{item.cardVersion.definition.cost}</td>
                   <td>{item.quantity}</td>
@@ -711,23 +778,21 @@ function DeckDetailPage() {
           </table>
         </div>
         <aside className="surface-panel p-6">
-          <p className="eyebrow">READY CHECK</p>
+          <p className="eyebrow">{t('readyCheck')}</p>
           <p className="mt-4 text-3xl font-black">
             {String(deckCardTotal(deck))}
-            <span className="text-base font-medium text-stone-400"> / 30 cards</span>
+            <span className="text-base font-medium text-stone-400"> {t('cardsOutOfThirty')}</span>
           </p>
-          <p className="mt-3 text-sm leading-6 text-stone-300">
-            CPU match creation uses this saved deck and the game engine's legal-action rules.
-          </p>
+          <p className="mt-3 text-sm leading-6 text-stone-300">{t('deckReadyDescription')}</p>
           <Link
             className="hero-command mt-6"
             to={`/battle/cpu?deck=${encodeURIComponent(deck.id)}`}
           >
             <Play size={17} fill="currentColor" aria-hidden="true" />
-            Use for CPU
+            {t('useForCpu')}
           </Link>
           <Link className="hero-secondary mt-3" to={`/decks/${encodeURIComponent(deck.id)}/edit`}>
-            Edit deck
+            {t('editDeck')}
           </Link>
         </aside>
       </section>
@@ -742,6 +807,7 @@ function DeckBuilderPage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { locale, t } = useI18n();
   const decks = useQuery({
     queryKey: ['decks', playerId, previewMode],
     queryFn: () => client.decks(playerId),
@@ -751,14 +817,17 @@ function DeckBuilderPage() {
     queryFn: () => client.collection(playerId),
   });
   const deck = decks.data?.find((candidate) => candidate.id === deckId);
-  const [name, setName] = useState('New deck');
+  const defaultDeckName = t('newDeck');
+  const [name, setName] = useState(defaultDeckName);
   const [quantities, setQuantities] = useState<Readonly<Record<string, number>>>({});
   const initializedDeckId = useRef<string | null | undefined>(null);
+  const newDeckNameEdited = useRef(false);
 
   useEffect(() => {
     if (initializedDeckId.current === deckId) return;
     if (deckId === undefined) {
-      setName('New deck');
+      setName(defaultDeckName);
+      newDeckNameEdited.current = false;
       setQuantities({});
       initializedDeckId.current = deckId;
       return;
@@ -769,7 +838,12 @@ function DeckBuilderPage() {
       Object.fromEntries(deck.cards.map((card) => [card.cardVersionId, card.quantity])),
     );
     initializedDeckId.current = deckId;
-  }, [deck, deckId]);
+  }, [deck, deckId, defaultDeckName]);
+
+  useEffect(() => {
+    if (deckId !== undefined || newDeckNameEdited.current) return;
+    setName(defaultDeckName);
+  }, [deckId, defaultDeckName]);
 
   const cardDataVersion = deck?.cardDataVersion ?? collection.data?.cardDataVersion;
   const ownedCards = deckBuilderCardsForVersion(collection.data?.cards ?? [], cardDataVersion);
@@ -788,34 +862,33 @@ function DeckBuilderPage() {
     },
   });
 
-  if (decks.isLoading || collection.isLoading)
-    return <LoadingNotice title="Loading deck workshop" />;
+  if (decks.isLoading || collection.isLoading) return <LoadingNotice title={t('loadingDeck')} />;
   if (decks.isError) return <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />;
   if (collection.isError)
     return <ApiFailure error={collection.error} onRetry={() => void collection.refetch()} />;
   if (cardDataVersion === undefined)
-    return <AsyncNotice kind="empty" title="Card data is not available" />;
+    return <AsyncNotice kind="empty" title={t('cardDataUnavailable')} />;
   if (deckId !== undefined && deck === undefined)
     return (
-      <AsyncNotice kind="empty" title="Deck not found">
+      <AsyncNotice kind="empty" title={t('deckNotFound')}>
         <Link className="quiet-link mt-3" to="/decks">
-          Return to decks
+          {t('returnToDecks')}
         </Link>
       </AsyncNotice>
     );
   if (ownedCards.length === 0)
     return (
-      <AsyncNotice kind="empty" title="No cards in your collection">
-        This development player has no cards available for a 30-card deck.
+      <AsyncNotice kind="empty" title={t('noCollectionCards')}>
+        {t('noCollectionCardsDescription')}
       </AsyncNotice>
     );
 
   return (
     <>
       <PageHeading
-        eyebrow="DECK BUILDER"
-        title={deck === undefined ? 'Build a deck' : `Edit ${deck.name}`}
-        description="Choose owned card versions, then save an exact 30-card list."
+        eyebrow={t('deckBuilder')}
+        title={deck === undefined ? t('buildDeck') : t('editDeckName').replace('{name}', deck.name)}
+        description={t('deckBuilderDescription')}
       />
       <form
         className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]"
@@ -826,21 +899,23 @@ function DeckBuilderPage() {
       >
         <aside className="surface-panel h-fit p-6">
           <label className="field-label">
-            Deck name
+            {t('deckName')}
             <input
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                newDeckNameEdited.current = true;
+                setName(event.target.value);
+              }}
               maxLength={80}
               required
             />
           </label>
-          <p className="eyebrow mt-7">READY CHECK</p>
+          <p className="eyebrow mt-7">{t('readyCheck')}</p>
           <p className="mt-3 text-4xl font-black text-stone-50">
-            {String(total)} <span className="text-base font-medium text-stone-400">/ 30 cards</span>
+            {String(total)}{' '}
+            <span className="text-base font-medium text-stone-400">{t('cardsOutOfThirty')}</span>
           </p>
-          <p className="mt-3 text-sm leading-6 text-stone-300">
-            Each quantity is limited by the card's copy limit and your collection.
-          </p>
+          <p className="mt-3 text-sm leading-6 text-stone-300">{t('quantityDescription')}</p>
           {save.isError ? <ApiFailure error={save.error} /> : null}
           <ActionButton
             className="mt-7 w-full"
@@ -848,19 +923,23 @@ function DeckBuilderPage() {
             disabled={total !== 30 || name.trim().length === 0 || save.isPending}
           >
             <BookOpen size={18} aria-hidden="true" />
-            {save.isPending ? 'Saving deck' : deck === undefined ? 'Create deck' : 'Save deck'}
+            {save.isPending
+              ? t('savingDeck')
+              : deck === undefined
+                ? t('createDeck')
+                : t('saveDeck')}
           </ActionButton>
           <Link className="quiet-link mt-4" to="/decks">
-            Return to decks
+            {t('returnToDecks')}
           </Link>
         </aside>
         <section className="surface-panel overflow-hidden">
           <table className="deck-table">
             <thead>
               <tr>
-                <th>Card</th>
-                <th>Owned</th>
-                <th>Copies</th>
+                <th>{t('card')}</th>
+                <th>{t('owned')}</th>
+                <th>{t('copies')}</th>
               </tr>
             </thead>
             <tbody>
@@ -874,9 +953,9 @@ function DeckBuilderPage() {
                         className="font-semibold text-cyan-100 hover:text-cyan-200"
                         to={cardDetailHref(card.cardVersion)}
                       >
-                        {card.cardVersion.definition.name}
+                        {localizeCard(card.cardVersion.definition, locale).name}
                       </Link>
-                      <span>{card.cardVersion.definition.type}</span>
+                      <span>{localizeCardMetadata(card.cardVersion.definition.type, locale)}</span>
                     </td>
                     <td>{String(card.quantity)}</td>
                     <td>
@@ -884,7 +963,10 @@ function DeckBuilderPage() {
                         <ActionButton
                           tone="quiet"
                           type="button"
-                          aria-label={`Remove ${card.cardVersion.definition.name}`}
+                          aria-label={t('removeCard').replace(
+                            '{name}',
+                            localizeCard(card.cardVersion.definition, locale).name,
+                          )}
                           disabled={quantity === 0}
                           onClick={() =>
                             setQuantities((current) => ({
@@ -901,7 +983,10 @@ function DeckBuilderPage() {
                           min="0"
                           max={limit}
                           value={quantity}
-                          aria-label={`${card.cardVersion.definition.name} copies`}
+                          aria-label={t('cardCopies').replace(
+                            '{name}',
+                            localizeCard(card.cardVersion.definition, locale).name,
+                          )}
                           onChange={(event) => {
                             const requested = Number(event.target.value);
                             const next = Number.isFinite(requested)
@@ -916,7 +1001,10 @@ function DeckBuilderPage() {
                         <ActionButton
                           tone="quiet"
                           type="button"
-                          aria-label={`Add ${card.cardVersion.definition.name}`}
+                          aria-label={t('addCard').replace(
+                            '{name}',
+                            localizeCard(card.cardVersion.definition, locale).name,
+                          )}
                           disabled={quantity >= limit}
                           onClick={() =>
                             setQuantities((current) => ({
@@ -946,6 +1034,7 @@ function CpuSetupPage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const { locale, t } = useI18n();
   const decks = useQuery({
     queryKey: ['decks', playerId, previewMode],
     queryFn: () => client.decks(playerId),
@@ -965,9 +1054,9 @@ function CpuSetupPage() {
   return (
     <>
       <PageHeading
-        eyebrow="CPU PRACTICE"
-        title="Set the challenge"
-        description="Choose a saved deck and a CPU profile. The server remains authoritative for match creation."
+        eyebrow={t('cpuPractice')}
+        title={t('setChallenge')}
+        description={t('setChallengeDescription')}
       />
       <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <form
@@ -979,26 +1068,26 @@ function CpuSetupPage() {
           }}
         >
           {decks.isLoading ? (
-            <LoadingNotice title="Loading decks" />
+            <LoadingNotice title={t('loadingDecks')} />
           ) : decks.isError ? (
             <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
           ) : playableDecks.length === 0 ? (
-            <AsyncNotice kind="empty" title="No 30-card decks available">
-              Build a valid 30-card deck before starting CPU practice.
+            <AsyncNotice kind="empty" title={t('noReadyDecks')}>
+              {t('noReadyDecksDescription')}
               <Link className="quiet-link mt-3" to="/decks/new">
-                Build a deck
+                {t('buildDeck')}
               </Link>
             </AsyncNotice>
           ) : (
             <label className="field-label">
-              Deck
+              {t('deck')}
               <select
                 value={deckId}
                 onChange={(event) => setDeckId(event.target.value)}
                 disabled={decks.isLoading || decks.isError}
                 required
               >
-                <option value="">Choose a deck</option>
+                <option value="">{t('chooseDeck')}</option>
                 {playableDecks.map((deck) => (
                   <option key={deck.id} value={deck.id}>
                     {deck.name} ({String(deckCardTotal(deck))}/30)
@@ -1008,7 +1097,7 @@ function CpuSetupPage() {
             </label>
           )}
           <fieldset className="mt-6">
-            <legend className="field-label">CPU difficulty</legend>
+            <legend className="field-label">{t('cpuDifficulty')}</legend>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {(['EASY', 'NORMAL', 'HARD', 'EXPERT'] as const).map((option) => (
                 <button
@@ -1021,7 +1110,7 @@ function CpuSetupPage() {
                   )}
                   aria-pressed={difficulty === option}
                 >
-                  {option}
+                  {localizeValue(option, locale)}
                 </button>
               ))}
             </div>
@@ -1033,29 +1122,25 @@ function CpuSetupPage() {
             disabled={!selectedDeck || start.isPending}
           >
             <Swords size={18} aria-hidden="true" />
-            {start.isPending ? 'Creating match' : 'Enter CPU arena'}
+            {start.isPending ? t('creatingMatch') : t('enterCpuArena')}
           </ActionButton>
         </form>
         <article className="arena-panel min-h-80 p-6 sm:p-8">
-          <p className="eyebrow">MATCH FORMAT</p>
-          <h2 className="mt-2 text-3xl font-black">Match setup</h2>
-          <p className="mt-4 max-w-md leading-7 text-stone-200">
-            The selected CPU profile is sent with match creation. The current API returns the
-            initial state and does not execute CPU turns yet, so the profile does not alter this
-            screen's state.
-          </p>
+          <p className="eyebrow">{t('matchFormat')}</p>
+          <h2 className="mt-2 text-3xl font-black">{t('matchSetup')}</h2>
+          <p className="mt-4 max-w-md leading-7 text-stone-200">{t('matchSetupDescription')}</p>
           <ul className="mt-7 space-y-3 text-sm text-stone-200">
             <li className="flex gap-3">
               <BadgeCheck size={18} className="text-cyan-200" aria-hidden="true" />
-              Owned deck only
+              {t('ownedDeckOnly')}
             </li>
             <li className="flex gap-3">
               <BadgeCheck size={18} className="text-cyan-200" aria-hidden="true" />
-              Server-created initial state
+              {t('serverInitialState')}
             </li>
             <li className="flex gap-3">
               <BadgeCheck size={18} className="text-cyan-200" aria-hidden="true" />
-              Replay-ready match state
+              {t('replayReadyState')}
             </li>
           </ul>
         </article>
@@ -1070,6 +1155,7 @@ function CpuBattlePage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { t } = useI18n();
   const started = (location.state as { readonly match?: CpuMatch } | null)?.match;
   const remoteMatch = useQuery({
     queryKey: ['match', playerId, matchId, previewMode],
@@ -1078,12 +1164,12 @@ function CpuBattlePage() {
   });
   const state = started?.state ?? remoteMatch.data?.finalState ?? remoteMatch.data?.initialState;
   if (remoteMatch.isLoading && state === undefined)
-    return <LoadingNotice title="Loading battle state" />;
+    return <LoadingNotice title={t('loadingBattleState')} />;
   if (remoteMatch.isError) return <ApiFailure error={remoteMatch.error} />;
   if (state === null || state === undefined)
     return (
-      <AsyncNotice kind="empty" title="Match state is not available">
-        This match has no final state yet. Return to the CPU setup to launch a fresh practice match.
+      <AsyncNotice kind="empty" title={t('matchStateUnavailable')}>
+        {t('matchStateUnavailableDescription')}
       </AsyncNotice>
     );
   return (
@@ -1099,26 +1185,25 @@ function ResultPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
+  const { t } = useI18n();
   const match = useQuery({
     queryKey: ['match', playerId, matchId, previewMode],
     queryFn: () => client.match(playerId, matchId),
   });
-  if (match.isLoading) return <LoadingNotice title="Loading result" />;
+  if (match.isLoading) return <LoadingNotice title={t('loadingResult')} />;
   if (match.isError) return <ApiFailure error={match.error} />;
   const state = match.data?.finalState;
   const abandoned = match.data?.status === 'ABANDONED';
   return (
     <>
       <PageHeading
-        eyebrow="MATCH RESULT"
-        title={resultTitle(match.data?.status)}
-        description="The server owns results. This view only renders persisted match data."
+        eyebrow={t('matchResult')}
+        title={localizedResultTitle(match.data?.status, t)}
+        description={t('resultDescription')}
       />
       {state === null || state === undefined ? (
-        <AsyncNotice kind="empty" title={abandoned ? 'Battle abandoned' : 'No final result yet'}>
-          {abandoned
-            ? 'This match was abandoned before a final result was persisted.'
-            : 'The match is still in progress or has no persisted final state.'}
+        <AsyncNotice kind="empty" title={abandoned ? t('battleAbandoned') : t('noFinalResult')}>
+          {abandoned ? t('abandonedDescription') : t('noFinalResultDescription')}
         </AsyncNotice>
       ) : (
         <BattleBoard state={state} />
@@ -1134,49 +1219,74 @@ function BattleBoard({
   readonly state: BattleState;
   readonly difficulty?: CpuMatch['difficulty'];
 }) {
+  const { locale, t } = useI18n();
+  const client = useApiClient();
+  const previewMode = useSessionStore((session) => session.previewMode);
+  const cards = useQuery({
+    queryKey: ['cards', previewMode],
+    queryFn: () => client.cards(),
+  });
   const player = state.players[0];
   const opponent = state.players[1];
   if (player === undefined || opponent === undefined)
     return (
-      <AsyncNotice kind="error" title="Invalid battle state">
-        The server response did not include two players.
+      <AsyncNotice kind="error" title={t('invalidBattleState')}>
+        {t('invalidBattleStateDescription')}
       </AsyncNotice>
     );
   return (
     <>
       <PageHeading
-        eyebrow={difficulty === undefined ? 'PERSISTED STATE' : `${difficulty} CPU`}
-        title="CPU arena"
-        description={`Turn ${String(state.turn)} - ${state.phase.replaceAll('_', ' ').toLowerCase()}`}
+        eyebrow={
+          difficulty === undefined
+            ? t('persistedState')
+            : `${localizeValue(difficulty, locale)} CPU`
+        }
+        title={t('cpuArena')}
+        description={t('turn')
+          .replace('{count}', String(state.turn))
+          .replace('{phase}', localizeBattlePhase(state.phase, locale))}
       />
-      <section className="battle-board mt-7" aria-label="Battle state">
-        <Combatant label="Opponent" player={opponent} tone="enemy" />
+      <section className="battle-board mt-7" aria-label={t('battleState')}>
+        <Combatant label={t('opponent')} player={opponent} tone="enemy" />
         <div className="battle-field">
-          <p className="eyebrow">BATTLE FIELD</p>
+          <p className="eyebrow">{t('battleField')}</p>
           <div className="battle-ring" aria-hidden="true" />
-          <p className="mt-4 text-center text-sm text-stone-300">
-            Server state is displayed here. Player action controls arrive with the multiplayer
-            battle protocol.
-          </p>
+          <p className="mt-4 text-center text-sm text-stone-300">{t('battleFieldDescription')}</p>
         </div>
-        <Combatant label="You" player={player} tone="player" />
+        <Combatant label={t('you')} player={player} tone="player" />
       </section>
       <section className="mt-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Hand</h2>
-          <span className="text-sm text-stone-400">{String(player.hand.length)} cards</span>
+          <h2 className="text-lg font-bold">{t('hand')}</h2>
+          <span className="text-sm text-stone-400">
+            {t('cardsCount').replace('{count}', String(player.hand.length))}
+          </span>
         </div>
         <div className="hand-row mt-3">
           {player.hand.length === 0 ? (
-            <AsyncNotice kind="empty" title="No cards in hand">
-              The initial state did not draw any cards.
+            <AsyncNotice kind="empty" title={t('noCardsInHand')}>
+              {t('noCardsInHandDescription')}
             </AsyncNotice>
           ) : (
             player.hand.map((card) => (
               <article className="hand-card" key={card.id}>
-                <p className="text-xs font-semibold text-amber-200">CARD</p>
-                <p className="mt-5 font-bold text-stone-50">{card.definitionId}</p>
-                <p className="mt-2 text-xs text-stone-400">Instance {card.id}</p>
+                <p className="text-xs font-semibold text-amber-200">{t('card')}</p>
+                <p className="mt-5 font-bold text-stone-50">
+                  {localizedCardName(
+                    card.definitionId,
+                    state.cardDataVersion,
+                    locale,
+                    cards.data?.find(
+                      (candidate) =>
+                        candidate.cardId === card.definitionId &&
+                        candidate.version === state.cardDataVersion,
+                    )?.definition,
+                  )}
+                </p>
+                <p className="mt-2 text-xs text-stone-400">
+                  {t('instance').replace('{id}', card.id)}
+                </p>
               </article>
             ))
           )}
@@ -1185,10 +1295,10 @@ function BattleBoard({
       <div className="mt-7 flex flex-wrap gap-3">
         <Link className="hero-command" to={`/result/${state.matchId}`}>
           <Trophy size={18} aria-hidden="true" />
-          View result
+          {t('viewResult')}
         </Link>
         <Link className="hero-secondary" to="/battle/cpu">
-          Start another
+          {t('startAnother')}
         </Link>
       </div>
     </>
@@ -1204,6 +1314,7 @@ function Combatant({
   readonly player: BattleState['players'][number];
   readonly tone: 'player' | 'enemy';
 }) {
+  const { locale, t } = useI18n();
   return (
     <article
       className={classNames('combatant', tone === 'enemy' ? 'combatant-enemy' : 'combatant-player')}
@@ -1221,13 +1332,18 @@ function Combatant({
       </div>
       <div className="mt-5 grid grid-cols-3 gap-2">
         <Metric label="HP" value={`${String(player.hp)}/${String(player.maxHp)}`} />
-        <Metric label="Block" value={String(player.block)} />
-        <Metric label="Energy" value={`${String(player.energy)}/${String(player.maxEnergy)}`} />
+        <Metric label={t('block')} value={String(player.block)} />
+        <Metric
+          label={t('energy')}
+          value={`${String(player.energy)}/${String(player.maxEnergy)}`}
+        />
       </div>
       {player.statuses.length > 0 ? (
         <p className="mt-4 text-xs text-stone-300">
-          Statuses:{' '}
-          {player.statuses.map((status) => `${status.id} x${String(status.stacks)}`).join(', ')}
+          {t('statuses')}:{' '}
+          {player.statuses
+            .map((status) => `${localizeValue(status.id, locale)} x${String(status.stacks)}`)
+            .join(', ')}
         </p>
       ) : null}
     </article>
@@ -1236,25 +1352,31 @@ function Combatant({
 
 function CardTile({ card }: { readonly card: CardSummary }) {
   const definition = card.definition;
+  const { locale, t } = useI18n();
+  const text = localizeCard(definition, locale);
   return (
     <Link to={cardDetailHref(card)} className="card-tile">
       <div className="flex items-start justify-between gap-3">
-        <span className="rarity-chip">{definition.rarity}</span>
-        <span className="cost-orb" aria-label={`Cost ${String(definition.cost)}`}>
+        <span className="rarity-chip">{localizeCardMetadata(definition.rarity, locale)}</span>
+        <span
+          className="cost-orb"
+          aria-label={t('cost').replace('{count}', String(definition.cost))}
+        >
           {definition.cost}
         </span>
       </div>
       <div className="mt-10">
         <p className="text-xs font-bold tracking-wide text-cyan-200">
-          {definition.class} - {definition.type}
+          {localizeCardMetadata(definition.class, locale)} -{' '}
+          {localizeCardMetadata(definition.type, locale)}
         </p>
-        <h2 className="mt-2 text-xl font-black text-stone-50">{definition.name}</h2>
-        <p className="mt-3 text-sm leading-6 text-stone-300">{definition.description}</p>
+        <h2 className="mt-2 text-xl font-black text-stone-50">{text.name}</h2>
+        <p className="mt-3 text-sm leading-6 text-stone-300">{text.description}</p>
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
         {definition.keywords.map((keyword) => (
           <span className="keyword-chip" key={keyword}>
-            {keyword}
+            {localizeCardMetadata(keyword, locale)}
           </span>
         ))}
       </div>
@@ -1268,22 +1390,24 @@ export function cardDetailHref(card: Pick<CardSummary, 'cardId' | 'version'>): s
 
 function CardDetail({ card }: { readonly card: CardSummary }) {
   const definition = card.definition;
+  const { locale, t } = useI18n();
+  const text = localizeCard(definition, locale);
   return (
     <section className="grid gap-6 lg:grid-cols-[0.7fr_1.3fr]">
       <CardTile card={card} />
       <article className="surface-panel p-6 sm:p-8">
         <Link to="/cards" className="quiet-link">
           <ChevronRight className="rotate-180" size={16} aria-hidden="true" />
-          Card library
+          {t('cardLibrary')}
         </Link>
-        <p className="eyebrow mt-8">CARD DETAIL</p>
-        <h1 className="mt-2 text-4xl font-black">{definition.name}</h1>
-        <p className="mt-4 max-w-2xl text-lg leading-8 text-stone-200">{definition.description}</p>
+        <p className="eyebrow mt-8">{t('cardDetail')}</p>
+        <h1 className="mt-2 text-4xl font-black">{text.name}</h1>
+        <p className="mt-4 max-w-2xl text-lg leading-8 text-stone-200">{text.description}</p>
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Metric label="Class" value={definition.class} />
-          <Metric label="Type" value={definition.type} />
-          <Metric label="Rarity" value={definition.rarity} />
-          <Metric label="Version" value={card.version} />
+          <Metric label={t('class')} value={localizeCardMetadata(definition.class, locale)} />
+          <Metric label={t('type')} value={localizeCardMetadata(definition.type, locale)} />
+          <Metric label={t('rarity')} value={localizeCardMetadata(definition.rarity, locale)} />
+          <Metric label={t('version')} value={card.version} />
         </div>
       </article>
     </section>
@@ -1291,11 +1415,12 @@ function CardDetail({ card }: { readonly card: CardSummary }) {
 }
 
 function DeckTile({ deck }: { readonly deck: Deck }) {
+  const { t } = useI18n();
   return (
     <article className="surface-panel p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">SAVED DECK</p>
+          <p className="eyebrow">{t('savedDeck')}</p>
           <h2 className="mt-2 text-2xl font-black text-stone-50">{deck.name}</h2>
         </div>
         <span className="rounded-md border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100">
@@ -1303,17 +1428,19 @@ function DeckTile({ deck }: { readonly deck: Deck }) {
         </span>
       </div>
       <p className="mt-3 text-sm text-stone-300">
-        {String(deck.cards.length)} distinct card versions - {deck.cardDataVersion}
+        {t('deckTileSummary')
+          .replace('{count}', String(deck.cards.length))
+          .replace('{version}', deck.cardDataVersion)}
       </p>
       <div className="mt-6 flex gap-3">
         <Link className="hero-secondary" to={`/decks/${deck.id}`}>
-          Inspect
+          {t('open')}
         </Link>
         <Link
           className="quiet-link self-center"
           to={`/battle/cpu?deck=${encodeURIComponent(deck.id)}`}
         >
-          CPU practice <ChevronRight size={15} aria-hidden="true" />
+          {t('cpuPractice')} <ChevronRight size={15} aria-hidden="true" />
         </Link>
       </div>
     </article>
@@ -1331,13 +1458,14 @@ function QuickLink({
   readonly title: string;
   readonly text: string;
 }) {
+  const { t } = useI18n();
   return (
     <Link to={to} className="quick-link">
       <span className="text-cyan-200">{icon}</span>
       <h2 className="mt-4 font-bold text-stone-50">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-stone-300">{text}</p>
       <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-amber-200">
-        Open <ChevronRight size={16} aria-hidden="true" />
+        {t('open')} <ChevronRight size={16} aria-hidden="true" />
       </span>
     </Link>
   );
@@ -1422,16 +1550,26 @@ export function resultTitle(status: string | undefined): string {
   return 'Battle in progress';
 }
 
+function localizedResultTitle(
+  status: string | undefined,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  if (status === 'COMPLETED') return t('battleComplete');
+  if (status === 'ABANDONED') return t('battleAbandoned');
+  return t('battleInProgress');
+}
+
 export function canOpenOfflinePreview(error: Error): boolean {
   return error instanceof ApiError && (error.status === 0 || error.status >= 500);
 }
 
 function LoadingNotice({ title }: { readonly title: string }) {
+  const { t } = useI18n();
   return (
     <AsyncNotice kind="loading" title={title}>
       <span className="inline-flex items-center gap-2">
         <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
-        Working with the arena.
+        {t('working')}
       </span>
     </AsyncNotice>
   );
@@ -1446,20 +1584,21 @@ function ApiFailure({
   readonly onPreview?: () => void;
   readonly onRetry?: () => void;
 }) {
+  const { t } = useI18n();
   const unavailable = error instanceof ApiError && (error.status === 0 || error.status >= 500);
   const description =
     error instanceof ApiError && error.code === 'API_UNAVAILABLE'
-      ? 'The API is not running at the configured address.'
+      ? t('apiUnavailable')
       : error instanceof ApiError && error.code === 'REQUEST_FAILED'
-        ? 'The API proxy could not reach a running server.'
+        ? t('requestFailed')
         : error instanceof ApiError
-          ? `The API rejected this request: ${error.code} (${String(error.status)}).`
-          : 'The service could not be reached.';
-  const advice = unavailable
-    ? 'Check that the API is running, then try again.'
-    : 'Review the request details and your session, then try again.';
+          ? t('requestRejected')
+              .replace('{code}', error.code)
+              .replace('{status}', String(error.status))
+          : t('serviceUnavailable');
+  const advice = unavailable ? t('retryAdvice') : t('sessionAdvice');
   return (
-    <AsyncNotice kind="error" title="Unable to load this view">
+    <AsyncNotice kind="error" title={t('unableToLoad')}>
       <p>
         {description} {advice}
       </p>
@@ -1468,13 +1607,13 @@ function ApiFailure({
           {onRetry === undefined ? null : (
             <ActionButton tone="quiet" onClick={onRetry}>
               <RotateCcw size={17} aria-hidden="true" />
-              Try again
+              {t('tryAgain')}
             </ActionButton>
           )}
           {onPreview === undefined ? null : (
             <ActionButton tone="quiet" onClick={onPreview}>
               <Sparkles size={17} aria-hidden="true" />
-              Open offline preview
+              {t('openOfflinePreview')}
             </ActionButton>
           )}
         </div>
@@ -1488,9 +1627,12 @@ function useApiClient(): DeckDriveClient {
   return previewMode ? previewApi : api;
 }
 
-function formatBalances(balances: Readonly<Record<string, number>> | undefined): string {
-  if (balances === undefined) return 'Balances loading';
-  return `${String(balances.GEM ?? 0)} gems - ${String(balances.EXCHANGE_POINT ?? 0)} exchange`;
+function formatBalances(
+  balances: Readonly<Record<string, number>> | undefined,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  if (balances === undefined) return t('balancesLoading');
+  return `${String(balances.GEM ?? 0)} ${t('gems')} - ${String(balances.EXCHANGE_POINT ?? 0)} ${t('exchange')}`;
 }
 
 function deckCardTotal(deck: Deck): number {

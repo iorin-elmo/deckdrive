@@ -7,6 +7,12 @@ export type CardRarity = 'BASIC' | 'COMMON' | 'UNCOMMON' | 'RARE' | 'N' | 'R' | 
 export type CardType = 'ATTACK' | 'SKILL' | 'POWER' | 'REACTION' | 'CURSE';
 export type EffectTarget = 'SELF' | 'ENEMY';
 
+/** Translatable display text supplied with a versioned card definition. */
+export interface CardTranslation {
+  readonly name: string;
+  readonly description: string;
+}
+
 export type CardEffect =
   | {
       readonly type: 'DAMAGE';
@@ -43,6 +49,8 @@ export interface CardDefinition {
   readonly cost: number;
   readonly type: CardType;
   readonly description: string;
+  /** Optional display translations for card-data versions not bundled in the web app. */
+  readonly translations?: Readonly<{ ja: CardTranslation }>;
   readonly effects: readonly CardEffect[];
   readonly keywords: readonly string[];
   readonly artwork: string | null;
@@ -64,6 +72,7 @@ export type CardDefinitionValidationCode =
   | 'INVALID_NAME'
   | 'INVALID_RARITY'
   | 'INVALID_TYPE'
+  | 'INVALID_TRANSLATIONS'
   | 'INVALID_VERSION'
   | 'INVALID_ARTWORK'
   | 'MISSING_EFFECT';
@@ -354,6 +363,13 @@ export function validateCardDefinition(card: unknown): CardDefinitionValidationR
     errors.push({ code: 'INVALID_DESCRIPTION', message: 'Card description must be a string.' });
   }
 
+  if (!hasValidTranslations(card.translations)) {
+    errors.push({
+      code: 'INVALID_TRANSLATIONS',
+      message: 'Card translations must contain Japanese name and description strings.',
+    });
+  }
+
   if (
     !Array.isArray(card.keywords) ||
     !card.keywords.every((keyword) => typeof keyword === 'string')
@@ -400,6 +416,18 @@ export function validateCardDefinition(card: unknown): CardDefinitionValidationR
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+function hasValidTranslations(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  const japanese = value.ja;
+  return (
+    Object.keys(value).length === 1 &&
+    isRecord(japanese) &&
+    typeof japanese.name === 'string' &&
+    typeof japanese.description === 'string'
+  );
 }
 
 function isValidCardEffect(effect: unknown): effect is CardEffect {
