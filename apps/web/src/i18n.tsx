@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import type { CardDefinition } from '@deck-drive/card-definitions';
 
 import { useLocaleStore, type Locale } from './locale-store.js';
@@ -187,6 +187,12 @@ const resources = {
     unableToLoad: 'Unable to load this view',
     tryAgain: 'Try again',
     openOfflinePreview: 'Open offline preview',
+    apiUnavailable: 'The API is not running at the configured address.',
+    requestFailed: 'The API proxy could not reach a running server.',
+    requestRejected: 'The API rejected this request: {code} ({status}).',
+    serviceUnavailable: 'The service could not be reached.',
+    retryAdvice: 'Check that the API is running, then try again.',
+    sessionAdvice: 'Review the request details and your session, then try again.',
   },
   ja: {
     language: '🌐 言語',
@@ -370,6 +376,12 @@ const resources = {
     unableToLoad: 'この画面を読み込めません',
     tryAgain: '再試行',
     openOfflinePreview: 'オフラインプレビューを開く',
+    apiUnavailable: '設定されたアドレスでAPIが起動していません。',
+    requestFailed: 'APIプロキシが実行中のサーバーに接続できません。',
+    requestRejected: 'APIがこのリクエストを拒否しました: {code} ({status})。',
+    serviceUnavailable: 'サービスに接続できません。',
+    retryAdvice: 'APIが起動していることを確認して、もう一度試してください。',
+    sessionAdvice: 'リクエスト内容とセッションを確認して、もう一度試してください。',
   },
 } as const;
 
@@ -386,6 +398,9 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 export function I18nProvider({ children }: { readonly children: ReactNode }) {
   const locale = useLocaleStore((state) => state.locale);
   const setLocale = useLocaleStore((state) => state.setLocale);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   return (
     <I18nContext.Provider value={{ locale, setLocale, t: (key) => resources[locale][key] }}>
       {children}
@@ -428,7 +443,7 @@ interface CardText {
 export function localizeCard(definition: CardDefinition, locale: Locale): CardText {
   return (
     localizedCardText[locale][`${definition.id}@${definition.version}`] ??
-    (definition.version === '1.0.0' ? localizedCardText[locale][definition.id] : undefined) ??
+    localizedCardText[locale][definition.id] ??
     definition
   );
 }

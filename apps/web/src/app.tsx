@@ -1553,15 +1553,15 @@ function ApiFailure({
   const unavailable = error instanceof ApiError && (error.status === 0 || error.status >= 500);
   const description =
     error instanceof ApiError && error.code === 'API_UNAVAILABLE'
-      ? 'The API is not running at the configured address.'
+      ? t('apiUnavailable')
       : error instanceof ApiError && error.code === 'REQUEST_FAILED'
-        ? 'The API proxy could not reach a running server.'
+        ? t('requestFailed')
         : error instanceof ApiError
-          ? `The API rejected this request: ${error.code} (${String(error.status)}).`
-          : 'The service could not be reached.';
-  const advice = unavailable
-    ? 'Check that the API is running, then try again.'
-    : 'Review the request details and your session, then try again.';
+          ? t('requestRejected')
+              .replace('{code}', error.code)
+              .replace('{status}', String(error.status))
+          : t('serviceUnavailable');
+  const advice = unavailable ? t('retryAdvice') : t('sessionAdvice');
   return (
     <AsyncNotice kind="error" title={t('unableToLoad')}>
       <p>
