@@ -1420,7 +1420,7 @@ function DeckTile({ deck }: { readonly deck: Deck }) {
     <article className="surface-panel p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">{t('deckDetail')}</p>
+          <p className="eyebrow">{t('savedDeck')}</p>
           <h2 className="mt-2 text-2xl font-black text-stone-50">{deck.name}</h2>
         </div>
         <span className="rounded-md border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100">
