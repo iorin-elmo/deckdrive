@@ -452,6 +452,11 @@ const cardMetadata: Readonly<Record<Locale, Readonly<Record<string, string>>>> =
     COMMON: 'コモン',
     UNCOMMON: 'アンコモン',
     RARE: 'レア',
+    N: 'ノーマル',
+    R: 'レア',
+    SR: 'スーパーレア',
+    SSR: 'スペシャルスーパーレア',
+    UR: 'ウルトラレア',
     block: 'ブロック',
     draw: 'ドロー',
     heal: '回復',
@@ -460,4 +465,32 @@ const cardMetadata: Readonly<Record<Locale, Readonly<Record<string, string>>>> =
 
 export function localizeCardMetadata(value: string, locale: Locale): string {
   return cardMetadata[locale][value] ?? value;
+}
+
+const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {
+  en: {},
+  ja: {
+    NORMAL_PACK: '通常パック',
+    RARE_PACK: 'レアパック',
+    BOX: 'ボックス',
+    WEEKLY_BOX: 'ウィークリーボックス',
+    MONTHLY_BUNDLE: 'マンスリーバンドル',
+    DAY: 'デイリー',
+    WEEK: 'ウィークリー',
+    DAILY: 'デイリー',
+    WEEKLY: 'ウィークリー',
+    EASY: 'かんたん',
+    NORMAL: 'ふつう',
+    HARD: 'むずかしい',
+    EXPERT: 'エキスパート',
+    PLAYER_TURN: 'プレイヤーのターン',
+    CPU_TURN: 'CPUのターン',
+    DRAW: 'ドロー',
+    MAIN: 'メイン',
+    END: '終了',
+  },
+};
+
+export function localizeValue(value: string, locale: Locale): string {
+  return localizedValues[locale][value] ?? value;
 }

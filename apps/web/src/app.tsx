@@ -55,6 +55,7 @@ import {
   I18nProvider,
   localizeCard,
   localizeCardMetadata,
+  localizeValue,
   localizedCardName,
   useI18n,
 } from './i18n.js';
@@ -490,7 +491,7 @@ function CardsPage() {
   const visibleCards = cards.data?.filter((card) => {
     const localText = localizeCard(card.definition, locale);
     const searchableText =
-      `${localText.name} ${localText.description} ${card.definition.class}`.toLowerCase();
+      `${localText.name} ${localText.description} ${localizeCardMetadata(card.definition.class, locale)} ${localizeCardMetadata(card.definition.type, locale)} ${localizeCardMetadata(card.definition.rarity, locale)}`.toLowerCase();
     return searchableText.includes(search.trim().toLowerCase());
   });
   return (
@@ -568,7 +569,7 @@ function PacksPage() {
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [opening, setOpening] = useState<PackOpening | null>(null);
   const openingIdempotencyKeys = useRef(new Map<string, string>());
   const packs = useQuery({
@@ -617,7 +618,7 @@ function PacksPage() {
                 : t('limited').replace('{period}', product.limit.period)}
             </p>
             <h2 className="mt-2 text-xl font-black text-stone-50">
-              {product.id.replaceAll('_', ' ')}
+              {localizeValue(product.id, locale)}
             </h2>
             <p className="mt-2 text-sm text-amber-200">
               {t('gemsCost').replace('{count}', String(product.gemCost))}
@@ -666,7 +667,7 @@ function PacksPage() {
                 key={`${card.id}-${String(index)}`}
                 className="rounded border border-cyan-300/40 px-3 py-2 text-sm font-bold text-cyan-100"
               >
-                {t('cardRarity').replace('{rarity}', card.rarity)}
+                {t('cardRarity').replace('{rarity}', localizeCardMetadata(card.rarity, locale))}
               </span>
             ))}
           </div>
@@ -1017,7 +1018,7 @@ function CpuSetupPage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const decks = useQuery({
     queryKey: ['decks', playerId, previewMode],
     queryFn: () => client.decks(playerId),
@@ -1093,7 +1094,7 @@ function CpuSetupPage() {
                   )}
                   aria-pressed={difficulty === option}
                 >
-                  {option}
+                  {localizeValue(option, locale)}
                 </button>
               ))}
             </div>
@@ -1214,11 +1215,15 @@ function BattleBoard({
   return (
     <>
       <PageHeading
-        eyebrow={difficulty === undefined ? t('persistedState') : `${difficulty} CPU`}
+        eyebrow={
+          difficulty === undefined
+            ? t('persistedState')
+            : `${localizeValue(difficulty, locale)} CPU`
+        }
         title={t('cpuArena')}
         description={t('turn')
           .replace('{count}', String(state.turn))
-          .replace('{phase}', state.phase.replaceAll('_', ' ').toLowerCase())}
+          .replace('{phase}', localizeValue(state.phase, locale))}
       />
       <section className="battle-board mt-7" aria-label={t('battleState')}>
         <Combatant label={t('opponent')} player={opponent} tone="enemy" />
@@ -1319,7 +1324,7 @@ function CardTile({ card }: { readonly card: CardSummary }) {
   return (
     <Link to={cardDetailHref(card)} className="card-tile">
       <div className="flex items-start justify-between gap-3">
-        <span className="rarity-chip">{definition.rarity}</span>
+        <span className="rarity-chip">{localizeCardMetadata(definition.rarity, locale)}</span>
         <span
           className="cost-orb"
           aria-label={t('cost').replace('{count}', String(definition.cost))}
@@ -1377,11 +1382,12 @@ function CardDetail({ card }: { readonly card: CardSummary }) {
 }
 
 function DeckTile({ deck }: { readonly deck: Deck }) {
+  const { t } = useI18n();
   return (
     <article className="surface-panel p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">SAVED DECK</p>
+          <p className="eyebrow">{t('deckDetail')}</p>
           <h2 className="mt-2 text-2xl font-black text-stone-50">{deck.name}</h2>
         </div>
         <span className="rounded-md border border-amber-300/40 px-2 py-1 text-xs font-bold text-amber-100">
@@ -1393,13 +1399,13 @@ function DeckTile({ deck }: { readonly deck: Deck }) {
       </p>
       <div className="mt-6 flex gap-3">
         <Link className="hero-secondary" to={`/decks/${deck.id}`}>
-          Inspect
+          {t('open')}
         </Link>
         <Link
           className="quiet-link self-center"
           to={`/battle/cpu?deck=${encodeURIComponent(deck.id)}`}
         >
-          CPU practice <ChevronRight size={15} aria-hidden="true" />
+          {t('cpuPractice')} <ChevronRight size={15} aria-hidden="true" />
         </Link>
       </div>
     </article>
@@ -1417,13 +1423,14 @@ function QuickLink({
   readonly title: string;
   readonly text: string;
 }) {
+  const { t } = useI18n();
   return (
     <Link to={to} className="quick-link">
       <span className="text-cyan-200">{icon}</span>
       <h2 className="mt-4 font-bold text-stone-50">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-stone-300">{text}</p>
       <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-amber-200">
-        Open <ChevronRight size={16} aria-hidden="true" />
+        {t('open')} <ChevronRight size={16} aria-hidden="true" />
       </span>
     </Link>
   );
