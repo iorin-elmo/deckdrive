@@ -1,6 +1,7 @@
 import type { RewardCurrency } from '../rewards/reward-ledger.js';
 
-export type DailyMissionMetric = 'CPU_BATTLE' | 'DAMAGE' | 'BLOCK' | 'WIN';
+export type DailyMissionMetric =
+  'CPU_BATTLE' | 'PVP_BATTLE' | 'CARD_PLAY' | 'DAMAGE' | 'BLOCK' | 'WIN';
 
 export interface DailyMissionDefinition {
   readonly id: string;
@@ -26,12 +27,17 @@ export function advanceDailyMission(
   definition: DailyMissionDefinition,
   progress: DailyMissionProgress,
   amount: number,
+  now: Date,
 ): DailyMissionProgress {
   if (definition.id !== progress.missionId)
     throw new Error('Mission progress does not match definition.');
   if (!Number.isInteger(amount) || amount < 0)
     throw new Error('Mission progress amount must be non-negative.');
-  return { ...progress, progress: Math.min(definition.target, progress.progress + amount) };
+  const current =
+    progress.day === missionDay(now)
+      ? progress
+      : { ...progress, day: missionDay(now), progress: 0, claimed: false };
+  return { ...current, progress: Math.min(definition.target, current.progress + amount) };
 }
 
 export function isDailyMissionComplete(
@@ -44,6 +50,11 @@ export function isDailyMissionComplete(
 export function canClaimDailyMission(
   definition: DailyMissionDefinition,
   progress: DailyMissionProgress,
+  now: Date,
 ): boolean {
-  return !progress.claimed && isDailyMissionComplete(definition, progress);
+  return (
+    progress.day === missionDay(now) &&
+    !progress.claimed &&
+    isDailyMissionComplete(definition, progress)
+  );
 }

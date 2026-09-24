@@ -25,9 +25,29 @@ describe('daily missions', () => {
       definition,
       { missionId: definition.id, day: '2026-09-25', progress: 2, claimed: false },
       10,
+      new Date('2026-09-25T12:00:00.000Z'),
     );
     expect(complete.progress).toBe(3);
-    expect(canClaimDailyMission(definition, complete)).toBe(true);
-    expect(canClaimDailyMission(definition, { ...complete, claimed: true })).toBe(false);
+    expect(canClaimDailyMission(definition, complete, new Date('2026-09-25T12:00:00.000Z'))).toBe(
+      true,
+    );
+    expect(
+      canClaimDailyMission(
+        definition,
+        { ...complete, claimed: true },
+        new Date('2026-09-25T12:00:00.000Z'),
+      ),
+    ).toBe(false);
+  });
+
+  it('resets stale progress and rejects stale claims after a UTC day rollover', () => {
+    const now = new Date('2026-09-26T00:00:00.000Z');
+    const stale = { missionId: definition.id, day: '2026-09-25', progress: 3, claimed: false };
+    expect(canClaimDailyMission(definition, stale, now)).toBe(false);
+    expect(advanceDailyMission(definition, stale, 1, now)).toMatchObject({
+      day: '2026-09-26',
+      progress: 1,
+      claimed: false,
+    });
   });
 });
