@@ -376,6 +376,8 @@ export const previewApi: DeckDriveClient = {
       { id: 'NORMAL_PACK', gemCost: 100, limit: null },
       { id: 'RARE_PACK', gemCost: 500, limit: null },
       { id: 'BOX', gemCost: 1000, limit: null },
+      { id: 'WEEKLY_BOX', gemCost: 900, limit: { period: 'WEEK', maximum: 1 } },
+      { id: 'MONTHLY_BUNDLE', gemCost: 1000, limit: { period: 'MONTH', maximum: 1 } },
     ];
   },
   async openPack(_playerId, productId) {

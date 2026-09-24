@@ -518,14 +518,22 @@ function PacksPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [opening, setOpening] = useState<PackOpening | null>(null);
+  const openingIdempotencyKeys = useRef(new Map<string, string>());
   const packs = useQuery({
     queryKey: ['packs', playerId, previewMode],
     queryFn: () => client.packs(playerId),
   });
   const open = useMutation({
-    mutationFn: (productId: Parameters<DeckDriveClient['openPack']>[1]) =>
-      client.openPack(playerId, productId, crypto.randomUUID()),
-    onSuccess: (result) => {
+    mutationFn: (productId: Parameters<DeckDriveClient['openPack']>[1]) => {
+      let idempotencyKey = openingIdempotencyKeys.current.get(productId);
+      if (idempotencyKey === undefined) {
+        idempotencyKey = crypto.randomUUID();
+        openingIdempotencyKeys.current.set(productId, idempotencyKey);
+      }
+      return client.openPack(playerId, productId, idempotencyKey);
+    },
+    onSuccess: (result, productId) => {
+      openingIdempotencyKeys.current.delete(productId);
       setOpening(result);
       void queryClient.invalidateQueries({ queryKey: ['me', playerId, previewMode] });
       void queryClient.invalidateQueries({ queryKey: ['collection', playerId, previewMode] });
