@@ -101,9 +101,13 @@ function ensureExactMinimum(
   if (eligible.length === 0) throw new PackPoolError(`Pool has no ${rarity} card.`);
   let missing = count - cards.filter((card) => card.rarity === rarity).length;
   if (missing <= 0) return;
+  let urCount = cards.filter((card) => card.rarity === 'UR').length;
   for (let index = 0; index < cards.length && missing > 0; index += 1) {
-    if (cards[index]?.rarity === rarity) continue;
+    const current = cards[index];
+    if (current === undefined || current.rarity === rarity) continue;
+    if (current.rarity === 'UR' && urCount <= 1) continue;
     cards[index] = pick(eligible, random);
+    if (current.rarity === 'UR') urCount -= 1;
     missing -= 1;
   }
 }

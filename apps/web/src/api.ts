@@ -396,7 +396,14 @@ export const previewApi: DeckDriveClient = {
     return {
       openingId: 'preview-opening',
       productId,
-      gemCost: productId === 'RARE_PACK' ? 500 : productId === 'NORMAL_PACK' ? 100 : 1000,
+      gemCost:
+        productId === 'NORMAL_PACK'
+          ? 100
+          : productId === 'RARE_PACK'
+            ? 500
+            : productId === 'WEEKLY_BOX'
+              ? 900
+              : 1000,
       cards,
       exchangePoints: 0,
     };

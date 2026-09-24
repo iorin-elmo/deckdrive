@@ -6,6 +6,7 @@
     "noEmit": true,
     "paths": {
       "@deck-drive/card-definitions": ["../../packages/card-definitions/src/index.ts"],
+      "@deck-drive/pack-engine": ["../../packages/pack-engine/src/index.ts"],
       "@deck-drive/ui": ["../../packages/ui/src/index.ts"]
     },
     "types": ["vite/client"]
