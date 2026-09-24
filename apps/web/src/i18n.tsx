@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, type ReactNode } from 'react';
 import {
   basicCardDefinitions,
   packCardDefinitions,
@@ -406,7 +406,7 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 export function I18nProvider({ children }: { readonly children: ReactNode }) {
   const locale = useLocaleStore((state) => state.locale);
   const setLocale = useLocaleStore((state) => state.setLocale);
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
   return (
