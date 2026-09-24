@@ -1,10 +1,18 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
+import { loginCosmeticForCycleDay } from '../cosmetics/catalog.js';
+import { PrismaCosmeticService } from '../cosmetics/prisma-cosmetic-service.js';
+import { RewardValidationError } from '../rewards/reward-ledger.js';
 import { loginRewardForCycleDay, type MissionMetric } from './catalog.js';
 import { missionPeriodStart, nextLoginCycle } from './progression.js';
 
 type MissionOperations = Pick<
   PrismaClient,
-  'mission' | 'playerMission' | 'loginRewardClaim' | 'currencyTransaction'
+  | 'mission'
+  | 'playerMission'
+  | 'loginRewardClaim'
+  | 'currencyTransaction'
+  | 'cosmetic'
+  | 'playerCosmetic'
 >;
 type MissionClient = MissionOperations & Pick<PrismaClient, '$transaction'>;
 
@@ -142,7 +150,27 @@ export class PrismaMissionService {
       const existing = await transaction.loginRewardClaim.findUnique({
         where: { playerId_day: { playerId, day } },
       });
-      if (existing !== null) return { claim: existing, alreadyClaimed: true };
+      if (existing !== null) {
+        const rewardDefinition = loginRewardForCycleDay(existing.cycleDay).reward;
+        const reward = await transaction.currencyTransaction.findUnique({
+          where: {
+            playerId_idempotencyKey: { playerId, idempotencyKey: `login:${day.toISOString()}` },
+          },
+        });
+        assertLoginReward(
+          reward,
+          rewardDefinition.currency,
+          rewardDefinition.amount,
+          existing.cycleDay,
+        );
+        const cosmetic = await this.grantLoginCosmetic(
+          transaction,
+          playerId,
+          day,
+          existing.cycleDay,
+        );
+        return { claim: existing, reward, cosmetic, alreadyClaimed: true };
+      }
       const previous = await transaction.loginRewardClaim.findFirst({
         where: { playerId },
         orderBy: { day: 'desc' },
@@ -174,7 +202,46 @@ export class PrismaMissionService {
           idempotencyKey,
         },
       });
-      return { claim, reward, alreadyClaimed: false };
+      assertLoginReward(reward, rewardDefinition.currency, rewardDefinition.amount, cycle.cycleDay);
+      const cosmetic = await this.grantLoginCosmetic(transaction, playerId, day, cycle.cycleDay);
+      return { claim, reward, cosmetic, alreadyClaimed: false };
     });
   }
+
+  private async grantLoginCosmetic(
+    transaction: MissionOperations,
+    playerId: string,
+    day: Date,
+    cycleDay: number,
+  ) {
+    const cosmeticId = loginCosmeticForCycleDay(cycleDay);
+    if (cosmeticId === undefined) return null;
+    return new PrismaCosmeticService(this.prisma).grantInTransaction(transaction, {
+      playerId,
+      cosmeticId,
+      source: `LOGIN_DAY:${String(cycleDay)}`,
+      idempotencyKey: `login:${day.toISOString()}:cosmetic`,
+    });
+  }
+}
+
+function assertLoginReward(
+  reward: { readonly currency: string; readonly amount: number; readonly reason: string } | null,
+  currency: string,
+  amount: number,
+  cycleDay: number,
+): asserts reward is {
+  readonly currency: string;
+  readonly amount: number;
+  readonly reason: string;
+} {
+  if (
+    reward === null ||
+    reward.currency !== currency ||
+    reward.amount !== amount ||
+    reward.reason !== `LOGIN_DAY:${String(cycleDay)}`
+  )
+    throw new RewardValidationError(
+      'Login reward idempotency key was used for a different reward.',
+    );
 }

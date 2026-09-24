@@ -1,6 +1,7 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 
-type CosmeticClient = Pick<PrismaClient, 'cosmetic' | 'playerCosmetic' | '$transaction'>;
+type CosmeticOperations = Pick<PrismaClient, 'cosmetic' | 'playerCosmetic'>;
+type CosmeticClient = CosmeticOperations & Pick<PrismaClient, '$transaction'>;
 
 export interface CosmeticGrant {
   readonly playerId: string;
@@ -15,29 +16,33 @@ export class PrismaCosmeticService {
 
   async grant(grant: CosmeticGrant) {
     validateGrant(grant);
-    return this.prisma.$transaction(async (transaction) => {
-      const cosmetic = await transaction.cosmetic.findUnique({ where: { id: grant.cosmeticId } });
-      if (cosmetic === null) throw new Error('Cosmetic was not found.');
-      const existing = await transaction.playerCosmetic.findUnique({
-        where: {
-          playerId_idempotencyKey: {
-            playerId: grant.playerId,
-            idempotencyKey: grant.idempotencyKey,
-          },
+    return this.prisma.$transaction((transaction) => this.grantInTransaction(transaction, grant));
+  }
+
+  /** Allows a reward claim and cosmetic ownership to commit in one transaction. */
+  async grantInTransaction(transaction: CosmeticOperations, grant: CosmeticGrant) {
+    validateGrant(grant);
+    const cosmetic = await transaction.cosmetic.findUnique({ where: { id: grant.cosmeticId } });
+    if (cosmetic === null) throw new Error('Cosmetic was not found.');
+    const existing = await transaction.playerCosmetic.findUnique({
+      where: {
+        playerId_idempotencyKey: {
+          playerId: grant.playerId,
+          idempotencyKey: grant.idempotencyKey,
         },
-      });
-      if (existing !== null) {
-        if (existing.cosmeticId !== grant.cosmeticId || existing.source !== grant.source)
-          throw new Error('Idempotency key was already used for a different cosmetic grant.');
-        return existing;
-      }
-      return transaction.playerCosmetic.upsert({
-        where: {
-          playerId_cosmeticId: { playerId: grant.playerId, cosmeticId: grant.cosmeticId },
-        },
-        update: {},
-        create: grant,
-      });
+      },
+    });
+    if (existing !== null) {
+      if (existing.cosmeticId !== grant.cosmeticId || existing.source !== grant.source)
+        throw new Error('Idempotency key was already used for a different cosmetic grant.');
+      return existing;
+    }
+    return transaction.playerCosmetic.upsert({
+      where: {
+        playerId_cosmeticId: { playerId: grant.playerId, cosmeticId: grant.cosmeticId },
+      },
+      update: {},
+      create: grant,
     });
   }
 }

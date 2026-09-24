@@ -79,7 +79,12 @@ describe('PrismaMissionService', () => {
       loginRewardClaim: {
         findUnique: vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 4 }),
       },
-      currencyTransaction: { upsert: vi.fn() },
+      currencyTransaction: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ currency: 'GEM', amount: 35, reason: 'LOGIN_DAY:4' }),
+        upsert: vi.fn(),
+      },
     };
     const prisma = {
       $transaction: vi.fn((operation) => operation(transaction)),
@@ -102,7 +107,14 @@ describe('PrismaMissionService', () => {
         findFirst: vi.fn().mockResolvedValue(null),
         upsert,
       },
-      currencyTransaction: { upsert: vi.fn().mockResolvedValue({ id: 'reward-1' }) },
+      currencyTransaction: {
+        upsert: vi.fn().mockResolvedValue({
+          id: 'reward-1',
+          currency: 'GEM',
+          amount: 20,
+          reason: 'LOGIN_DAY:1',
+        }),
+      },
     };
     const prisma = {
       $transaction: vi.fn((operation) => operation(transaction)),
@@ -147,6 +159,42 @@ describe('PrismaMissionService', () => {
       expect.objectContaining({
         update: { progress: { increment: 1 } },
         create: expect.objectContaining({ progress: 1 }),
+      }),
+    );
+  });
+
+  it('grants the day-five cosmetic from the authoritative login reward flow', async () => {
+    const cosmeticUpsert = vi.fn().mockResolvedValue({ cosmeticId: 'frame.aurora' });
+    const transaction = {
+      loginRewardClaim: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue({
+          day: new Date('2026-09-24T00:00:00.000Z'),
+          cycleDay: 4,
+        }),
+        upsert: vi.fn().mockResolvedValue({ id: 'claim-5', cycleDay: 5 }),
+      },
+      currencyTransaction: {
+        upsert: vi.fn().mockResolvedValue({ currency: 'GEM', amount: 40, reason: 'LOGIN_DAY:5' }),
+      },
+      cosmetic: { findUnique: vi.fn().mockResolvedValue({ id: 'frame.aurora' }) },
+      playerCosmetic: { findUnique: vi.fn().mockResolvedValue(null), upsert: cosmeticUpsert },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await new PrismaMissionService(prisma).claimLoginReward(
+      'player-1',
+      new Date('2026-09-25T10:00:00.000Z'),
+    );
+
+    expect(cosmeticUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cosmeticId: 'frame.aurora',
+          source: 'LOGIN_DAY:5',
+        }),
       }),
     );
   });
