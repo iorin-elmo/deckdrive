@@ -7,6 +7,7 @@ import { MissionNotReadyError, PrismaMissionService } from './prisma-mission-ser
 describe('PrismaMissionService', () => {
   it('claims a completed mission and grants its reward in the same transaction', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const lockPlayer = vi.fn();
     const upsert = vi.fn().mockResolvedValue({
       id: 'reward-1',
       currency: 'GEM',
@@ -14,6 +15,7 @@ describe('PrismaMissionService', () => {
       reason: 'MISSION:daily.cpu-battle',
     });
     const transaction = {
+      $queryRaw: lockPlayer,
       mission: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'daily.cpu-battle',
@@ -52,11 +54,15 @@ describe('PrismaMissionService', () => {
         }),
       }),
     );
+    expect(lockPlayer.mock.invocationCallOrder[0]).toBeLessThan(
+      updateMany.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('does not grant a reward when the mission is incomplete or already claimed', async () => {
     const upsert = vi.fn();
     const transaction = {
+      $queryRaw: vi.fn(),
       mission: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'daily.cpu-battle',
@@ -81,6 +87,7 @@ describe('PrismaMissionService', () => {
 
   it('rejects an idempotency key that belongs to a different mission reward', async () => {
     const transaction = {
+      $queryRaw: vi.fn(),
       mission: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'daily.cpu-battle',
@@ -177,7 +184,9 @@ describe('PrismaMissionService', () => {
 
   it('creates first-time mission progress and uses an atomic increment for later events', async () => {
     const upsert = vi.fn().mockResolvedValue({ progress: 1 });
+    const lockPlayer = vi.fn();
     const transaction = {
+      $queryRaw: lockPlayer,
       mission: {
         findMany: vi
           .fn()
@@ -201,6 +210,9 @@ describe('PrismaMissionService', () => {
         update: { progress: { increment: 1 } },
         create: expect.objectContaining({ progress: 1 }),
       }),
+    );
+    expect(lockPlayer.mock.invocationCallOrder[0]).toBeLessThan(
+      upsert.mock.invocationCallOrder[0]!,
     );
   });
 

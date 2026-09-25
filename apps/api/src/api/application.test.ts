@@ -146,6 +146,7 @@ describe('ApiApplication authentication', () => {
 
   it('returns a conflict when a mission reward idempotency key has different data', async () => {
     const transaction = {
+      $queryRaw: vi.fn(),
       mission: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'daily.cpu-battle',

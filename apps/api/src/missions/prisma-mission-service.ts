@@ -4,6 +4,7 @@ import { PrismaCosmeticService } from '../cosmetics/prisma-cosmetic-service.js';
 import { RewardValidationError } from '../rewards/reward-ledger.js';
 import { loginRewardForCycleDay, type MissionMetric } from './catalog.js';
 import { missionPeriodStart, nextLoginCycle } from './progression.js';
+import { lockPlayerForUpdate } from './prisma-progression-service.js';
 
 type MissionOperations = Pick<
   PrismaClient,
@@ -61,6 +62,7 @@ export class PrismaMissionService {
 
   async claim(playerId: string, missionId: string, now = new Date()) {
     return this.prisma.$transaction(async (transaction) => {
+      await lockPlayerForUpdate(transaction, playerId);
       const mission = await transaction.mission.findFirst({
         where: { id: missionId, active: true },
       });
@@ -98,9 +100,10 @@ export class PrismaMissionService {
   async recordProgress(playerId: string, metric: MissionMetric, amount: number, now = new Date()) {
     if (!Number.isInteger(amount) || amount <= 0)
       throw new Error('Mission progress must be positive.');
-    return this.prisma.$transaction((transaction) =>
-      this.recordProgressInTransaction(transaction, playerId, metric, amount, now),
-    );
+    return this.prisma.$transaction(async (transaction) => {
+      await lockPlayerForUpdate(transaction, playerId);
+      return this.recordProgressInTransaction(transaction, playerId, metric, amount, now);
+    });
   }
 
   /** Allows an authoritative match event and its mission progress to commit atomically. */
@@ -152,7 +155,7 @@ export class PrismaMissionService {
     return this.prisma.$transaction(async (transaction) => {
       // A player row lock serializes adjacent UTC-day claims. Without it, a day D+1
       // request could calculate its cycle before an in-flight day D claim commits.
-      await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${playerId} FOR UPDATE`;
+      await lockPlayerForUpdate(transaction, playerId);
       const existing = await transaction.loginRewardClaim.findUnique({
         where: { playerId_day: { playerId, day } },
       });
