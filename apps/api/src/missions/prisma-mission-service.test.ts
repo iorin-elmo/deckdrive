@@ -72,7 +72,10 @@ describe('PrismaMissionService', () => {
           rewardAmount: 20,
         }),
       },
-      playerMission: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      playerMission: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
       currencyTransaction: { upsert },
     };
     const prisma = {
@@ -83,6 +86,45 @@ describe('PrismaMissionService', () => {
       new PrismaMissionService(prisma).claim('player-1', 'daily.cpu-battle'),
     ).rejects.toBeInstanceOf(MissionNotReadyError);
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('replays a completed mission claim with its original reward', async () => {
+    const claimedAt = new Date('2026-09-25T10:00:00.000Z');
+    const currencyUpsert = vi.fn();
+    const transaction = {
+      $queryRaw: vi.fn(),
+      mission: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'daily.cpu-battle',
+          cadence: 'DAILY',
+          target: 1,
+          rewardCurrency: 'GEM',
+          rewardAmount: 20,
+        }),
+      },
+      playerMission: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue({ claimedAt }),
+      },
+      currencyTransaction: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ currency: 'GEM', amount: 20, reason: 'MISSION:daily.cpu-battle' }),
+        upsert: currencyUpsert,
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await expect(
+      new PrismaMissionService(prisma).claim(
+        'player-1',
+        'daily.cpu-battle',
+        new Date('2026-09-25T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ missionId: 'daily.cpu-battle', claimedAt, reward: { amount: 20 } });
+    expect(currencyUpsert).not.toHaveBeenCalled();
   });
 
   it('rejects an idempotency key that belongs to a different mission reward', async () => {

@@ -78,9 +78,21 @@ export class PrismaMissionService {
         },
         data: { claimedAt: now },
       });
-      if (claimed.count !== 1)
-        throw new MissionNotReadyError('Mission is not complete or was claimed.');
       const idempotencyKey = `mission:${missionId}:${periodStart.toISOString()}`;
+      if (claimed.count !== 1) {
+        const existingClaim = await transaction.playerMission.findUnique({
+          where: {
+            playerId_missionId_periodStart: { playerId, missionId, periodStart },
+          },
+        });
+        if (existingClaim === null || existingClaim.claimedAt === null)
+          throw new MissionNotReadyError('Mission is not complete or was claimed.');
+        const reward = await transaction.currencyTransaction.findUnique({
+          where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
+        });
+        assertMissionReward(reward, mission.rewardCurrency, mission.rewardAmount, missionId);
+        return { missionId, claimedAt: existingClaim.claimedAt, reward };
+      }
       const reward = await transaction.currencyTransaction.upsert({
         where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
         update: {},
@@ -256,12 +268,13 @@ function assertLoginReward(
 }
 
 function assertMissionReward(
-  reward: { readonly currency: string; readonly amount: number; readonly reason: string },
+  reward: { readonly currency: string; readonly amount: number; readonly reason: string } | null,
   currency: string,
   amount: number,
   missionId: string,
 ): void {
   if (
+    reward === null ||
     reward.currency !== currency ||
     reward.amount !== amount ||
     reward.reason !== `MISSION:${missionId}`
