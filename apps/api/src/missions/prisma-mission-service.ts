@@ -13,6 +13,7 @@ type MissionOperations = Pick<
   | 'currencyTransaction'
   | 'cosmetic'
   | 'playerCosmetic'
+  | '$queryRaw'
 >;
 type MissionClient = MissionOperations & Pick<PrismaClient, '$transaction'>;
 
@@ -148,6 +149,9 @@ export class PrismaMissionService {
   async claimLoginReward(playerId: string, now = new Date()) {
     const day = missionPeriodStart('DAILY', now);
     return this.prisma.$transaction(async (transaction) => {
+      // A player row lock serializes adjacent UTC-day claims. Without it, a day D+1
+      // request could calculate its cycle before an in-flight day D claim commits.
+      await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${playerId} FOR UPDATE`;
       const existing = await transaction.loginRewardClaim.findUnique({
         where: { playerId_day: { playerId, day } },
       });

@@ -112,7 +112,9 @@ describe('PrismaMissionService', () => {
 
   it('makes a second login claim on the same UTC day a no-op', async () => {
     const create = vi.fn();
+    const lockPlayer = vi.fn();
     const transaction = {
+      $queryRaw: lockPlayer,
       loginRewardClaim: {
         findUnique: vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 4 }),
       },
@@ -134,11 +136,13 @@ describe('PrismaMissionService', () => {
 
     expect(result).toMatchObject({ alreadyClaimed: true, claim: { id: 'claim-1' } });
     expect(create).not.toHaveBeenCalled();
+    expect(lockPlayer).toHaveBeenCalledOnce();
   });
 
   it('uses an atomic upsert for a concurrent first login claim', async () => {
     const upsert = vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 1 });
     const transaction = {
+      $queryRaw: vi.fn(),
       loginRewardClaim: {
         findUnique: vi.fn().mockResolvedValue(null),
         findFirst: vi.fn().mockResolvedValue(null),
@@ -203,6 +207,7 @@ describe('PrismaMissionService', () => {
   it('grants the day-five cosmetic from the authoritative login reward flow', async () => {
     const cosmeticUpsert = vi.fn().mockResolvedValue({ cosmeticId: 'frame.aurora' });
     const transaction = {
+      $queryRaw: vi.fn(),
       loginRewardClaim: {
         findUnique: vi.fn().mockResolvedValue(null),
         findFirst: vi.fn().mockResolvedValue({

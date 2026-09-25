@@ -146,7 +146,7 @@ model PlayerCosmetic {
   playerId       String   @map("player_id") @db.Uuid
   cosmeticId     String   @map("cosmetic_id")
   source         String   @default("UNSPECIFIED")
-  idempotencyKey String?  @map("idempotency_key")
+  idempotencyKey String   @map("idempotency_key")
   acquiredAt     DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
   player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
   cosmetic       Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
