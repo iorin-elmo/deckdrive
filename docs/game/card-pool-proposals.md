@@ -11,7 +11,7 @@
 - 「この戦闘中」は戦闘終了まで続く効果。「次の自分のターン」は次のターン開始時に解決する。
 - 「敵」「相手」は2人対戦の対戦相手1人を指す。
 - 「廃棄」はこの案で新設する廃棄領域[新規：廃棄領域]へ移すことを指す。素材・通常カードを問わず廃棄領域へ移る全カードについて、所有者、カードID、移動元領域、移動先、発生元カードID、理由を `CARD_EXHAUSTED` イベントに記録する。廃棄領域も戦闘状態・snapshot・replayとカード領域の不変条件に含め、既存の山札・手札・捨て札からは除外する。「保留」はターン終了時に手札に残す。
-- この案で既存カードインスタンスを別領域へ移すときは `CARD_MOVED` を記録する（`CARD_EXHAUSTED` など移動専用イベントが指定される場合は重複して記録しない）。payloadは `ownerPlayerId`、`cardInstanceId`、`fromZone` / `fromIndex`、`toZone` / `toIndex`、`sourceCardInstanceId`、`sourceDefinitionId` / `sourceDefinitionVersion`、`reason` を必須とする。領域内のindexは0始まりで、山札の一番上はindex 0、山札の一番下は移動後の山札枚数、手札への追加は移動直前の手札枚数を `toIndex` とする。カードインスタンス自体は作り直さず、定義・コスト修正などの保持値を移動先へ引き継ぐ。`reason` はカード定義に対応する固定値（例：`TRICKSTER_QUICK_STEP`、`TRICKSTER_ESCAPE_STEP`、`TRICKSTER_RELOAD`、`ALCHEMY_CATALYST`）を使う。山札のカードを公開するときは移動と区別して `DECK_CARD_REVEALED` を記録し、`ownerPlayerId`、`cardInstanceId`、`definitionId` / `definitionVersion`、`zone: drawPile`、`index: 0`、`visibility: allPlayers`、発生元カードのID・定義ID・version、`reason` を含める。公開だけならカード位置は変わらず、移動も起きた場合は公開イベントの直後に `CARD_MOVED` を記録する。これらのイベントも実際の解決順でaction・snapshot・replayに保存する。
+- この案で既存カードインスタンスを別領域へ移すときは `CARD_MOVED` を記録する（`CARD_EXHAUSTED` など移動専用イベントが指定される場合は重複して記録しない）。payloadは `ownerPlayerId`、`cardInstanceId`、`fromZone` / `fromIndex`、`toZone` / `toIndex`、`sourceCardInstanceId`、`sourceDefinitionId` / `sourceDefinitionVersion`、`visibility`、`reason` を必須とする。領域内のindexは0始まりで、`fromIndex` は移動前、`toIndex` は移動後の移動先配列での実際のindexとする。山札の一番上はindex 0、一番下は移動後の山札枚数-1、手札への末尾追加は移動前の手札枚数を `toIndex` とする。カードインスタンス自体は作り直さず、定義・コスト修正などの保持値を移動先へ引き継ぐ。`reason` はカード定義に対応する固定値（例：`TRICKSTER_QUICK_STEP`、`TRICKSTER_ESCAPE_STEP`、`TRICKSTER_RELOAD`、`TRICKSTER_TACTICAL_INSPECTION`、`TRICKSTER_ESCAPE`、`ALCHEMY_CATALYST`）を使う。山札のカードを確認するときは移動と区別して `DECK_CARD_REVEALED` を記録し、`ownerPlayerId`、`cardInstanceId`、`definitionId` / `definitionVersion`、`zone: drawPile`、確認時点の0始まり `index`、`visibility`、発生元カードのID・定義ID・version、`reason` を含める。`visibility` は `allPlayers` または `ownerOnly` とし、「公開」は `allPlayers`、「見る」や山札検索は `ownerOnly` を使う。`CARD_MOVED` はカードIDや位置が所有者にしか分からない移動では `ownerOnly` とし、公開済みカードの移動は効果に従って `allPlayers` とする。公開だけならカード位置は変わらず、移動も起きた場合は確認イベントの直後に `CARD_MOVED` を記録する。サーバー権威のaction/event/replayには完全な情報を保存し、プレイヤー向けイベント・snapshot・replayでは各レコードの `visibility` に従って相手に非公開のカードID、位置、選択値を伏せる。山札からの選択IDを含む `PLAY_CARD.choices` も同じ規則で相手向け表示から伏せる。これらのイベントも実際の解決順でaction・snapshot・replayに保存する。
 - 状態異常は `statusId`・対象・発生元カードID・値（stack）・残り発動回数・失効条件を持ち、`STATUS_APPLIED` / `STATUS_UPDATED` / `STATUS_CONSUMED` / `STATUS_EXPIRED` イベントとstate/replayへ記録する。同じ `statusId` の重複は個別規則に従い、指定がなければ値を加算し、発動回数は更新しない。毒は `POISON`、凍結は `NEXT_TURN_FIRST_CARD_COST_UP`、氷片の弱体化は `NEXT_ATTACK_DAMAGE_DOWN`、目印の矢は `NEXT_ATTACK_DAMAGE_UP`、時間泥棒は `NEXT_TWO_CARD_COST_UP` とする。毒は対象の各ターン開始時、詠唱進行とドローより前にブロックを無視してstack分のダメージをHPへ与え、HPによる勝敗を判定して戦闘が続く場合にstackを1減らし0で消える。再付与した毒stackは加算する。凍結は対象の次ターンに最初に正常プレイするカードのコストをstack分増やし、そのターン終了時に残りを失効する。氷片の弱体化は対象の次の攻撃ダメージを2減らし、目印の矢は対象が次に受ける攻撃ダメージを4増やす。どちらも攻撃のブロック適用前に1度だけ適用し、その攻撃時に消費する。重ねて付与した場合は値を加算する。時間泥棒は対象の次の2回の正常なカード使用コストを1増やし、使用ごとに残り回数を1減らす。再付与時は残り回数を2に更新し、加算しない。いずれも戦闘終了時に失効する。
 - 状態異常とは別に、1回以上の後続イベントを待つ効果は `pendingEffects` に保存する[新規：保留効果]。戦闘状態に保存する単調増加の `pendingEffectSequence` で `pending:<sequence>` 形式の一意な `pendingEffectId` を割り当てる。各項目は所有者、対象、発生元カードIDと定義version、trigger条件、適用payload、残り発動回数、失効条件、作成順を持つ。作成・更新・発動消費・失効は `PENDING_EFFECT_CREATED` / `PENDING_EFFECT_UPDATED` / `PENDING_EFFECT_CONSUMED` / `PENDING_EFFECT_EXPIRED` として記録し、battle state・snapshot・replayに保存する。イベントが成立したら作成順に条件を判定しpayloadを適用して発動回数を1減らし、0で項目を除く。条件が成立しないまま期限を迎えた項目は失効する。同じ効果が複数回付与された場合は独立した項目として追加し、カードに加算・上書き・再設定が明記される場合だけその規則を使う。`剣気` は次の剣カード使用時にそのカードの最初のダメージヒットへ+3、`魔力充填` は次の魔法ダメージヒットへ+2、`魔導書の封印` は次に受けるダメージヒットから5を減らす。`受け流し` は次に攻撃をブロックしたとき敵へ4ダメージ、`仕込み罠` は次の敵攻撃開始時に敵へ6ダメージを与えてその攻撃の各ヒットを3減らす。いずれも該当イベントで一度だけ消費する。保留効果は戦闘終了時に失効する。
 - `賢者の触媒` は次の合成開始時、素材選択前に山札最上位1枚を公開するpendingEffectとして扱う。`追い風` のコスト-1もpendingEffectで、カード解決後、同ターン中に後から使う最初のカードのコスト計算時に適用して消費する。`逃げ足` は使用時のchoicesに選んだカードIDを持つpendingEffectを作り、`TURN_ENDED` 時にそのカードが手札にあれば山札の一番上へ移し、なければ失効する。
@@ -100,7 +100,7 @@
 
 合成効果を持つカードを使うとき、指定された枚数の素材を原則手札から選んで合成する（別の領域を使える場合はカードに明記する）。選んだ素材の枚数と種類がレシピに完全一致すれば合成成功となり、素材を廃棄領域へ移して、完成品カードを新しいカードインスタンスとして手札に加える。レシピにない組み合わせでも合成自体は成立するが、合成失敗となり、素材を廃棄領域へ移して2ブロックを得る（完成品は作らない）。失敗は弱い効果に留め、無効な選択を理由にアクションを拒否しない。[新規：合成結果]
 
-プレイヤーが選ぶ対象は `PLAY_CARD` action の `choices` に含め、配列に入った `cardInstanceIds` の順も選択順として扱う。合成では素材IDと必要なら `recipeId`、焚書では廃棄するカードIDと進める詠唱キューの `chantEntryId`、詠唱短縮・魔力転写では対象キュー項目の `chantEntryId`、矢羽の改良では強化する装填矢の `cardInstanceId`、山札から選ぶ効果では選択カードIDを記録する。サーバーはカード選択の所有者・領域・タグ・枚数と、キュー項目の所有者・存在・枚数・合法性をそれぞれ検証し、結果を暗黙に選び直さない。任意対象がない場合は各カードに記載したとおり対象依存効果だけを行わず、残りの効果は解決する。choices は action と replay に保存し、イベントと状態変更を同じ選択から再生する。
+プレイヤーが選ぶ対象は `PLAY_CARD` action の `choices` に含め、配列に入った `cardInstanceIds` の順も選択順として扱う。合成では素材IDと必要なら `recipeId`、焚書では廃棄するカードIDと進める詠唱キューの `chantEntryId`、詠唱短縮・魔力転写では対象キュー項目の `chantEntryId`、矢羽の改良では強化する装填矢の `cardInstanceId`、山札から選ぶ効果では選択カードIDを記録する。サーバーはカード選択の所有者・領域・タグ・枚数と、キュー項目の所有者・存在・枚数・合法性をそれぞれ検証し、結果を暗黙に選び直さない。任意対象がない場合は各カードに記載したとおり対象依存効果だけを行わず、残りの効果は解決する。choices はサーバー権威のaction/replayに完全な値を保存し、プレイヤー向けaction/replayでは各選択の可視性に従って相手に非公開の山札カードIDを伏せる。イベントと状態変更は同じ完全な選択から再生する。
 
 万能溶媒は選んだ素材1枚として数え、レシピ照合前にそのレシピの不足している素材1種類を代用する。溶媒1枚につき代用は1種類までで、溶媒カード自体も合成素材として廃棄する。溶媒を使った後に選択素材と一致するレシピがなければ、通常の合成失敗として2ブロックを得る。複数レシピに一致するときは合成時に対象レシピを選ぶ。一致候補がない場合も失敗として処理する。
 
@@ -121,7 +121,7 @@
 | 変成液 | R / 1 | 手札のカード1枚を廃棄し、同じコスト以下のカードを山札から1枚引く。 | alchemist_007 | 1.0.0 | SKILL |
 | 不安定な合成 | R / 0 | 素材2枚を合成する。対応するレシピがあれば完成品を作る。なければ合成失敗として2ブロックを得る。 | alchemist_008 | 1.0.0 | SKILL |
 | 実験記録 | R / 1 | この戦闘中に合成した回数だけ、1枚引く（最大3枚）。 | alchemist_009 | 1.0.0 | POWER |
-| 賢者の触媒 | SR / 2 | 次に行う合成では、素材を選ぶ前に山札の一番上を1枚公開する。公開は `DECK_CARD_REVEALED` に記録する。素材なら直後に `CARD_MOVED` で手札へ移す。素材でなければ位置を変えず何も加えない。山札が空なら何もしない。完成品のコストは変わらない。 | alchemist_010 | 1.0.0 | POWER |
+| 賢者の触媒 | SR / 2 | 次に行う合成では、素材を選ぶ前に山札の一番上を1枚公開する（`DECK_CARD_REVEALED`、`visibility: allPlayers`）。素材なら直後に `CARD_MOVED`（`visibility: allPlayers`）で手札へ移す。素材でなければ位置を変えず何も加えない。山札が空なら何もしない。完成品のコストは変わらない。 | alchemist_010 | 1.0.0 | POWER |
 | 完全反応 | SR / 2 | 特殊合成：赤・青・白の色付き試薬から3枚選んで廃棄領域へ移す。通常レシピ照合や合成失敗判定は行わず、赤1枚ごとに対戦相手へ4ダメージ、青1枚ごとに4ブロック、白1枚ごとに4回復を得る。同色が複数なら、その色の効果を枚数分重ねる。 | alchemist_011 | 1.0.0 | ATTACK |
 | 賢者の触媒核 | UR / 3 | この戦闘中、素材を合成するたび1エネルギーを得る（ターン1回）。エネルギーは最大値3を超えない。 | alchemist_012 | 1.0.0 | POWER |
 | 大錬成 | UR / 3 | 特殊合成：手札の素材をすべて廃棄領域へ移す。通常レシピ照合や合成失敗判定は行わず、素材1枚につき対戦相手へ4ダメージと4ブロックを得る。 | alchemist_013 | 1.0.0 | ATTACK |
@@ -134,14 +134,14 @@
 
 矢を装填しておき、弓カードでまとめて発射する。装填キューを見せる UI と、矢の解決順を仕様化できると遊びやすい。[新規：装填]
 
-「矢」カードは直接プレイできない。装填効果では手札の矢を選んでコストを支払い、そのカードインスタンスは手札に置いたまま、所有者別の `arrowQueue` に `cardInstanceId` を順に追加する。装填中の矢はキュー以外からは選択・使用できず、カード移動や廃棄を行う効果が明示的に対象にした場合はキューからも除く。発射時はキュー先頭の矢を一時的にロックして効果を解決し、解決後にキューから取り除いて手札から捨て札へ移す。複数本の発射中にキューが空になったらそこで終了する。カードは常に既存のカード領域のどれか1つに属し、Queueは順序付きID参照だけを保持する。`ARROW_LOADED` / `ARROW_FIRED` / `ARROW_REMOVED` イベントに所有者・カードID・移動前後のQueue順と理由を記録し、Queue順もbattle state・snapshot・replayへ保存する。
+「矢」カードは直接プレイできない。装填効果では手札の矢を選んでコストを支払い、そのカードインスタンスは手札に置いたまま、所有者別の `arrowQueue` に `cardInstanceId` を順に追加する。装填中の矢はキュー以外からは選択・使用できず、カード移動や廃棄を行う効果が明示的に対象にした場合はキューからも除く。発射時はキュー先頭の矢を一時的にロックして効果を解決し、解決後にキューから取り除いて手札から捨て札へ移す。複数本の発射中にキューが空になったらそこで終了する。カードは常に既存のカード領域のどれか1つに属し、Queueは順序付きID参照だけを保持する。`ARROW_LOADED` / `ARROW_FIRED` / `ARROW_REMOVED` イベントに所有者・カードID・移動前後のQueue順・理由・`visibility` を記録し、Queue順もbattle state・snapshot・replayへ保存する。装填中の矢IDは `ARROW_LOADED` / `ARROW_REMOVED` とaction choicesで所有者だけに見せ、発射時の `ARROW_FIRED` は全員に見せる。
 
-プレイヤーが選んだ矢は action の `choices.cardInstanceIds` 順に処理する。指定枚数の上限を超える選択は不正 action とし、エネルギー不足の矢は装填せず手札に残して次の選択矢を判定する。矢継ぎの山札選択も同じ choices に記録する。カードの切り直しには戦闘で共有する `SeededRandom v1` を使う。文字列seedはUnicodeコードポイント列として処理し、初期hashを `0x811c9dc5` として各コードポイントごとに `hash = imul(hash XOR codePoint, 0x01000193) modulo 2^32` を行う。数値seedは符号なし32-bit状態へ正規化する。`next()` はMulberry32で、`state = (state + 0x6d2b79f5) modulo 2^32` の後 `t = state` とし、`t = imul(t XOR (t >>> 15), t OR 1)`、`t = t XOR (t + imul(t XOR (t >>> 7), t OR 61))`、返り値をunsigned `(t XOR (t >>> 14)) / 2^32` とする。乗算は32-bit整数演算、`>>>` は符号なし右シフトとする。降順 Fisher–Yates（`i = n - 1` から `1`、`j = floor(next() * (i + 1))` として `i` と `j` を交換）で行う。PRNG状態はbattle stateとsnapshot/replayに保存し、切り直し結果のカードID順もイベントに記録する。アルゴリズムまたは乱数系列を変更するときはengine/rules versionを更新する。
+プレイヤーが選んだ矢は action の `choices.cardInstanceIds` 順に処理する。指定枚数の上限を超える選択は不正 action とし、装填時の矢ID選択は所有者だけに見せる。エネルギー不足の矢は装填せず手札に残して次の選択矢を判定する。矢継ぎの山札選択も同じchoicesに記録し、所有者以外には選択IDを伏せる。カードの切り直しには戦闘で共有する `SeededRandom v1` を使う。文字列seedはUnicodeコードポイント列として処理し、初期hashを `0x811c9dc5` として各コードポイントごとに `hash = imul(hash XOR codePoint, 0x01000193) modulo 2^32` を行う。数値seedは符号なし32-bit状態へ正規化する。`next()` はMulberry32で、`state = (state + 0x6d2b79f5) modulo 2^32` の後 `t = state` とし、`t = imul(t XOR (t >>> 15), t OR 1)`、`t = t XOR (t + imul(t XOR (t >>> 7), t OR 61))`、返り値をunsigned `(t XOR (t >>> 14)) / 2^32` とする。乗算は32-bit整数演算、`>>>` は符号なし右シフトとする。降順 Fisher–Yates（`i = n - 1` から `1`、`j = floor(next() * (i + 1))` として `i` と `j` を交換）で行う。PRNG状態と切り直し後のカードID順はサーバー権威のbattle state・snapshot・replayに保存し、切り直しイベントとreplayのプレイヤー向け表示は山札所有者にだけID順を見せる。アルゴリズムまたは乱数系列を変更するときはengine/rules versionを更新する。
 
 | カード | レアリティ / コスト | 効果案 | ID | version | type |
 | --- | --- | --- | --- | --- | --- |
 | 狩人の弓 | N / 1 | 3ブロックを得て、矢を1枚装填する。 | hunter_001 | 1.0.0 | SKILL |
-| 矢継ぎ | N / 1 | 山札から矢を1枚選んで手札に加える。山札を切り直す。 | hunter_002 | 1.0.0 | SKILL |
+| 矢継ぎ | N / 1 | 山札を所有者にだけ公開して検索し、矢1枚を選んで `CARD_MOVED`（`visibility: ownerOnly`）で手札へ移す。検索で確認したカードは `DECK_CARD_REVEALED`（`visibility: ownerOnly`）で記録する。選択後、残りの山札を切り直す。 | hunter_002 | 1.0.0 | SKILL |
 | 毒矢 | N / 1・矢 | 4ダメージを与え、毒2を付与する。状態異常案。 | hunter_003 | 1.0.0 | ATTACK |
 | 速射 | R / 1 | 装填キューの先頭2本を発射する。各矢のダメージは-1。 | hunter_004 | 1.0.0 | ATTACK |
 | 貫通矢 | R / 2・矢 | 6ダメージ。敵のブロックを無視する。 | hunter_005 | 1.0.0 | ATTACK |
@@ -170,7 +170,7 @@
 | 時間泥棒 | SR / 2 | 6ダメージ。敵が次にカードを使うたび、そのコストを1増やす（最大2回）。 | trickster_009 | 1.0.0 | REACTION |
 | 手品師の袖 | SR / 2 | 3枚引き、手札から1枚を選んでコストをこのターン中0にする。 | trickster_010 | 1.0.0 | SKILL |
 | 予定変更 | SR / 1 | このターン、カードを引くたび1ブロックを得る。ターン終了時に2ダメージを受ける。 | trickster_011 | 1.0.0 | POWER |
-| 大脱出 | UR / 3 | 手札をすべて山札に戻して切り直し、同じ枚数を引く。引いたカード1枚につき2ブロックを得る。 | trickster_012 | 1.0.0 | SKILL |
+| 大脱出 | UR / 3 | 解決時の手札枚数と手札順を記録する。手札中の装填済み矢をarrowQueueの順で `ARROW_REMOVED`（`visibility: ownerOnly`）に記録してキューから除き、その後、手札順に全カードを `CARD_MOVED`（`visibility: ownerOnly`）で山札へ戻す。山札を切り直して記録した枚数を引き、引いたカード1枚につき2ブロックを得る。切り直し後のID順は山札所有者以外に公開しない。 | trickster_012 | 1.0.0 | SKILL |
 
 ## ニュートラル：どのデッキにも小さな工夫を
 
@@ -181,9 +181,9 @@
 | 応急手当 | N / 1 | 4回復。 | neutral_001 | 1.0.0 | SKILL |
 | 整理整頓 | N / 0 | 手札1枚を捨て、1枚引く。 | neutral_002 | 1.0.0 | SKILL |
 | 旅人の護符 | N / 1 | 5ブロックを得る。 | neutral_003 | 1.0.0 | SKILL |
-| 戦術の確認 | R / 1 | 山札の上から3枚を見る。1枚を手札に加え、残りを山札の下に置く。 | neutral_004 | 1.0.0 | SKILL |
+| 戦術の確認 | R / 1 | 山札の上から3枚を所有者にだけ見せ、上から順にindex 0、1、2の `DECK_CARD_REVEALED`（`visibility: ownerOnly`）として記録する。1枚を選んで `CARD_MOVED`（`visibility: ownerOnly`）で手札へ移す。残り2枚は元の相対順を保って山札の下へ移し、各移動を `CARD_MOVED` に記録する。選択IDはaction/replayでは所有者だけに見せる。 | neutral_004 | 1.0.0 | SKILL |
 | 予備の食料 | R / 1 | 3回復。手札が2枚以下なら、さらに1枚引く。 | neutral_005 | 1.0.0 | SKILL |
-| 古びた羅針盤 | R / 1 | 山札の上からカードを1枚公開する。そのカードのコスト分ブロックを得る（最大6）。 | neutral_006 | 1.0.0 | SKILL |
+| 古びた羅針盤 | R / 1 | 山札の上からカードを1枚全員に公開する（`DECK_CARD_REVEALED`、`visibility: allPlayers`）。そのカードのコスト分ブロックを得る（最大6）。 | neutral_006 | 1.0.0 | SKILL |
 | 休息の心得 | SR / 2 | 6回復。次の自分のターン開始時、5ブロックを得る。 | neutral_007 | 1.0.0 | POWER |
 | 追い風 | SR / 1 | このカードを使った後、同じターンに最初に使うカードのコストを1下げる。このカードより後にカードを使わず `TURN_ENDED` した場合、同ターンに解決したカード数を確認し、ターン終了時に1枚引く。 | neutral_008 | 1.0.0 | POWER |
 | 英雄の意志 | UR / 3 | HPが10以下なら、HPを10にして敵に10ダメージ。それ以外なら8回復する。 | neutral_009 | 1.0.0 | ATTACK |
