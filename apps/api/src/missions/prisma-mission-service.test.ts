@@ -5,15 +5,34 @@ import { RewardValidationError } from '../rewards/reward-ledger.js';
 import { MissionNotReadyError, PrismaMissionService } from './prisma-mission-service.js';
 
 describe('PrismaMissionService', () => {
+  const storedReward = (
+    currency: 'GEM' | 'EXCHANGE_POINT',
+    amount: number,
+    reason: string,
+    idempotencyKey: string,
+  ) => ({
+    id: 'reward-1',
+    playerId: 'player-1',
+    currency,
+    amount,
+    reason,
+    idempotencyKey,
+    createdAt: new Date('2026-09-25T00:00:00.000Z'),
+  });
+
   it('claims a completed mission and grants its reward in the same transaction', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const lockPlayer = vi.fn();
-    const upsert = vi.fn().mockResolvedValue({
-      id: 'reward-1',
-      currency: 'GEM',
-      amount: 20,
-      reason: 'MISSION:daily.cpu-battle',
-    });
+    const upsert = vi
+      .fn()
+      .mockResolvedValue(
+        storedReward(
+          'GEM',
+          20,
+          'MISSION:daily.cpu-battle',
+          'mission:daily.cpu-battle:2026-09-25T00:00:00.000Z',
+        ),
+      );
     const transaction = {
       $queryRaw: lockPlayer,
       mission: {
@@ -90,7 +109,16 @@ describe('PrismaMissionService', () => {
 
   it('replays a completed mission claim with its original reward', async () => {
     const claimedAt = new Date('2026-09-25T10:00:00.000Z');
-    const currencyUpsert = vi.fn();
+    const currencyUpsert = vi
+      .fn()
+      .mockResolvedValue(
+        storedReward(
+          'GEM',
+          20,
+          'MISSION:daily.cpu-battle',
+          'mission:daily.cpu-battle:2026-09-25T00:00:00.000Z',
+        ),
+      );
     const transaction = {
       $queryRaw: vi.fn(),
       mission: {
@@ -107,9 +135,6 @@ describe('PrismaMissionService', () => {
         findUnique: vi.fn().mockResolvedValue({ claimedAt }),
       },
       currencyTransaction: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValue({ currency: 'GEM', amount: 20, reason: 'MISSION:daily.cpu-battle' }),
         upsert: currencyUpsert,
       },
     };
@@ -124,7 +149,7 @@ describe('PrismaMissionService', () => {
         new Date('2026-09-25T12:00:00.000Z'),
       ),
     ).resolves.toMatchObject({ missionId: 'daily.cpu-battle', claimedAt, reward: { amount: 20 } });
-    expect(currencyUpsert).not.toHaveBeenCalled();
+    expect(currencyUpsert).toHaveBeenCalledOnce();
   });
 
   it('rejects an idempotency key that belongs to a different mission reward', async () => {
@@ -168,10 +193,11 @@ describe('PrismaMissionService', () => {
         findUnique: vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 4 }),
       },
       currencyTransaction: {
-        findUnique: vi
+        upsert: vi
           .fn()
-          .mockResolvedValue({ currency: 'GEM', amount: 35, reason: 'LOGIN_DAY:4' }),
-        upsert: vi.fn(),
+          .mockResolvedValue(
+            storedReward('GEM', 35, 'LOGIN_DAY:4', 'login:2026-09-25T00:00:00.000Z'),
+          ),
       },
     };
     const prisma = {
@@ -198,12 +224,11 @@ describe('PrismaMissionService', () => {
         upsert,
       },
       currencyTransaction: {
-        upsert: vi.fn().mockResolvedValue({
-          id: 'reward-1',
-          currency: 'GEM',
-          amount: 20,
-          reason: 'LOGIN_DAY:1',
-        }),
+        upsert: vi
+          .fn()
+          .mockResolvedValue(
+            storedReward('GEM', 20, 'LOGIN_DAY:1', 'login:2026-09-25T00:00:00.000Z'),
+          ),
       },
     };
     const prisma = {
@@ -271,7 +296,11 @@ describe('PrismaMissionService', () => {
         upsert: vi.fn().mockResolvedValue({ id: 'claim-5', cycleDay: 5 }),
       },
       currencyTransaction: {
-        upsert: vi.fn().mockResolvedValue({ currency: 'GEM', amount: 40, reason: 'LOGIN_DAY:5' }),
+        upsert: vi
+          .fn()
+          .mockResolvedValue(
+            storedReward('GEM', 40, 'LOGIN_DAY:5', 'login:2026-09-25T00:00:00.000Z'),
+          ),
       },
       cosmetic: { findUnique: vi.fn().mockResolvedValue({ id: 'frame.aurora' }) },
       cosmeticGrant: {

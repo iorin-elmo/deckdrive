@@ -6,16 +6,17 @@ import type {
   RewardLedgerRepository,
 } from './reward-ledger.js';
 
-type LedgerClient = Pick<PrismaClient, 'currencyTransaction' | '$transaction'>;
+type LedgerOperationsClient = Pick<PrismaClient, 'currencyTransaction'>;
+type LedgerClient = LedgerOperationsClient & Pick<PrismaClient, '$transaction'>;
 
 /** Prisma adapter; callers own the service-level transaction boundary. */
 export class PrismaRewardLedger implements RewardLedgerRepository, RewardLedgerOperations {
-  constructor(private readonly prisma: LedgerClient) {}
+  constructor(private readonly prisma: LedgerOperationsClient) {}
 
   async transaction<Result>(
     operation: (ledger: RewardLedgerOperations) => Promise<Result>,
   ): Promise<Result> {
-    return this.prisma.$transaction((transaction) =>
+    return (this.prisma as LedgerClient).$transaction((transaction) =>
       operation(new PrismaRewardLedger(transaction)),
     );
   }

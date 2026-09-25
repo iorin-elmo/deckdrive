@@ -35,12 +35,18 @@ export class RewardService {
   constructor(private readonly ledger: RewardLedgerRepository) {}
 
   async grant(grant: RewardGrant): Promise<RewardLedgerEntry> {
+    return this.ledger.transaction((ledger) => this.grantInTransaction(ledger, grant));
+  }
+
+  /** Reuses the same validation and idempotency checks inside an existing transaction. */
+  async grantInTransaction(
+    ledger: RewardLedgerOperations,
+    grant: RewardGrant,
+  ): Promise<RewardLedgerEntry> {
     validateGrant(grant);
-    return this.ledger.transaction(async (ledger) => {
-      const entry = await ledger.findOrInsert(grant);
-      assertSameGrant(entry, grant);
-      return entry;
-    });
+    const entry = await ledger.findOrInsert(grant);
+    assertSameGrant(entry, grant);
+    return entry;
   }
 }
 

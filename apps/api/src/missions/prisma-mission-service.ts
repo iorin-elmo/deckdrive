@@ -1,7 +1,8 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { loginCosmeticForCycleDay } from '../cosmetics/catalog.js';
 import { PrismaCosmeticService } from '../cosmetics/prisma-cosmetic-service.js';
-import { RewardValidationError } from '../rewards/reward-ledger.js';
+import { PrismaRewardLedger } from '../rewards/prisma-reward-ledger.js';
+import { RewardService, type RewardGrant } from '../rewards/reward-ledger.js';
 import { loginRewardForCycleDay, type MissionMetric } from './catalog.js';
 import { missionPeriodStart, nextLoginCycle } from './progression.js';
 import { lockPlayerForUpdate } from './prisma-progression-service.js';
@@ -27,7 +28,11 @@ export class MissionNotReadyError extends Error {}
  * `recordProgress` only after an authoritative game event has been persisted.
  */
 export class PrismaMissionService {
-  constructor(private readonly prisma: MissionClient) {}
+  private readonly rewards: RewardService;
+
+  constructor(private readonly prisma: MissionClient) {
+    this.rewards = new RewardService(new PrismaRewardLedger(prisma));
+  }
 
   async list(playerId: string, now = new Date()) {
     const definitions = await this.prisma.mission.findMany({
@@ -79,6 +84,13 @@ export class PrismaMissionService {
         data: { claimedAt: now },
       });
       const idempotencyKey = `mission:${missionId}:${periodStart.toISOString()}`;
+      const rewardGrant: RewardGrant = {
+        playerId,
+        currency: mission.rewardCurrency,
+        amount: mission.rewardAmount,
+        reason: `MISSION:${missionId}`,
+        idempotencyKey,
+      };
       if (claimed.count !== 1) {
         const existingClaim = await transaction.playerMission.findUnique({
           where: {
@@ -87,24 +99,10 @@ export class PrismaMissionService {
         });
         if (existingClaim === null || existingClaim.claimedAt === null)
           throw new MissionNotReadyError('Mission is not complete or was claimed.');
-        const reward = await transaction.currencyTransaction.findUnique({
-          where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
-        });
-        assertMissionReward(reward, mission.rewardCurrency, mission.rewardAmount, missionId);
+        const reward = await this.grantRewardInTransaction(transaction, rewardGrant);
         return { missionId, claimedAt: existingClaim.claimedAt, reward };
       }
-      const reward = await transaction.currencyTransaction.upsert({
-        where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
-        update: {},
-        create: {
-          playerId,
-          currency: mission.rewardCurrency,
-          amount: mission.rewardAmount,
-          reason: `MISSION:${missionId}`,
-          idempotencyKey,
-        },
-      });
-      assertMissionReward(reward, mission.rewardCurrency, mission.rewardAmount, missionId);
+      const reward = await this.grantRewardInTransaction(transaction, rewardGrant);
       return { missionId, claimedAt: now, reward };
     });
   }
@@ -173,17 +171,13 @@ export class PrismaMissionService {
       });
       if (existing !== null) {
         const rewardDefinition = loginRewardForCycleDay(existing.cycleDay).reward;
-        const reward = await transaction.currencyTransaction.findUnique({
-          where: {
-            playerId_idempotencyKey: { playerId, idempotencyKey: `login:${day.toISOString()}` },
-          },
+        const reward = await this.grantRewardInTransaction(transaction, {
+          playerId,
+          currency: rewardDefinition.currency,
+          amount: rewardDefinition.amount,
+          reason: `LOGIN_DAY:${String(existing.cycleDay)}`,
+          idempotencyKey: `login:${day.toISOString()}`,
         });
-        assertLoginReward(
-          reward,
-          rewardDefinition.currency,
-          rewardDefinition.amount,
-          existing.cycleDay,
-        );
         const cosmetic = await this.grantLoginCosmetic(
           transaction,
           playerId,
@@ -212,18 +206,13 @@ export class PrismaMissionService {
         create: { playerId, day, cycleDay: cycle.cycleDay, claimedAt: now },
       });
       const idempotencyKey = `login:${day.toISOString()}`;
-      const reward = await transaction.currencyTransaction.upsert({
-        where: { playerId_idempotencyKey: { playerId, idempotencyKey } },
-        update: {},
-        create: {
-          playerId,
-          currency: rewardDefinition.currency,
-          amount: rewardDefinition.amount,
-          reason: `LOGIN_DAY:${String(cycle.cycleDay)}`,
-          idempotencyKey,
-        },
+      const reward = await this.grantRewardInTransaction(transaction, {
+        playerId,
+        currency: rewardDefinition.currency,
+        amount: rewardDefinition.amount,
+        reason: `LOGIN_DAY:${String(cycle.cycleDay)}`,
+        idempotencyKey,
       });
-      assertLoginReward(reward, rewardDefinition.currency, rewardDefinition.amount, cycle.cycleDay);
       const cosmetic = await this.grantLoginCosmetic(transaction, playerId, day, cycle.cycleDay);
       return { claim, reward, cosmetic, alreadyClaimed: false };
     });
@@ -244,42 +233,8 @@ export class PrismaMissionService {
       idempotencyKey: `login:${day.toISOString()}:cosmetic`,
     });
   }
-}
 
-function assertLoginReward(
-  reward: { readonly currency: string; readonly amount: number; readonly reason: string } | null,
-  currency: string,
-  amount: number,
-  cycleDay: number,
-): asserts reward is {
-  readonly currency: string;
-  readonly amount: number;
-  readonly reason: string;
-} {
-  if (
-    reward === null ||
-    reward.currency !== currency ||
-    reward.amount !== amount ||
-    reward.reason !== `LOGIN_DAY:${String(cycleDay)}`
-  )
-    throw new RewardValidationError(
-      'Login reward idempotency key was used for a different reward.',
-    );
-}
-
-function assertMissionReward(
-  reward: { readonly currency: string; readonly amount: number; readonly reason: string } | null,
-  currency: string,
-  amount: number,
-  missionId: string,
-): void {
-  if (
-    reward === null ||
-    reward.currency !== currency ||
-    reward.amount !== amount ||
-    reward.reason !== `MISSION:${missionId}`
-  )
-    throw new RewardValidationError(
-      'Mission reward idempotency key was used for a different reward.',
-    );
+  private grantRewardInTransaction(transaction: MissionOperations, grant: RewardGrant) {
+    return this.rewards.grantInTransaction(new PrismaRewardLedger(transaction), grant);
+  }
 }
