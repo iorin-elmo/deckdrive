@@ -144,6 +144,38 @@ describe('ApiApplication authentication', () => {
     });
   });
 
+  it('returns a conflict when a mission reward idempotency key has different data', async () => {
+    const transaction = {
+      mission: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'daily.cpu-battle',
+          cadence: 'DAILY',
+          target: 1,
+          rewardCurrency: 'GEM',
+          rewardAmount: 20,
+        }),
+      },
+      playerMission: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      currencyTransaction: {
+        upsert: vi
+          .fn()
+          .mockResolvedValue({ currency: 'EXCHANGE_POINT', amount: 20, reason: 'MISSION:other' }),
+      },
+    };
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/missions/daily.cpu-battle/claim',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toEqual({ status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } });
+  });
+
   it('returns only the authenticated player collection with card version IDs', async () => {
     const findMany = vi.fn().mockResolvedValue([
       {

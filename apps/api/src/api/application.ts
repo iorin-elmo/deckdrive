@@ -26,6 +26,7 @@ import {
   packProducts,
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
+import { RewardValidationError } from '../rewards/reward-ledger.js';
 import {
   MissionNotFoundError,
   MissionNotReadyError,
@@ -501,6 +502,8 @@ export class ApiApplication {
     if (error instanceof PackPurchaseLimitError)
       return { status: 409, body: { error: 'PACK_PURCHASE_LIMIT_REACHED' } };
     if (error instanceof IdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof RewardValidationError)
       return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof MissionNotFoundError)
       return { status: 404, body: { error: 'MISSION_NOT_FOUND' } };
