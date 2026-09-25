@@ -55,6 +55,27 @@ describe('DeckDriveApi', () => {
     );
   });
 
+  it('retains the authenticated CSRF token for cross-origin mutations', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ playerId: 'player-1', displayName: 'Player', csrfToken: 'csrf' }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi('https://api.example.test');
+
+    await client.session();
+    await client.logout();
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://api.example.test/api/v1/auth/logout',
+      expect.objectContaining({ headers: { 'X-CSRF-Token': 'csrf' } }),
+    );
+  });
+
   it('sends the player header and body for a CPU match request', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'match-1', difficulty: 'NORMAL', state: {} }), {

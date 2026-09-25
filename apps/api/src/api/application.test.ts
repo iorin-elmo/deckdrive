@@ -1,9 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../generated/prisma/client.js';
+import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('requires a matching CSRF token before revoking a cookie-authenticated session', async () => {
+    const sessionToken = 'session-token';
+    const csrfToken = 'csrf-token';
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256(csrfToken),
+            expiresAt: new Date('2026-10-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: { cookie: `deckdrive_session=${sessionToken}` },
+      }),
+    ).resolves.toEqual({ status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } });
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: {
+          cookie: `deckdrive_session=${sessionToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      }),
+    ).resolves.toMatchObject({ status: 204 });
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('sorts listCards responses by numeric semantic version for the same card', async () => {
     const application = new ApiApplication({
       cardVersion: {

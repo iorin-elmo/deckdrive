@@ -61,8 +61,7 @@ enum CosmeticKind {
 
 model User {
   id          String   @id @default(uuid()) @db.Uuid
-  // X does not provide an email address through its OAuth 2.0 user endpoint.
-  // An OAuth identity, rather than an email address, is therefore the account key.
+  // OAuth identities are the account key; a provider may not supply a usable email address.
   email       String?  @unique @db.Citext
   displayName String
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

@@ -59,4 +59,27 @@ describe('PrismaSessionService', () => {
       data: { revokedAt: now },
     });
   });
+
+  it('cleans stale rows before creating a session and rotates CSRF tokens by hash', async () => {
+    const deleteMany = vi.fn().mockResolvedValue({ count: 2 });
+    const create = vi.fn().mockResolvedValue({});
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const service = new PrismaSessionService(
+      { session: { deleteMany, create, updateMany } } as unknown as PrismaClient,
+      () => now,
+    );
+
+    await service.create('user-1');
+    const csrfToken = await service.rotateCsrfToken('session-1');
+
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ OR: expect.any(Array) }),
+    });
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: 'user-1' }) });
+    expect(csrfToken).toEqual(expect.any(String));
+    expect(updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'session-1', revokedAt: null }),
+      data: { csrfTokenHash: sha256(csrfToken!) },
+    });
+  });
 });

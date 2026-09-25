@@ -2,6 +2,7 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { matchesHash, randomToken, sha256 } from './crypto.js';
 
 const sessionLifetimeSeconds = 60 * 60 * 24 * 14;
+const revokedSessionRetentionMilliseconds = 24 * 60 * 60 * 1000;
 
 export interface CreatedSession {
   readonly token: string;
@@ -23,6 +24,7 @@ export class PrismaSessionService {
   ) {}
 
   async create(userId: string): Promise<CreatedSession> {
+    await this.removeExpiredSessions();
     const token = randomToken();
     const csrfToken = randomToken();
     const expiresAt = new Date(this.now().getTime() + sessionLifetimeSeconds * 1000);
@@ -68,7 +70,28 @@ export class PrismaSessionService {
     });
   }
 
+  async rotateCsrfToken(sessionId: string): Promise<string | undefined> {
+    const csrfToken = randomToken();
+    const updated = await this.prisma.session.updateMany({
+      where: { id: sessionId, revokedAt: null, expiresAt: { gt: this.now() } },
+      data: { csrfTokenHash: sha256(csrfToken) },
+    });
+    return updated.count === 1 ? csrfToken : undefined;
+  }
+
   verifiesCsrf(session: AuthenticatedSession, token: string | undefined): boolean {
     return token !== undefined && token.length > 0 && matchesHash(token, session.csrfTokenHash);
+  }
+
+  private async removeExpiredSessions(): Promise<void> {
+    const now = this.now();
+    await this.prisma.session.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lte: now } },
+          { revokedAt: { lte: new Date(now.getTime() - revokedSessionRetentionMilliseconds) } },
+        ],
+      },
+    });
   }
 }

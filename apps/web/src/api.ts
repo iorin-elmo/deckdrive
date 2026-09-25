@@ -120,8 +120,11 @@ export interface Cosmetic {
 }
 
 export interface DeckDriveClient {
-  developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
-  session(): Promise<{ playerId: string; displayName: string }>;
+  developmentLogin(
+    email: string,
+    displayName: string,
+  ): Promise<{ playerId: string; csrfToken: string }>;
+  session(): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
   logout(): Promise<void>;
   oauthStartUrl(provider: 'discord'): string;
   me(playerId: string): Promise<Player>;
@@ -167,24 +170,38 @@ export class ApiError extends Error {
 
 export class DeckDriveApi implements DeckDriveClient {
   private readonly baseUrl: string;
+  private csrfTokenValue: string | undefined;
 
   constructor(baseUrl = '') {
     this.baseUrl = baseUrl.replace(/\/+$/u, '');
   }
 
-  async developmentLogin(email: string, displayName: string): Promise<{ playerId: string }> {
-    return this.request('/api/v1/auth/development', {
-      method: 'POST',
-      body: { email, displayName },
-    });
+  async developmentLogin(
+    email: string,
+    displayName: string,
+  ): Promise<{ playerId: string; csrfToken: string }> {
+    const result = await this.request<{ playerId: string; csrfToken: string }>(
+      '/api/v1/auth/development',
+      {
+        method: 'POST',
+        body: { email, displayName },
+      },
+    );
+    this.csrfTokenValue = result.csrfToken;
+    return result;
   }
 
-  async session(): Promise<{ playerId: string; displayName: string }> {
-    return this.request('/api/v1/auth/session');
+  async session(): Promise<{ playerId: string; displayName: string; csrfToken: string }> {
+    const result = await this.request<{ playerId: string; displayName: string; csrfToken: string }>(
+      '/api/v1/auth/session',
+    );
+    this.csrfTokenValue = result.csrfToken;
+    return result;
   }
 
   async logout(): Promise<void> {
     await this.request('/api/v1/auth/logout', { method: 'POST' });
+    this.csrfTokenValue = undefined;
   }
 
   oauthStartUrl(provider: 'discord'): string {
@@ -297,7 +314,7 @@ export class DeckDriveApi implements DeckDriveClient {
     } = {},
   ): Promise<Result> {
     let response: Response;
-    const csrf = csrfToken();
+    const csrf = this.csrfTokenValue ?? csrfToken();
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         method: options.method ?? 'GET',
@@ -448,10 +465,14 @@ function previewBattle(matchId: string): BattleState {
 /** Explicit local-only fixture client for inspecting Phase 5 UI without a database. */
 export const previewApi: DeckDriveClient = {
   async developmentLogin() {
-    return { playerId: 'preview-player' };
+    return { playerId: 'preview-player', csrfToken: 'preview-csrf-token' };
   },
   async session() {
-    return { playerId: 'preview-player', displayName: 'Offline preview' };
+    return {
+      playerId: 'preview-player',
+      displayName: 'Offline preview',
+      csrfToken: 'preview-csrf-token',
+    };
   },
   async logout() {},
   oauthStartUrl() {

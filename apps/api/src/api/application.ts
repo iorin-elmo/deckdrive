@@ -183,7 +183,7 @@ export class ApiApplication {
     const session = await this.oauth.session().create(user.id);
     return {
       status: 200,
-      body: { playerId: player.id, displayName: user.displayName },
+      body: { playerId: player.id, displayName: user.displayName, csrfToken: session.csrfToken },
       headers: { 'set-cookie': this.oauth.sessionCookie(session) },
     };
   }
@@ -195,7 +195,12 @@ export class ApiApplication {
       where: { id: session.playerId },
       select: { id: true, user: { select: { displayName: true } } },
     });
-    return { status: 200, body: { playerId: player.id, displayName: player.user.displayName } };
+    const csrfToken = await this.oauth.session().rotateCsrfToken(session.sessionId);
+    if (csrfToken === undefined) throw new UnauthorizedError();
+    return {
+      status: 200,
+      body: { playerId: player.id, displayName: player.user.displayName, csrfToken },
+    };
   }
 
   private async logout(request: ApiRequest): Promise<ApiResponse> {

@@ -16,12 +16,17 @@ const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-pl
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly developmentLoginLoopbackOnly?: boolean;
+  readonly trustedProxyAddresses?: readonly string[];
 }
 
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(
   application: ApiApplication,
-  { allowedOrigins = [], developmentLoginLoopbackOnly = false }: ApiHttpServerOptions = {},
+  {
+    allowedOrigins = [],
+    developmentLoginLoopbackOnly = false,
+    trustedProxyAddresses = [],
+  }: ApiHttpServerOptions = {},
 ): Server {
   return createServer(async (request, response) => {
     const responseHeaders = {
@@ -48,13 +53,12 @@ export function createApiHttpServer(
         writeJson(response, 403, { error: 'DEVELOPMENT_AUTH_LOCAL_ONLY' }, responseHeaders);
         return;
       }
+      const resolvedClientAddress = clientAddress(request, trustedProxyAddresses);
       const apiRequest: ApiRequest = {
         method: request.method ?? 'GET',
         path,
         query: Object.fromEntries(url.searchParams.entries()),
-        ...(request.socket.remoteAddress === undefined
-          ? {}
-          : { clientAddress: request.socket.remoteAddress }),
+        ...(resolvedClientAddress === undefined ? {} : { clientAddress: resolvedClientAddress }),
         headers: Object.fromEntries(
           Object.entries(request.headers).map(([name, value]) => [
             name,
@@ -84,6 +88,19 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
+}
+
+/** Uses forwarded client addresses only when the direct peer is explicitly trusted. */
+export function clientAddress(
+  request: Pick<IncomingMessage, 'headers' | 'socket'>,
+  trustedProxyAddresses: readonly string[],
+): string | undefined {
+  const directAddress = request.socket.remoteAddress;
+  if (directAddress === undefined || !trustedProxyAddresses.includes(directAddress))
+    return directAddress;
+  const forwarded = request.headers['x-forwarded-for'];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
+  return first === undefined || first.length === 0 ? directAddress : first;
 }
 
 export function isLoopbackAddress(address: string | undefined): boolean {
