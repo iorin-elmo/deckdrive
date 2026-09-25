@@ -628,7 +628,7 @@ function MissionsPage() {
                   {localizedCosmetic.description}
                 </p>
                 <p className="mt-4 text-xs text-stone-400">
-                  {cosmetic.acquiredAt === null ? t('inProgress') : t('claimed')}
+                  {cosmetic.acquiredAt === null ? t('notOwned') : t('claimed')}
                 </p>
               </article>
             );

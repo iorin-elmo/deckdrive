@@ -26,7 +26,13 @@ export type LoginReward =
   | { readonly kind: 'PACK'; readonly productId: 'NORMAL_PACK' | 'RARE_PACK' }
   | { readonly kind: 'COSMETIC'; readonly cosmeticId: string };
 
-/** Server-managed mission definitions. Clients only receive progress and may never submit it. */
+/**
+ * Server-managed mission definitions. Clients only receive progress and may never submit it.
+ *
+ * Only CPU_BATTLE currently has an authoritative production event and is active. The remaining
+ * definitions are deliberately retained as inactive catalog entries until their event sources
+ * (PvP, card actions, combat totals, ranked matches, class usage, and deck objectives) ship.
+ */
 export const missionCatalog: readonly MissionCatalogEntry[] = [
   {
     id: 'daily.cpu-battle',
