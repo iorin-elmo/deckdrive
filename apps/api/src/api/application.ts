@@ -239,7 +239,12 @@ export class ApiApplication {
   }
 
   private async startOAuth(provider: string, request: ApiRequest): Promise<ApiResponse> {
-    const result = await this.oauth.start(provider, request.clientAddress);
+    const result = await this.oauth.start(
+      provider,
+      request.clientAddress,
+      undefined,
+      request.query?.returnTo,
+    );
     return {
       status: 302,
       body: { redirect: result.location },
@@ -250,7 +255,12 @@ export class ApiApplication {
   private async startOAuthLink(provider: string, request: ApiRequest): Promise<ApiResponse> {
     const session = await this.requirePlayer(request);
     if (session.userId === undefined) throw new UnauthorizedError();
-    const result = await this.oauth.start(provider, request.clientAddress, session.userId);
+    const result = await this.oauth.start(
+      provider,
+      request.clientAddress,
+      session.userId,
+      request.query?.returnTo,
+    );
     return {
       status: 200,
       body: { authorizationUrl: result.location },
@@ -270,7 +280,7 @@ export class ApiApplication {
       status: 302,
       body: { authenticated: true },
       headers: {
-        location: this.oauth.completionLocation(),
+        location: this.oauth.completionLocation(result.returnTo),
         'set-cookie': [
           ...this.oauth.sessionCookie(result.session),
           this.oauth.expiredStateCookie(),

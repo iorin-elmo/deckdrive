@@ -268,7 +268,7 @@ function LoginPage() {
         </div>
         <a
           className="block rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
-          href={api.oauthStartUrl('discord')}
+          href={api.oauthStartUrl('discord', returnTo)}
         >
           Discord
         </a>
@@ -358,6 +358,11 @@ function AuthenticatedLayout() {
   const logout = useMutation({
     mutationFn: () => (previewMode ? Promise.resolve() : api.logout()),
     onSuccess: () => {
+      queryClient.clear();
+      clearPlayerId();
+    },
+    onError: (error) => {
+      if (!isUnauthorizedApiError(error)) return;
       queryClient.clear();
       clearPlayerId();
     },

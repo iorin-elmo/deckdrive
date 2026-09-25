@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
+import { oauthStateCookieName, parseCookies } from './cookies.js';
 import { sha256 } from './crypto.js';
-import { OAuthRateLimiter, OAuthRequestError, OAuthService } from './oauth-service.js';
+import {
+  OAuthRateLimiter,
+  OAuthRequestError,
+  OAuthService,
+  oauthReturnPath,
+} from './oauth-service.js';
 import type { OAuthIdentity, OAuthProviderAdapter } from './providers/provider.js';
 
 describe('OAuthRateLimiter', () => {
@@ -29,6 +35,14 @@ describe('OAuthRateLimiter', () => {
   });
 });
 
+describe('oauthReturnPath', () => {
+  it('permits application-local routes and rejects external destinations', () => {
+    expect(oauthReturnPath('/decks/deck-1/edit')).toBe('/decks/deck-1/edit');
+    expect(oauthReturnPath('//example.test')).toBe('/home');
+    expect(oauthReturnPath('/\\example.test')).toBe('/home');
+  });
+});
+
 describe('OAuthService', () => {
   it('stores hashes only and sends state plus an S256 PKCE challenge to the provider', async () => {
     const create = vi.fn().mockResolvedValue({});
@@ -51,7 +65,7 @@ describe('OAuthService', () => {
       [adapter],
     );
 
-    const result = await service.start('discord', '127.0.0.1');
+    const result = await service.start('discord', '127.0.0.1', undefined, '/decks/deck-1/edit');
 
     expect(result.location).toContain('state=');
     expect(result.location).toContain('code_challenge=');
@@ -69,6 +83,12 @@ describe('OAuthService', () => {
     expect(state).not.toBeNull();
     expect(data.stateHash).toBe(sha256(state!));
     expect(deleteMany).toHaveBeenCalledTimes(1);
+    const signedState = parseCookies(result.stateCookie)[oauthStateCookieName];
+    const payload = signedState?.split('.')[0];
+    expect(payload).toBeDefined();
+    expect(JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8'))).toMatchObject({
+      returnTo: '/decks/deck-1/edit',
+    });
   });
 
   it('rejects a callback without the matching signed state cookie before token exchange', async () => {

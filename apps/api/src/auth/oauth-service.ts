@@ -26,6 +26,7 @@ export class OAuthSecurityConfigurationError extends Error {}
 interface OAuthStateCookie {
   readonly state: string;
   readonly codeVerifier: string;
+  readonly returnTo: string;
 }
 
 export interface OAuthStartResult {
@@ -35,6 +36,7 @@ export interface OAuthStartResult {
 
 export interface OAuthCompletionResult {
   readonly session: CreatedSession;
+  readonly returnTo: string;
 }
 
 /**
@@ -115,6 +117,7 @@ export class OAuthService {
     provider: string,
     clientAddress: string | undefined,
     linkUserId?: string,
+    returnTo?: string,
   ): Promise<OAuthStartResult> {
     const adapter = this.adapter(provider);
     // Validate the post-authentication destination before creating one-time state.
@@ -142,7 +145,10 @@ export class OAuthService {
           codeChallenge: sha256(codeVerifier),
         })
         .toString(),
-      stateCookie: this.stateCookie({ state, codeVerifier }, stateSecret),
+      stateCookie: this.stateCookie(
+        { state, codeVerifier, returnTo: oauthReturnPath(returnTo) },
+        stateSecret,
+      ),
     };
   }
 
@@ -198,7 +204,7 @@ export class OAuthService {
       throw new OAuthProviderExchangeError('OAuth provider request failed.');
     }
     const userId = await this.resolveUser(adapter.id, identity, authorization.linkUserId);
-    return { session: await this.sessionService.create(userId) };
+    return { session: await this.sessionService.create(userId), returnTo: stateCookie.returnTo };
   }
 
   session(): PrismaSessionService {
@@ -240,10 +246,10 @@ export class OAuthService {
     });
   }
 
-  completionLocation(): string {
+  completionLocation(returnTo = '/home'): string {
     if (this.applicationBaseUrl === undefined)
       throw new OAuthSecurityConfigurationError('APP_BASE_URL is required for OAuth callbacks.');
-    return `${this.applicationBaseUrl}/login?returnTo=%2Fhome`;
+    return `${this.applicationBaseUrl}/login?returnTo=${encodeURIComponent(oauthReturnPath(returnTo))}`;
   }
 
   private adapter(provider: string): OAuthProviderAdapter {
@@ -295,8 +301,13 @@ export class OAuthService {
       return typeof parsed.state === 'string' &&
         parsed.state.length > 0 &&
         typeof parsed.codeVerifier === 'string' &&
-        parsed.codeVerifier.length > 0
-        ? { state: parsed.state, codeVerifier: parsed.codeVerifier }
+        parsed.codeVerifier.length > 0 &&
+        typeof parsed.returnTo === 'string'
+        ? {
+            state: parsed.state,
+            codeVerifier: parsed.codeVerifier,
+            returnTo: oauthReturnPath(parsed.returnTo),
+          }
         : undefined;
     } catch {
       return undefined;
@@ -454,4 +465,17 @@ function applicationBaseUrl(environment: NodeJS.ProcessEnv): string | undefined 
     return environment.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
   }
   return new URL(configured).origin;
+}
+
+/** Limits post-login navigation to an application-local route. */
+export function oauthReturnPath(value: string | undefined): string {
+  if (
+    value === undefined ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.startsWith('/\\') ||
+    value.includes('\\')
+  )
+    return '/home';
+  return value;
 }

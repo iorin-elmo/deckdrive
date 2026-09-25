@@ -49,9 +49,11 @@ describe('DeckDriveApi', () => {
     );
   });
 
-  it('builds Discord authorization URLs from the configured API origin', () => {
-    expect(new DeckDriveApi('https://api.example.test/').oauthStartUrl('discord')).toBe(
-      'https://api.example.test/api/v1/auth/oauth/discord/start',
+  it('builds Discord authorization URLs with an application-local return destination', () => {
+    expect(
+      new DeckDriveApi('https://api.example.test/').oauthStartUrl('discord', '/decks/deck-1/edit'),
+    ).toBe(
+      'https://api.example.test/api/v1/auth/oauth/discord/start?returnTo=%2Fdecks%2Fdeck-1%2Fedit',
     );
   });
 
