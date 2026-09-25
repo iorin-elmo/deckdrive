@@ -92,19 +92,15 @@ export class ApiApplication {
         return await this.currentSession(request);
       if (request.method === 'POST' && path === '/api/v1/auth/logout')
         return await this.logout(request);
-      const oauthStartProvider = path.match(
-        /^\/api\/v1\/auth\/oauth\/(google|discord|x)\/start$/u,
-      )?.[1];
+      const oauthStartProvider = path.match(/^\/api\/v1\/auth\/oauth\/(discord)\/start$/u)?.[1];
       if (request.method === 'GET' && oauthStartProvider !== undefined)
         return await this.startOAuth(oauthStartProvider, request);
       const oauthCallbackProvider = path.match(
-        /^\/api\/v1\/auth\/oauth\/(google|discord|x)\/callback$/u,
+        /^\/api\/v1\/auth\/oauth\/(discord)\/callback$/u,
       )?.[1];
       if (request.method === 'GET' && oauthCallbackProvider !== undefined)
         return await this.completeOAuth(oauthCallbackProvider, request);
-      const oauthLinkProvider = path.match(
-        /^\/api\/v1\/auth\/oauth\/(google|discord|x)\/link$/u,
-      )?.[1];
+      const oauthLinkProvider = path.match(/^\/api\/v1\/auth\/oauth\/(discord)\/link$/u)?.[1];
       if (request.method === 'POST' && oauthLinkProvider !== undefined)
         return await this.startOAuthLink(oauthLinkProvider, request);
       if (request.method === 'GET' && path === '/api/v1/cards') return await this.listCards();

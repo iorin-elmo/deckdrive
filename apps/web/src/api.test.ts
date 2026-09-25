@@ -49,6 +49,12 @@ describe('DeckDriveApi', () => {
     );
   });
 
+  it('builds Discord authorization URLs from the configured API origin', () => {
+    expect(new DeckDriveApi('https://api.example.test/').oauthStartUrl('discord')).toBe(
+      'https://api.example.test/api/v1/auth/oauth/discord/start',
+    );
+  });
+
   it('sends the player header and body for a CPU match request', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'match-1', difficulty: 'NORMAL', state: {} }), {

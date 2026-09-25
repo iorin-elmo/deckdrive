@@ -1,4 +1,4 @@
-CREATE TYPE "OAuthProvider" AS ENUM ('GOOGLE', 'DISCORD', 'X');
+CREATE TYPE "OAuthProvider" AS ENUM ('DISCORD');
 
 ALTER TABLE "users"
   ALTER COLUMN "email" DROP NOT NULL;

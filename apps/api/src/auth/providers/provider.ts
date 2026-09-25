@@ -1,4 +1,4 @@
-export type OAuthProviderId = 'google' | 'discord' | 'x';
+export type OAuthProviderId = 'discord';
 
 export interface OAuthIdentity {
   readonly providerUserId: string;

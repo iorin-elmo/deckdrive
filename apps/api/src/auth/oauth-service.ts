@@ -1,8 +1,7 @@
-import type { OAuthProvider, PrismaClient } from '../generated/prisma/client.js';
+import { Prisma, type OAuthProvider, type PrismaClient } from '../generated/prisma/client.js';
 import { oauthStateCookieName, serializeCookie } from './cookies.js';
 import { matchesSignature, randomToken, sha256, sign } from './crypto.js';
 import { DiscordOAuthProvider } from './providers/discord.js';
-import { GoogleOAuthProvider } from './providers/google.js';
 import {
   OAuthProviderConfigurationError,
   OAuthProviderExchangeError,
@@ -10,10 +9,10 @@ import {
   type OAuthProviderAdapter,
   type OAuthProviderId,
 } from './providers/provider.js';
-import { XOAuthProvider } from './providers/x.js';
 import { PrismaSessionService, type CreatedSession } from './session-service.js';
 
 const authorizationLifetimeMilliseconds = 10 * 60 * 1000;
+const consumedAuthorizationRetentionMilliseconds = 24 * 60 * 60 * 1000;
 
 export class OAuthRequestError extends Error {
   constructor(readonly code: 'OAUTH_INVALID_REQUEST' | 'OAUTH_ACCOUNT_LINK_REQUIRED') {
@@ -43,22 +42,44 @@ export interface OAuthCompletionResult {
  * multiple API processes should replace it with their shared rate-limit store.
  */
 export class OAuthRateLimiter {
-  private readonly attempts = new Map<string, number[]>();
+  private readonly attempts = new Map<string, { attempts: number[]; lastSeen: number }>();
 
   constructor(
     private readonly maximumAttempts = 10,
     private readonly windowMilliseconds = 10 * 60 * 1000,
     private readonly now: () => Date = () => new Date(),
+    private readonly maximumKeys = 10_000,
   ) {}
 
   consume(key: string): void {
     const now = this.now().getTime();
-    const active = (this.attempts.get(key) ?? []).filter(
-      (attempt) => attempt > now - this.windowMilliseconds,
+    this.removeExpired(now);
+    let bucket = this.attempts.get(key);
+    if (bucket === undefined) {
+      this.evictLeastRecentKey();
+      bucket = { attempts: [], lastSeen: now };
+      this.attempts.set(key, bucket);
+    }
+    if (bucket.attempts.length >= this.maximumAttempts) throw new OAuthRateLimitError();
+    bucket.attempts.push(now);
+    bucket.lastSeen = now;
+  }
+
+  private removeExpired(now: number): void {
+    for (const [key, bucket] of this.attempts) {
+      bucket.attempts = bucket.attempts.filter(
+        (attempt) => attempt > now - this.windowMilliseconds,
+      );
+      if (bucket.attempts.length === 0) this.attempts.delete(key);
+    }
+  }
+
+  private evictLeastRecentKey(): void {
+    if (this.attempts.size < this.maximumKeys) return;
+    const oldest = [...this.attempts.entries()].reduce((candidate, entry) =>
+      entry[1].lastSeen < candidate[1].lastSeen ? entry : candidate,
     );
-    if (active.length >= this.maximumAttempts) throw new OAuthRateLimitError();
-    active.push(now);
-    this.attempts.set(key, active);
+    this.attempts.delete(oldest[0]);
   }
 }
 
@@ -68,7 +89,7 @@ export class OAuthService {
   private readonly isSecure: boolean;
   private readonly redirectBaseUrl: string | undefined;
   private readonly applicationBaseUrl: string | undefined;
-  private readonly stateSecret: string;
+  private readonly stateSecret: string | undefined;
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -84,11 +105,9 @@ export class OAuthService {
     this.sessionService = new PrismaSessionService(prisma, now);
     const configuredAdapters =
       adapters ??
-      [
-        safelyCreate(() => GoogleOAuthProvider.fromEnvironment(environment)),
-        safelyCreate(() => DiscordOAuthProvider.fromEnvironment(environment)),
-        safelyCreate(() => XOAuthProvider.fromEnvironment(environment)),
-      ].filter((adapter): adapter is OAuthProviderAdapter => adapter !== undefined);
+      [safelyCreate(() => DiscordOAuthProvider.fromEnvironment(environment))].filter(
+        (adapter): adapter is OAuthProviderAdapter => adapter !== undefined,
+      );
     this.adapters = new Map(configuredAdapters.map((adapter) => [adapter.id, adapter]));
   }
 
@@ -99,7 +118,9 @@ export class OAuthService {
   ): Promise<OAuthStartResult> {
     const adapter = this.adapter(provider);
     this.rateLimiter.consume(`start:${clientAddress ?? 'unknown'}`);
+    const stateSecret = this.requireStateSecret();
     const redirectUri = this.callbackUrl(adapter.id);
+    await this.removeExpiredAuthorizations();
     const state = randomToken();
     const codeVerifier = randomToken(48);
     await this.prisma.oAuthAuthorization.create({
@@ -119,7 +140,7 @@ export class OAuthService {
           codeChallenge: sha256(codeVerifier),
         })
         .toString(),
-      stateCookie: this.stateCookie({ state, codeVerifier }),
+      stateCookie: this.stateCookie({ state, codeVerifier }, stateSecret),
     };
   }
 
@@ -131,6 +152,7 @@ export class OAuthService {
   ): Promise<OAuthCompletionResult> {
     const adapter = this.adapter(provider);
     this.rateLimiter.consume(`callback:${clientAddress ?? 'unknown'}`);
+    this.requireStateSecret();
     const code = input.code;
     const state = input.state;
     const stateCookie = this.readStateCookie(signedStateCookie);
@@ -227,9 +249,17 @@ export class OAuthService {
     return `${this.redirectBaseUrl}/api/v1/auth/oauth/${provider}/callback`;
   }
 
-  private stateCookie(value: OAuthStateCookie): string {
+  private requireStateSecret(): string {
+    if (this.stateSecret === undefined)
+      throw new OAuthSecurityConfigurationError(
+        'SESSION_SECRET must be at least 32 characters in production.',
+      );
+    return this.stateSecret;
+  }
+
+  private stateCookie(value: OAuthStateCookie, stateSecret: string): string {
     const payload = Buffer.from(JSON.stringify(value)).toString('base64url');
-    return serializeCookie(oauthStateCookieName, `${payload}.${sign(payload, this.stateSecret)}`, {
+    return serializeCookie(oauthStateCookieName, `${payload}.${sign(payload, stateSecret)}`, {
       httpOnly: true,
       secure: this.isSecure,
       sameSite: 'Lax',
@@ -239,7 +269,7 @@ export class OAuthService {
   }
 
   private readStateCookie(value: string | undefined): OAuthStateCookie | undefined {
-    if (value === undefined) return undefined;
+    if (value === undefined || this.stateSecret === undefined) return undefined;
     const [payload, signature, ...rest] = value.split('.');
     if (
       payload === undefined ||
@@ -269,15 +299,10 @@ export class OAuthService {
     linkUserId: string | null,
   ): Promise<string> {
     const providerValueForIdentity = providerValue(provider);
-    const account = await this.prisma.oAuthAccount.findUnique({
-      where: {
-        provider_providerUserId: {
-          provider: providerValueForIdentity,
-          providerUserId: identity.providerUserId,
-        },
-      },
-      select: { userId: true },
-    });
+    const account = await this.accountForIdentity(
+      providerValueForIdentity,
+      identity.providerUserId,
+    );
     if (linkUserId !== null) {
       if (account !== null && account.userId !== linkUserId)
         throw new OAuthRequestError('OAUTH_ACCOUNT_LINK_REQUIRED');
@@ -287,13 +312,23 @@ export class OAuthService {
           select: { id: true },
         });
         if (alreadyLinked !== null) throw new OAuthRequestError('OAUTH_ACCOUNT_LINK_REQUIRED');
-        await this.prisma.oAuthAccount.create({
-          data: {
-            userId: linkUserId,
-            provider: providerValueForIdentity,
-            providerUserId: identity.providerUserId,
-          },
-        });
+        try {
+          await this.prisma.oAuthAccount.create({
+            data: {
+              userId: linkUserId,
+              provider: providerValueForIdentity,
+              providerUserId: identity.providerUserId,
+            },
+          });
+        } catch (error) {
+          if (!isUniqueConstraintError(error)) throw error;
+          const winner = await this.accountForIdentity(
+            providerValueForIdentity,
+            identity.providerUserId,
+          );
+          if (winner?.userId !== linkUserId)
+            throw new OAuthRequestError('OAUTH_ACCOUNT_LINK_REQUIRED');
+        }
       }
       return linkUserId;
     }
@@ -305,20 +340,65 @@ export class OAuthService {
       });
       if (emailOwner !== null) throw new OAuthRequestError('OAUTH_ACCOUNT_LINK_REQUIRED');
     }
-    const user = await this.prisma.user.create({
-      data: {
-        ...(identity.emailVerified && identity.email !== undefined
-          ? { email: identity.email }
-          : {}),
-        displayName: identity.displayName,
-        player: { create: {} },
-        oauthAccounts: {
-          create: { provider: providerValueForIdentity, providerUserId: identity.providerUserId },
-        },
-      },
-      select: { id: true },
+    try {
+      const user = await this.prisma.$transaction((transaction) =>
+        transaction.user.create({
+          data: {
+            ...(identity.emailVerified && identity.email !== undefined
+              ? { email: identity.email }
+              : {}),
+            displayName: identity.displayName,
+            player: { create: {} },
+            oauthAccounts: {
+              create: {
+                provider: providerValueForIdentity,
+                providerUserId: identity.providerUserId,
+              },
+            },
+          },
+          select: { id: true },
+        }),
+      );
+      return user.id;
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const winner = await this.accountForIdentity(
+        providerValueForIdentity,
+        identity.providerUserId,
+      );
+      if (winner !== null) return winner.userId;
+      if (identity.emailVerified && identity.email !== undefined) {
+        const emailOwner = await this.prisma.user.findUnique({
+          where: { email: identity.email },
+          select: { id: true },
+        });
+        if (emailOwner !== null) throw new OAuthRequestError('OAUTH_ACCOUNT_LINK_REQUIRED');
+      }
+      throw error;
+    }
+  }
+
+  private async accountForIdentity(provider: OAuthProvider, providerUserId: string) {
+    return this.prisma.oAuthAccount.findUnique({
+      where: { provider_providerUserId: { provider, providerUserId } },
+      select: { userId: true },
     });
-    return user.id;
+  }
+
+  private async removeExpiredAuthorizations(): Promise<void> {
+    const now = this.now();
+    await this.prisma.oAuthAuthorization.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lte: now } },
+          {
+            consumedAt: {
+              lte: new Date(now.getTime() - consumedAuthorizationRetentionMilliseconds),
+            },
+          },
+        ],
+      },
+    });
   }
 }
 
@@ -332,7 +412,7 @@ function safelyCreate(create: () => OAuthProviderAdapter): OAuthProviderAdapter 
 }
 
 function isOAuthProviderId(value: string): value is OAuthProviderId {
-  return value === 'google' || value === 'discord' || value === 'x';
+  return value === 'discord';
 }
 
 function providerValue(provider: OAuthProviderId): OAuthProvider {
@@ -347,11 +427,15 @@ function oauthRedirectBaseUrl(environment: NodeJS.ProcessEnv): string | undefine
   return new URL(configured).origin;
 }
 
-function oauthStateSecret(environment: NodeJS.ProcessEnv): string {
+function oauthStateSecret(environment: NodeJS.ProcessEnv): string | undefined {
   const configured = environment.SESSION_SECRET;
   if (configured !== undefined && configured.length >= 32) return configured;
-  if (environment.NODE_ENV === 'production') return randomToken(48);
+  if (environment.NODE_ENV === 'production') return undefined;
   return 'development-only-oauth-state-secret-not-for-production';
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 function applicationBaseUrl(environment: NodeJS.ProcessEnv): string | undefined {

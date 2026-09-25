@@ -44,9 +44,7 @@ enum MissionMetric {
 }
 
 enum OAuthProvider {
-  GOOGLE
   DISCORD
-  X
 }
 
 enum CosmeticKind {

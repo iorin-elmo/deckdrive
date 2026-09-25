@@ -268,7 +268,7 @@ function LoginPage() {
         </div>
         <a
           className="block rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
-          href="/api/v1/auth/oauth/discord/start"
+          href={api.oauthStartUrl('discord')}
         >
           Discord
         </a>
@@ -342,10 +342,15 @@ function AuthenticatedLayout() {
     queryClient.clear();
     clearPlayerId();
   }, [clearPlayerId, queryClient, unauthorized]);
+  const logout = useMutation({
+    mutationFn: () => (previewMode ? Promise.resolve() : api.logout()),
+    onSuccess: () => {
+      queryClient.clear();
+      clearPlayerId();
+    },
+  });
   const signOut = () => {
-    if (!previewMode) void api.logout().catch(() => undefined);
-    queryClient.clear();
-    clearPlayerId();
+    logout.mutate();
   };
   if (playerId === null) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
@@ -398,7 +403,12 @@ function AuthenticatedLayout() {
                 {t(labelKey)}
               </NavLink>
             ))}
-            <button className="nav-link sm:ml-3" type="button" onClick={signOut}>
+            <button
+              className="nav-link sm:ml-3"
+              type="button"
+              onClick={signOut}
+              disabled={logout.isPending}
+            >
               <DoorOpen size={16} aria-hidden="true" />
               {t('signOut')}
             </button>
