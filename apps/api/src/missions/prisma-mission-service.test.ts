@@ -248,6 +248,32 @@ describe('PrismaMissionService', () => {
     ).resolves.toMatchObject({ reward: { kind: 'CURRENCY', amount: 30 } });
   });
 
+  it('replays a pre-snapshot login claim as a successful no-op', async () => {
+    const currencyUpsert = vi.fn();
+    const transaction = {
+      $queryRaw: vi.fn(),
+      loginRewardClaim: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'legacy-claim',
+          cycleDay: 5,
+          reward: { kind: 'LEGACY' },
+        }),
+      },
+      currencyTransaction: { upsert: currencyUpsert },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await expect(
+      new PrismaMissionService(prisma).claimLoginReward(
+        'player-1',
+        new Date('2026-09-25T10:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ alreadyClaimed: true, reward: { kind: 'LEGACY' } });
+    expect(currencyUpsert).not.toHaveBeenCalled();
+  });
+
   it('uses an atomic upsert for a concurrent first login claim', async () => {
     const upsert = vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 1 });
     const transaction = {

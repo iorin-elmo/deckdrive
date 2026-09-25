@@ -24,7 +24,9 @@ export interface MissionCatalogEntry {
 export type LoginReward =
   | { readonly kind: 'CURRENCY'; readonly currency: RewardCurrency; readonly amount: number }
   | { readonly kind: 'PACK'; readonly productId: 'NORMAL_PACK' | 'RARE_PACK' }
-  | { readonly kind: 'COSMETIC'; readonly cosmeticId: string };
+  | { readonly kind: 'COSMETIC'; readonly cosmeticId: string }
+  /** Existing claims from before the definition snapshot was introduced; replay is a no-op. */
+  | { readonly kind: 'LEGACY' };
 
 /**
  * Server-managed mission definitions. Clients only receive progress and may never submit it.

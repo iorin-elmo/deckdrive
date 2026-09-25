@@ -240,6 +240,9 @@ export class PrismaMissionService {
     reward: LoginReward,
   ) {
     const idempotencyPrefix = `login:${day.toISOString()}`;
+    // Before the reward snapshot column existed, the claim and all of its grants committed in
+    // one transaction. Retrying that completed claim must succeed without issuing a new reward.
+    if (reward.kind === 'LEGACY') return { kind: reward.kind };
     if (reward.kind === 'CURRENCY') {
       const grant = await this.grantRewardInTransaction(transaction, {
         playerId,
@@ -278,6 +281,7 @@ export class PrismaMissionService {
 function loginRewardFromJson(value: Prisma.JsonValue): LoginReward {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new LoginRewardConfigurationError('Stored login reward is invalid.');
+  if (value.kind === 'LEGACY') return { kind: value.kind };
   if (
     value.kind === 'CURRENCY' &&
     (value.currency === 'GEM' || value.currency === 'EXCHANGE_POINT') &&
