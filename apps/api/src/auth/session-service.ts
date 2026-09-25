@@ -15,6 +15,7 @@ export interface AuthenticatedSession {
   readonly userId: string;
   readonly playerId: string;
   readonly csrfTokenHash: string;
+  readonly expiresAt: Date;
 }
 
 export class PrismaSessionService {
@@ -59,6 +60,7 @@ export class PrismaSessionService {
       userId: session.userId,
       playerId: session.user.player.id,
       csrfTokenHash: session.csrfTokenHash,
+      expiresAt: session.expiresAt,
     };
   }
 

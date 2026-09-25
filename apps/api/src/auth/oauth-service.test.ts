@@ -114,4 +114,32 @@ describe('OAuthService', () => {
       'SESSION_SECRET must be at least 32 characters',
     );
   });
+
+  it('validates the application callback destination before persisting or consuming state', async () => {
+    const create = vi.fn();
+    const updateMany = vi.fn();
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { create, updateMany } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET: 'a'.repeat(32),
+        OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+      },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(service.start('discord', '127.0.0.1')).rejects.toThrow('APP_BASE_URL is required');
+    await expect(
+      service.complete('discord', { code: 'code', state: 'state' }, 'invalid-cookie', '127.0.0.1'),
+    ).rejects.toThrow('APP_BASE_URL is required');
+    expect(create).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
 });

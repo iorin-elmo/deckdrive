@@ -200,6 +200,7 @@ export class ApiApplication {
     return {
       status: 200,
       body: { playerId: player.id, displayName: player.user.displayName, csrfToken },
+      headers: { 'set-cookie': this.oauth.csrfCookie(csrfToken, session.expiresAt) },
     };
   }
 

@@ -5,6 +5,41 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('refreshes the CSRF cookie whenever restoring an authenticated session', async () => {
+    const sessionToken = 'session-token';
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('previous-csrf-token'),
+            expiresAt: new Date('2026-10-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/auth/session',
+      headers: { cookie: `deckdrive_session=${sessionToken}` },
+    });
+
+    expect(response).toMatchObject({ status: 200, body: { csrfToken: expect.any(String) } });
+    const csrfToken = (response.body as { csrfToken: string }).csrfToken;
+    expect(response.headers?.['set-cookie']).toContain(`deckdrive_csrf=${csrfToken}`);
+  });
+
   it('requires a matching CSRF token before revoking a cookie-authenticated session', async () => {
     const sessionToken = 'session-token';
     const csrfToken = 'csrf-token';

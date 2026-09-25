@@ -99,8 +99,14 @@ export function clientAddress(
   if (directAddress === undefined || !trustedProxyAddresses.includes(directAddress))
     return directAddress;
   const forwarded = request.headers['x-forwarded-for'];
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
-  return first === undefined || first.length === 0 ? directAddress : first;
+  // A trusted proxy is the only peer that may supply this header. Its rightmost
+  // value is the address it observed; leading values can be client supplied.
+  const addresses = (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+    ?.split(',')
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
+  const client = addresses?.at(-1);
+  return client === undefined ? directAddress : client;
 }
 
 export function isLoopbackAddress(address: string | undefined): boolean {

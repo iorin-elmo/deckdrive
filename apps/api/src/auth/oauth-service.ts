@@ -117,6 +117,8 @@ export class OAuthService {
     linkUserId?: string,
   ): Promise<OAuthStartResult> {
     const adapter = this.adapter(provider);
+    // Validate the post-authentication destination before creating one-time state.
+    this.completionLocation();
     this.rateLimiter.consume(`start:${clientAddress ?? 'unknown'}`);
     const stateSecret = this.requireStateSecret();
     const redirectUri = this.callbackUrl(adapter.id);
@@ -151,6 +153,9 @@ export class OAuthService {
     clientAddress: string | undefined,
   ): Promise<OAuthCompletionResult> {
     const adapter = this.adapter(provider);
+    // Do this before consuming state or creating a session, so a configuration
+    // error leaves the authorization retryable after the deployment is fixed.
+    this.completionLocation();
     this.rateLimiter.consume(`callback:${clientAddress ?? 'unknown'}`);
     this.requireStateSecret();
     const code = input.code;
@@ -212,12 +217,17 @@ export class OAuthService {
         sameSite: 'Lax',
         maxAge,
       }),
-      serializeCookie('deckdrive_csrf', session.csrfToken, {
-        secure: this.isSecure,
-        sameSite: 'Strict',
-        maxAge,
-      }),
+      this.csrfCookie(session.csrfToken, session.expiresAt),
     ];
+  }
+
+  csrfCookie(csrfToken: string, expiresAt: Date): string {
+    const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - this.now().getTime()) / 1000));
+    return serializeCookie('deckdrive_csrf', csrfToken, {
+      secure: this.isSecure,
+      sameSite: 'Strict',
+      maxAge,
+    });
   }
 
   expiredStateCookie(): string {

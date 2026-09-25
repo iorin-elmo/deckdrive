@@ -37,8 +37,8 @@ describe('clientAddress', () => {
     expect(clientAddress(request('198.51.100.4', '203.0.113.8'), [])).toBe('198.51.100.4');
   });
 
-  it('uses the first forwarded address only from a configured direct proxy', () => {
-    expect(clientAddress(request('127.0.0.1', '203.0.113.8, 127.0.0.1'), ['127.0.0.1'])).toBe(
+  it('uses the rightmost forwarded address from a configured direct proxy', () => {
+    expect(clientAddress(request('127.0.0.1', 'spoofed, 203.0.113.8'), ['127.0.0.1'])).toBe(
       '203.0.113.8',
     );
   });
