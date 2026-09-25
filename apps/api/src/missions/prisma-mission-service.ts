@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../generated/prisma/client.js';
+import { type Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { PrismaCosmeticService } from '../cosmetics/prisma-cosmetic-service.js';
 import { PrismaPackOpeningService } from '../packs/prisma-pack-opening.js';
 import { PrismaRewardLedger } from '../rewards/prisma-reward-ledger.js';
@@ -25,6 +25,7 @@ type MissionClient = MissionOperations & Pick<PrismaClient, '$transaction'>;
 
 export class MissionNotFoundError extends Error {}
 export class MissionNotReadyError extends Error {}
+export class LoginRewardConfigurationError extends Error {}
 
 /**
  * Server-side mission rewards. Progress has no public HTTP mutation: battle services invoke
@@ -173,7 +174,13 @@ export class PrismaMissionService {
         where: { playerId_day: { playerId, day } },
       });
       if (existing !== null) {
-        const reward = await this.grantLoginReward(transaction, playerId, day, existing.cycleDay);
+        const reward = await this.grantLoginReward(
+          transaction,
+          playerId,
+          day,
+          existing.cycleDay,
+          loginRewardFromJson(existing.reward),
+        );
         return { claim: existing, reward, alreadyClaimed: true };
       }
       const previous = await transaction.loginRewardClaim.findFirst({
@@ -189,12 +196,25 @@ export class PrismaMissionService {
               cycleDay: previous.cycleDay,
             },
       );
+      const rewardDefinition = loginRewardForCycleDay(cycle.cycleDay).reward;
       const claim = await transaction.loginRewardClaim.upsert({
         where: { playerId_day: { playerId, day } },
         update: {},
-        create: { playerId, day, cycleDay: cycle.cycleDay, claimedAt: now },
+        create: {
+          playerId,
+          day,
+          cycleDay: cycle.cycleDay,
+          reward: toJson(rewardDefinition),
+          claimedAt: now,
+        },
       });
-      const reward = await this.grantLoginReward(transaction, playerId, day, cycle.cycleDay);
+      const reward = await this.grantLoginReward(
+        transaction,
+        playerId,
+        day,
+        cycle.cycleDay,
+        rewardDefinition,
+      );
       return { claim, reward, alreadyClaimed: false };
     });
   }
@@ -204,8 +224,8 @@ export class PrismaMissionService {
     playerId: string,
     day: Date,
     cycleDay: number,
+    reward: LoginReward,
   ) {
-    const reward = loginRewardForCycleDay(cycleDay).reward;
     return this.grantLoginRewardDefinition(transaction, playerId, day, cycleDay, reward);
   }
 
@@ -250,4 +270,29 @@ export class PrismaMissionService {
   private grantRewardInTransaction(transaction: MissionOperations, grant: RewardGrant) {
     return this.rewards.grantInTransaction(new PrismaRewardLedger(transaction), grant);
   }
+}
+
+function loginRewardFromJson(value: Prisma.JsonValue): LoginReward {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new LoginRewardConfigurationError('Stored login reward is invalid.');
+  if (
+    value.kind === 'CURRENCY' &&
+    (value.currency === 'GEM' || value.currency === 'EXCHANGE_POINT') &&
+    typeof value.amount === 'number' &&
+    Number.isInteger(value.amount) &&
+    value.amount > 0
+  )
+    return { kind: value.kind, currency: value.currency, amount: value.amount };
+  if (
+    value.kind === 'PACK' &&
+    (value.productId === 'NORMAL_PACK' || value.productId === 'RARE_PACK')
+  )
+    return { kind: value.kind, productId: value.productId };
+  if (value.kind === 'COSMETIC' && typeof value.cosmeticId === 'string')
+    return { kind: value.kind, cosmeticId: value.cosmeticId };
+  throw new LoginRewardConfigurationError('Stored login reward is invalid.');
+}
+
+function toJson(value: LoginReward): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }

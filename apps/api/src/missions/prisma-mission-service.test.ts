@@ -190,7 +190,11 @@ describe('PrismaMissionService', () => {
     const transaction = {
       $queryRaw: lockPlayer,
       loginRewardClaim: {
-        findUnique: vi.fn().mockResolvedValue({ id: 'claim-1', cycleDay: 4 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'claim-1',
+          cycleDay: 4,
+          reward: { kind: 'CURRENCY', currency: 'GEM', amount: 35 },
+        }),
       },
       currencyTransaction: {
         upsert: vi
@@ -212,6 +216,36 @@ describe('PrismaMissionService', () => {
     expect(result).toMatchObject({ alreadyClaimed: true, claim: { id: 'claim-1' } });
     expect(create).not.toHaveBeenCalled();
     expect(lockPlayer).toHaveBeenCalledOnce();
+  });
+
+  it('replays the stored login reward when the live catalog changes reward kinds', async () => {
+    const transaction = {
+      $queryRaw: vi.fn(),
+      loginRewardClaim: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'claim-3',
+          cycleDay: 3,
+          reward: { kind: 'CURRENCY', currency: 'GEM', amount: 30 },
+        }),
+      },
+      currencyTransaction: {
+        upsert: vi
+          .fn()
+          .mockResolvedValue(
+            storedReward('GEM', 30, 'LOGIN_DAY:3', 'login:2026-09-25T00:00:00.000Z'),
+          ),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await expect(
+      new PrismaMissionService(prisma).claimLoginReward(
+        'player-1',
+        new Date('2026-09-25T10:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ reward: { kind: 'CURRENCY', amount: 30 } });
   });
 
   it('uses an atomic upsert for a concurrent first login claim', async () => {
@@ -245,6 +279,9 @@ describe('PrismaMissionService', () => {
         where: {
           playerId_day: { playerId: 'player-1', day: new Date('2026-09-25T00:00:00.000Z') },
         },
+        create: expect.objectContaining({
+          reward: { kind: 'CURRENCY', currency: 'GEM', amount: 20 },
+        }),
       }),
     );
   });

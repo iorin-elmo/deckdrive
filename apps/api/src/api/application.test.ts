@@ -470,7 +470,7 @@ describe('ApiApplication authentication', () => {
         operation({
           match: { create: matchCreate },
           mission: { findMany: vi.fn().mockResolvedValue([]) },
-          playerMission: { findUnique: vi.fn(), upsert: vi.fn() },
+          playerMission: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
           experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
           $queryRaw: lockPlayer,
           player: {

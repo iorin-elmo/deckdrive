@@ -29,6 +29,7 @@ import {
 } from '../packs/pack-opening.js';
 import { RewardValidationError } from '../rewards/reward-ledger.js';
 import {
+  LoginRewardConfigurationError,
   MissionNotFoundError,
   MissionNotReadyError,
   PrismaMissionService,
@@ -517,6 +518,8 @@ export class ApiApplication {
       return { status: 404, body: { error: 'MISSION_NOT_FOUND' } };
     if (error instanceof MissionNotReadyError)
       return { status: 409, body: { error: 'MISSION_NOT_READY' } };
+    if (error instanceof LoginRewardConfigurationError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof PackPoolUnavailableError)
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
     if (error instanceof DevelopmentAuthenticationDisabledError)

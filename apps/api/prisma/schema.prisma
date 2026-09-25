@@ -123,6 +123,7 @@ model LoginRewardClaim {
   playerId    String   @map("player_id") @db.Uuid
   day         DateTime @db.Date
   cycleDay    Int      @map("cycle_day")
+  reward      Json
   claimedAt   DateTime @default(now()) @map("claimed_at") @db.Timestamptz(6)
   player      Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
 
