@@ -10,6 +10,14 @@ export interface CosmeticGrant {
   readonly idempotencyKey: string;
 }
 
+/** A cosmetic grant key must always identify exactly one immutable grant. */
+export class CosmeticIdempotencyConflictError extends Error {
+  constructor() {
+    super('Idempotency key was already used for a different cosmetic grant.');
+    this.name = 'CosmeticIdempotencyConflictError';
+  }
+}
+
 /** Idempotently grants presentation-only cosmetics; this service never touches battle state. */
 export class PrismaCosmeticService {
   constructor(private readonly prisma: CosmeticClient) {}
@@ -35,7 +43,7 @@ export class PrismaCosmeticService {
       create: grant,
     });
     if (recordedGrant.cosmeticId !== grant.cosmeticId || recordedGrant.source !== grant.source)
-      throw new Error('Idempotency key was already used for a different cosmetic grant.');
+      throw new CosmeticIdempotencyConflictError();
     return transaction.playerCosmetic.upsert({
       where: {
         playerId_cosmeticId: { playerId: grant.playerId, cosmeticId: grant.cosmeticId },

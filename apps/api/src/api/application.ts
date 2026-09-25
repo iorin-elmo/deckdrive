@@ -7,6 +7,7 @@ import {
   DevelopmentAuthenticationDisabledError,
   assertDevelopmentAuthentication,
 } from '../auth/development-auth.js';
+import { CosmeticIdempotencyConflictError } from '../cosmetics/prisma-cosmetic-service.js';
 import type { CpuDifficulty } from '../cpu/strategy.js';
 import {
   DeckValidationError,
@@ -510,6 +511,8 @@ export class ApiApplication {
     if (error instanceof IdempotencyConflictError)
       return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof RewardValidationError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof CosmeticIdempotencyConflictError)
       return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof MissionNotFoundError)
       return { status: 404, body: { error: 'MISSION_NOT_FOUND' } };

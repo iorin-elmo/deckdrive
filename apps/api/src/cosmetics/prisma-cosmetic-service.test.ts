@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../generated/prisma/client.js';
-import { PrismaCosmeticService } from './prisma-cosmetic-service.js';
+import {
+  CosmeticIdempotencyConflictError,
+  PrismaCosmeticService,
+} from './prisma-cosmetic-service.js';
 
 describe('PrismaCosmeticService', () => {
   it('grants an existing cosmetic with an idempotency key and no game-state dependency', async () => {
@@ -92,7 +95,7 @@ describe('PrismaCosmeticService', () => {
         source: 'EVENT',
         idempotencyKey: 'event:42:cosmetic',
       }),
-    ).rejects.toThrow('Idempotency key was already used for a different cosmetic grant.');
+    ).rejects.toBeInstanceOf(CosmeticIdempotencyConflictError);
     expect(ownershipUpsert).not.toHaveBeenCalled();
   });
 });
