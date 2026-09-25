@@ -155,7 +155,7 @@
 
 矢を装填しておき、弓カードでまとめて発射する。装填キューを見せる UI と、矢の解決順を仕様化できると遊びやすい。[新規：装填]
 
-「矢」カードは直接プレイできない。装填効果では手札の矢を選んでコストを支払い、そのカードインスタンスは手札に置いたまま、所有者別の `arrowQueue` に `cardInstanceId` を順に追加する。装填中の矢はキュー以外からは選択・使用できず、カード移動や廃棄を行う効果が明示的に対象にした場合はキューからも除く。発射時はキュー先頭の矢を一時的にロックして効果を解決し、解決後にキューから取り除いて手札から捨て札へ移す。複数本の発射中にキューが空になったらそこで終了する。カードは常に既存のカード領域のどれか1つに属し、Queueは順序付きID参照だけを保持する。`ARROW_LOADED` / `ARROW_FIRED` / `ARROW_REMOVED` イベントに所有者・カードID・移動前後のQueue順・理由・`visibility` を記録し、Queue順もbattle state・snapshot・replayへ保存する。装填中の矢IDは `ARROW_LOADED` / `ARROW_REMOVED` とaction choicesで所有者だけに見せ、発射時の `ARROW_FIRED` は全員に見せる。
+「矢」カードは直接プレイできない。装填効果では手札の矢を選んでコストを支払い、そのカードインスタンスは手札に置いたまま、所有者別の `arrowQueue` に `cardInstanceId` を順に追加する。装填中の矢はキュー以外からは選択・使用できず、カード移動や廃棄を行う効果が明示的に対象にした場合はキューからも除く。発射時はキュー先頭の矢を一時的にロックして効果を解決し、解決後にキューから取り除いて手札から捨て札へ移す。このとき `ARROW_REMOVED` でQueue参照の削除を記録し、続けて `CARD_DISCARDED`（`from: hand`、`to: discard`）でカード領域の移動を記録する。`ARROW_FIRED` は発射と効果解決を記録するイベントであり、カード領域の移動イベントを兼ねない。`ARROW_FIRED` で矢の識別情報を全員に公開した後の `CARD_DISCARDED` も `visibility: allPlayers` とする。複数本の発射中にキューが空になったらそこで終了する。カードは常に既存のカード領域のどれか1つに属し、Queueは順序付きID参照だけを保持する。`ARROW_LOADED` / `ARROW_FIRED` / `ARROW_REMOVED` イベントに所有者・カードID・移動前後のQueue順・理由・`visibility` を記録し、Queue順もbattle state・snapshot・replayへ保存する。装填中の矢IDは `ARROW_LOADED` / `ARROW_REMOVED` とaction choicesで所有者だけに見せ、発射時の `ARROW_FIRED` は全員に見せる。
 
 action境界のbattle state、snapshot、replayでは、各ownerの `arrowQueue` の全IDがそのownerの手札にある `arrow` キーワード付きカードを1枚ずつ参照しなければならない。IDは同一queue内・別ownerのqueue間を含め重複不可とし、相手のカードやdrawPile / discard / exhaustのカードを参照したstateは不正とする。カードを別領域へ移す・廃棄する前に対応するqueue参照を同じ解決内で除き、イベント順にも反映する。snapshot/replay validatorはカード領域の一意性とは別に、このqueue参照整合性を検証する。発射中の一時ロックはaction内部だけで保持し、永続snapshotには残さない。
 
