@@ -55,27 +55,55 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
-type TransactionClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+export type PackOpeningOperations = Pick<
+  PrismaClient,
+  '$queryRaw' | 'packOpening' | 'cardVersion' | 'currencyTransaction' | 'playerCard'
+>;
+type PackOpeningClient = Pick<PrismaClient, '$transaction'>;
+
+interface PackOpeningOptions {
+  readonly chargeGems: boolean;
+  readonly enforcePurchaseLimit: boolean;
+}
 
 /**
  * Owns the Phase 6 database transaction.  The player row lock serializes balance
  * checks, purchases and duplicate conversion for a single player.
  */
 export class PrismaPackOpeningService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PackOpeningClient) {}
 
   async open(request: OpenPackRequest): Promise<OpenPackResult> {
     validateRequest(request);
     const seed = request.seed ?? randomUUID();
     return this.prisma.$transaction(
-      (transaction) => this.openInTransaction(transaction, { ...request, seed }),
+      (transaction) =>
+        this.openInTransaction(
+          transaction,
+          { ...request, seed },
+          { chargeGems: true, enforcePurchaseLimit: true },
+        ),
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
   }
 
-  private async openInTransaction(
-    transaction: TransactionClient,
+  /** Grants a pack without charging currency; callers must own the surrounding transaction lock. */
+  async grantInTransaction(
+    transaction: PackOpeningOperations,
     request: OpenPackRequest,
+  ): Promise<OpenPackResult> {
+    validateRequest(request);
+    return this.openInTransaction(
+      transaction,
+      { ...request, seed: request.seed ?? randomUUID() },
+      { chargeGems: false, enforcePurchaseLimit: false },
+    );
+  }
+
+  private async openInTransaction(
+    transaction: PackOpeningOperations,
+    request: OpenPackRequest,
+    options: PackOpeningOptions,
   ): Promise<OpenPackResult> {
     const seed = request.seed ?? randomUUID();
     const lockedPlayers = await transaction.$queryRaw<readonly { id: string }[]>(Prisma.sql`
@@ -120,7 +148,7 @@ export class PrismaPackOpeningService {
       throw error;
     }
 
-    if (generated.product.limit !== null) {
+    if (options.enforcePurchaseLimit && generated.product.limit !== null) {
       const purchases = await transaction.packOpening.count({
         where: {
           playerId: request.playerId,
@@ -131,11 +159,13 @@ export class PrismaPackOpeningService {
       if (purchases >= generated.product.limit.maximum) throw new PackPurchaseLimitError();
     }
 
-    const balance = await transaction.currencyTransaction.aggregate({
-      where: { playerId: request.playerId, currency: 'GEM' },
-      _sum: { amount: true },
-    });
-    if ((balance._sum.amount ?? 0) < generated.product.gemCost) throw new InsufficientGemError();
+    if (options.chargeGems) {
+      const balance = await transaction.currencyTransaction.aggregate({
+        where: { playerId: request.playerId, currency: 'GEM' },
+        _sum: { amount: true },
+      });
+      if ((balance._sum.amount ?? 0) < generated.product.gemCost) throw new InsufficientGemError();
+    }
 
     const cardIds = [...new Set(generated.cards.map((card) => card.id))];
     const owned = await transaction.playerCard.findMany({
@@ -151,7 +181,7 @@ export class PrismaPackOpeningService {
     const result: OpenPackResult = {
       openingId: '',
       productId: request.productId,
-      gemCost: generated.product.gemCost,
+      gemCost: options.chargeGems ? generated.product.gemCost : 0,
       cards: generated.cards,
       grants,
       exchangePoints,
@@ -160,7 +190,7 @@ export class PrismaPackOpeningService {
       data: {
         playerId: request.playerId,
         product: request.productId,
-        gemCost: generated.product.gemCost,
+        gemCost: options.chargeGems ? generated.product.gemCost : 0,
         seed,
         result: toJson(result),
         idempotencyKey: request.idempotencyKey,
@@ -171,16 +201,18 @@ export class PrismaPackOpeningService {
       where: { id: opening.id },
       data: { result: toJson(persistedResult) },
     });
-    await transaction.currencyTransaction.create({
-      data: {
-        playerId: request.playerId,
-        currency: 'GEM',
-        amount: -generated.product.gemCost,
-        reason: 'PACK_OPEN',
-        referenceId: opening.id,
-        idempotencyKey: `pack:${opening.id}:gem`,
-      },
-    });
+    if (options.chargeGems) {
+      await transaction.currencyTransaction.create({
+        data: {
+          playerId: request.playerId,
+          currency: 'GEM',
+          amount: -generated.product.gemCost,
+          reason: 'PACK_OPEN',
+          referenceId: opening.id,
+          idempotencyKey: `pack:${opening.id}:gem`,
+        },
+      });
+    }
     for (const grant of grants) {
       if (grant.retained === 0) continue;
       await transaction.playerCard.upsert({

@@ -254,9 +254,8 @@ export class ApiApplication {
   }
 
   private async progression(playerId: string): Promise<ApiResponse> {
-    const today = new Date(
-      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()),
-    );
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const [player, lastLoginClaim] = await Promise.all([
       this.prisma.player.findUniqueOrThrow({
         where: { id: playerId },

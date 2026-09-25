@@ -21,6 +21,11 @@ export interface MissionCatalogEntry {
   readonly active: boolean;
 }
 
+export type LoginReward =
+  | { readonly kind: 'CURRENCY'; readonly currency: RewardCurrency; readonly amount: number }
+  | { readonly kind: 'PACK'; readonly productId: 'NORMAL_PACK' | 'RARE_PACK' }
+  | { readonly kind: 'COSMETIC'; readonly cosmeticId: string };
+
 /** Server-managed mission definitions. Clients only receive progress and may never submit it. */
 export const missionCatalog: readonly MissionCatalogEntry[] = [
   {
@@ -99,15 +104,15 @@ export const missionCatalog: readonly MissionCatalogEntry[] = [
 
 export const loginRewardSchedule: readonly {
   readonly cycleDay: number;
-  readonly reward: { readonly currency: RewardCurrency; readonly amount: number };
+  readonly reward: LoginReward;
 }[] = [
-  { cycleDay: 1, reward: { currency: 'GEM', amount: 20 } },
-  { cycleDay: 2, reward: { currency: 'GEM', amount: 25 } },
-  { cycleDay: 3, reward: { currency: 'GEM', amount: 30 } },
-  { cycleDay: 4, reward: { currency: 'GEM', amount: 35 } },
-  { cycleDay: 5, reward: { currency: 'GEM', amount: 40 } },
-  { cycleDay: 6, reward: { currency: 'GEM', amount: 50 } },
-  { cycleDay: 7, reward: { currency: 'EXCHANGE_POINT', amount: 100 } },
+  { cycleDay: 1, reward: { kind: 'CURRENCY', currency: 'GEM', amount: 20 } },
+  { cycleDay: 2, reward: { kind: 'CURRENCY', currency: 'EXCHANGE_POINT', amount: 25 } },
+  { cycleDay: 3, reward: { kind: 'PACK', productId: 'NORMAL_PACK' } },
+  { cycleDay: 4, reward: { kind: 'CURRENCY', currency: 'GEM', amount: 35 } },
+  { cycleDay: 5, reward: { kind: 'COSMETIC', cosmeticId: 'frame.aurora' } },
+  { cycleDay: 6, reward: { kind: 'PACK', productId: 'NORMAL_PACK' } },
+  { cycleDay: 7, reward: { kind: 'PACK', productId: 'RARE_PACK' } },
 ];
 
 export function loginRewardForCycleDay(cycleDay: number) {

@@ -66,8 +66,3 @@ export const cosmeticCatalog: readonly CosmeticCatalogEntry[] = [
     description: 'A profile decoration.',
   },
 ];
-
-/** Login rewards grant this presentation-only item on day five of the seven-day cycle. */
-export function loginCosmeticForCycleDay(cycleDay: number): string | undefined {
-  return cycleDay === 5 ? 'frame.aurora' : undefined;
-}
