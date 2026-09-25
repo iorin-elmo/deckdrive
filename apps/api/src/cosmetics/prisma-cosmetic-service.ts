@@ -1,6 +1,6 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 
-type CosmeticOperations = Pick<PrismaClient, 'cosmetic' | 'cosmeticGrant' | 'playerCosmetic'>;
+type CosmeticOperations = Pick<PrismaClient, 'cosmetic' | 'playerCosmetic'>;
 type CosmeticClient = CosmeticOperations & Pick<PrismaClient, '$transaction'>;
 
 export interface CosmeticGrant {
@@ -24,18 +24,19 @@ export class PrismaCosmeticService {
     validateGrant(grant);
     const cosmetic = await transaction.cosmetic.findUnique({ where: { id: grant.cosmeticId } });
     if (cosmetic === null) throw new Error('Cosmetic was not found.');
-    const recordedGrant = await transaction.cosmeticGrant.upsert({
+    const existing = await transaction.playerCosmetic.findUnique({
       where: {
         playerId_idempotencyKey: {
           playerId: grant.playerId,
           idempotencyKey: grant.idempotencyKey,
         },
       },
-      update: {},
-      create: grant,
     });
-    if (recordedGrant.cosmeticId !== grant.cosmeticId || recordedGrant.source !== grant.source)
-      throw new Error('Idempotency key was already used for a different cosmetic grant.');
+    if (existing !== null) {
+      if (existing.cosmeticId !== grant.cosmeticId || existing.source !== grant.source)
+        throw new Error('Idempotency key was already used for a different cosmetic grant.');
+      return existing;
+    }
     return transaction.playerCosmetic.upsert({
       where: {
         playerId_cosmeticId: { playerId: grant.playerId, cosmeticId: grant.cosmeticId },

@@ -82,7 +82,6 @@ model Player {
   missions             PlayerMission[]
   loginRewardClaims    LoginRewardClaim[]
   cosmetics            PlayerCosmetic[]
-  cosmeticGrants       CosmeticGrant[]
   experienceTransactions ExperienceTransaction[]
 
   @@map("players")
@@ -138,7 +137,6 @@ model Cosmetic {
   description String
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   owners      PlayerCosmetic[]
-  grants      CosmeticGrant[]
 
   @@map("cosmetics")
 }
@@ -157,21 +155,6 @@ model PlayerCosmetic {
   @@unique([playerId, idempotencyKey])
   @@index([playerId, acquiredAt])
   @@map("player_cosmetics")
-}
-
-model CosmeticGrant {
-  id             String   @id @default(uuid()) @db.Uuid
-  playerId       String   @map("player_id") @db.Uuid
-  cosmeticId     String   @map("cosmetic_id")
-  source         String
-  idempotencyKey String   @map("idempotency_key")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
-  cosmetic       Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
-
-  @@unique([playerId, idempotencyKey])
-  @@index([playerId, createdAt])
-  @@map("cosmetic_grants")
 }
 
 model ExperienceTransaction {

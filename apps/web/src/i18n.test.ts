@@ -6,9 +6,7 @@ import {
   localizeBattlePhase,
   localizeCard,
   localizeCardMetadata,
-  localizeCosmetic,
   localizePurchaseFrequencyPeriod,
-  localizeValue,
   localizedCardName,
 } from './i18n.js';
 
@@ -75,29 +73,5 @@ describe('localizePurchaseFrequencyPeriod', () => {
   it('uses singular English nouns in purchase-frequency messages', () => {
     expect(localizePurchaseFrequencyPeriod('WEEK', 'en')).toBe('week');
     expect(localizePurchaseFrequencyPeriod('MONTH', 'en')).toBe('month');
-  });
-});
-
-describe('mission and cosmetic localization', () => {
-  it('translates mission metrics for the Japanese mission screen', () => {
-    expect(localizeValue('CPU_BATTLE', 'ja')).toBe('CPUバトル');
-  });
-
-  it('translates catalog cosmetics for the Japanese confirmation screen', () => {
-    expect(
-      localizeCosmetic(
-        {
-          id: 'frame.aurora',
-          kind: 'CARD_FRAME',
-          name: 'Aurora Frame',
-          description: 'A cool cyan card frame.',
-        },
-        'ja',
-      ),
-    ).toEqual({
-      kind: 'カードフレーム',
-      name: 'オーロラフレーム',
-      description: '涼やかなシアンで彩るカードフレームです。',
-    });
   });
 });

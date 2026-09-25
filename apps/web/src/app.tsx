@@ -57,7 +57,6 @@ import {
   localizeCard,
   localizeBattlePhase,
   localizeCardMetadata,
-  localizeCosmetic,
   localizePurchaseFrequencyPeriod,
   localizeValue,
   localizedCardName,
@@ -571,7 +570,7 @@ function MissionsPage() {
                       <p className="font-bold text-stone-100">{mission.id}</p>
                       <p className="mt-1 text-sm text-stone-400">
                         {localizeValue(mission.cadence, locale)} ·{' '}
-                        {localizeValue(mission.metric, locale)}
+                        {mission.metric.replaceAll('_', ' ')}
                       </p>
                     </div>
                     <span className="text-sm font-bold text-amber-200">
@@ -615,24 +614,19 @@ function MissionsPage() {
           <p className="mt-5 text-stone-400">{t('noCosmetics')}</p>
         ) : null}
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {cosmetics.data?.map((cosmetic) => {
-            const localizedCosmetic = localizeCosmetic(cosmetic, locale);
-            return (
-              <article className="surface-panel p-5" key={cosmetic.id}>
-                <Palette className="text-cyan-200" size={20} aria-hidden="true" />
-                <p className="mt-5 text-xs font-bold tracking-wide text-amber-200">
-                  {localizedCosmetic.kind}
-                </p>
-                <h3 className="mt-2 text-xl font-black">{localizedCosmetic.name}</h3>
-                <p className="mt-2 text-sm leading-6 text-stone-300">
-                  {localizedCosmetic.description}
-                </p>
-                <p className="mt-4 text-xs text-stone-400">
-                  {cosmetic.acquiredAt === null ? t('inProgress') : t('claimed')}
-                </p>
-              </article>
-            );
-          })}
+          {cosmetics.data?.map((cosmetic) => (
+            <article className="surface-panel p-5" key={cosmetic.id}>
+              <Palette className="text-cyan-200" size={20} aria-hidden="true" />
+              <p className="mt-5 text-xs font-bold tracking-wide text-amber-200">
+                {cosmetic.kind.replaceAll('_', ' ')}
+              </p>
+              <h3 className="mt-2 text-xl font-black">{cosmetic.name}</h3>
+              <p className="mt-2 text-sm leading-6 text-stone-300">{cosmetic.description}</p>
+              <p className="mt-4 text-xs text-stone-400">
+                {cosmetic.acquiredAt === null ? t('inProgress') : t('claimed')}
+              </p>
+            </article>
+          ))}
         </div>
       </section>
     </>

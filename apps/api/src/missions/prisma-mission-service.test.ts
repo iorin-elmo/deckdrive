@@ -220,9 +220,6 @@ describe('PrismaMissionService', () => {
         upsert: vi.fn().mockResolvedValue({ currency: 'GEM', amount: 40, reason: 'LOGIN_DAY:5' }),
       },
       cosmetic: { findUnique: vi.fn().mockResolvedValue({ id: 'frame.aurora' }) },
-      cosmeticGrant: {
-        upsert: vi.fn().mockResolvedValue({ cosmeticId: 'frame.aurora', source: 'LOGIN_DAY:5' }),
-      },
       playerCosmetic: { findUnique: vi.fn().mockResolvedValue(null), upsert: cosmeticUpsert },
     };
     const prisma = {
