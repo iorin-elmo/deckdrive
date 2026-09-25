@@ -6,9 +6,11 @@ import { PrismaProgressionService } from './prisma-progression-service.js';
 describe('PrismaProgressionService', () => {
   it('records an idempotent experience grant before updating the player level', async () => {
     const update = vi.fn().mockResolvedValue({ experience: 210, level: 2 });
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const lockPlayer = vi.fn();
     const transaction = {
-      experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
-      $queryRaw: vi.fn(),
+      experienceTransaction: { createMany },
+      $queryRaw: lockPlayer,
       player: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 190, level: 1 }),
         update,
@@ -28,6 +30,9 @@ describe('PrismaProgressionService', () => {
     ).resolves.toEqual({ experience: 210, level: 2 });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { experience: 210, level: 2 } }),
+    );
+    expect(lockPlayer.mock.invocationCallOrder[0]).toBeLessThan(
+      createMany.mock.invocationCallOrder[0]!,
     );
   });
 

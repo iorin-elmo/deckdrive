@@ -11,6 +11,14 @@ export interface ExperienceGrant {
   readonly idempotencyKey: string;
 }
 
+/** Locks a player before writing per-player child records in an authoritative transaction. */
+export async function lockPlayerForUpdate(
+  transaction: Pick<PrismaClient, '$queryRaw'>,
+  playerId: string,
+): Promise<void> {
+  await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${playerId} FOR UPDATE`;
+}
+
 /** Idempotent, server-only XP grants. Level is presentation/progression data, never game-engine input. */
 export class PrismaProgressionService {
   constructor(private readonly prisma: ProgressionClient) {}
@@ -25,6 +33,9 @@ export class PrismaProgressionService {
   /** Allows an authoritative match event and its XP grant to commit atomically. */
   async grantExperienceInTransaction(transaction: ProgressionOperations, grant: ExperienceGrant) {
     validateExperienceGrant(grant);
+    // Lock before the ledger insert: that insert takes a foreign-key KEY SHARE lock,
+    // which must never be acquired before another transaction's FOR UPDATE lock.
+    await lockPlayerForUpdate(transaction, grant.playerId);
     const inserted = await transaction.experienceTransaction.createMany({
       data: grant,
       skipDuplicates: true,
@@ -45,9 +56,7 @@ export class PrismaProgressionService {
         select: { experience: true, level: true },
       });
     }
-    // Different idempotency keys may be granted concurrently. This serializes the
-    // read/level-calculation/write sequence without involving game state.
-    await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${grant.playerId} FOR UPDATE`;
+    // Different idempotency keys are serialized before read/level-calculation/write.
     const current = await transaction.player.findUniqueOrThrow({
       where: { id: grant.playerId },
       select: { experience: true, level: true },

@@ -441,6 +441,8 @@ describe('ApiApplication authentication', () => {
   });
 
   it('uses the stored CardDefinition ID when creating CPU card instances', async () => {
+    const matchCreate = vi.fn();
+    const lockPlayer = vi.fn();
     const application = new ApiApplication({
       player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
       deck: {
@@ -465,11 +467,11 @@ describe('ApiApplication authentication', () => {
       },
       $transaction: vi.fn((operation) =>
         operation({
-          match: { create: vi.fn() },
+          match: { create: matchCreate },
           mission: { findMany: vi.fn().mockResolvedValue([]) },
           playerMission: { findUnique: vi.fn(), upsert: vi.fn() },
           experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
-          $queryRaw: vi.fn(),
+          $queryRaw: lockPlayer,
           player: {
             findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 0, level: 1 }),
             update: vi.fn(),
@@ -488,6 +490,9 @@ describe('ApiApplication authentication', () => {
     expect(response.status).toBe(201);
     const state = (response.body as { state: { players: { hand: unknown[] }[] } }).state;
     expect(state.players[0]?.hand[0]).toMatchObject({ definitionId: 'engine-definition-id' });
+    expect(lockPlayer.mock.invocationCallOrder[0]).toBeLessThan(
+      matchCreate.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('rejects an incomplete deck before creating a CPU match', async () => {

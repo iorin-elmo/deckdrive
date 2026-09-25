@@ -32,7 +32,10 @@ import {
   MissionNotReadyError,
   PrismaMissionService,
 } from '../missions/prisma-mission-service.js';
-import { PrismaProgressionService } from '../missions/prisma-progression-service.js';
+import {
+  lockPlayerForUpdate,
+  PrismaProgressionService,
+} from '../missions/prisma-progression-service.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -394,6 +397,9 @@ export class ApiApplication {
       ],
     });
     await this.prisma.$transaction(async (transaction) => {
+      // Lock before creating match/mission child records so every per-player write
+      // in this authoritative transaction has a consistent lock order.
+      await lockPlayerForUpdate(transaction, playerId);
       await transaction.match.create({
         data: {
           id: matchId,
