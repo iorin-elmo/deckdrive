@@ -12,6 +12,7 @@ type MissionOperations = Pick<
   | 'loginRewardClaim'
   | 'currencyTransaction'
   | 'cosmetic'
+  | 'cosmeticGrant'
   | 'playerCosmetic'
   | '$queryRaw'
 >;
