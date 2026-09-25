@@ -1,7 +1,10 @@
 import { type Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { PrismaCosmeticService } from '../cosmetics/prisma-cosmetic-service.js';
 import { PrismaPackOpeningService } from '../packs/prisma-pack-opening.js';
-import { PrismaRewardLedger } from '../rewards/prisma-reward-ledger.js';
+import {
+  PrismaRewardLedger,
+  PrismaRewardLedgerOperations,
+} from '../rewards/prisma-reward-ledger.js';
 import { RewardService, type RewardGrant } from '../rewards/reward-ledger.js';
 import { loginRewardForCycleDay, type LoginReward, type MissionMetric } from './catalog.js';
 import { missionPeriodStart, nextLoginCycle } from './progression.js';
@@ -268,7 +271,7 @@ export class PrismaMissionService {
   }
 
   private grantRewardInTransaction(transaction: MissionOperations, grant: RewardGrant) {
-    return this.rewards.grantInTransaction(new PrismaRewardLedger(transaction), grant);
+    return this.rewards.grantInTransaction(new PrismaRewardLedgerOperations(transaction), grant);
   }
 }
 
