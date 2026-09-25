@@ -10,6 +10,7 @@ import {
   deckBuilderCardsForVersion,
   deckBuilderCopyLimit,
   deckBuilderInput,
+  hasOwnedCosmetics,
   isCpuReadyDeck,
   isUnauthorizedApiError,
   loginReturnPath,
@@ -104,6 +105,13 @@ describe('isCpuReadyDeck', () => {
   it('only allows complete 30-card decks into CPU practice', () => {
     expect(isCpuReadyDeck(deck(30))).toBe(true);
     expect(isCpuReadyDeck(deck(2))).toBe(false);
+  });
+});
+
+describe('hasOwnedCosmetics', () => {
+  it('uses ownership state rather than catalog size for an empty cosmetics state', () => {
+    expect(hasOwnedCosmetics([{ acquiredAt: null }, { acquiredAt: null }])).toBe(false);
+    expect(hasOwnedCosmetics([{ acquiredAt: '2026-09-25T00:00:00.000Z' }])).toBe(true);
   });
 });
 

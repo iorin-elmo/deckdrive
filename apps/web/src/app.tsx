@@ -611,7 +611,7 @@ function MissionsPage() {
             <ApiFailure error={cosmetics.error} onRetry={() => void cosmetics.refetch()} />
           </div>
         ) : null}
-        {cosmetics.data?.length === 0 ? (
+        {cosmetics.data !== undefined && !hasOwnedCosmetics(cosmetics.data) ? (
           <p className="mt-5 text-stone-400">{t('noCosmetics')}</p>
         ) : null}
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1651,6 +1651,12 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
       <p className="metric-value">{value}</p>
     </div>
   );
+}
+
+export function hasOwnedCosmetics(
+  cosmetics: readonly { readonly acquiredAt: string | null }[],
+): boolean {
+  return cosmetics.some((cosmetic) => cosmetic.acquiredAt !== null);
 }
 
 export function isCpuReadyDeck(deck: Deck): boolean {
