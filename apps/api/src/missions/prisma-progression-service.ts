@@ -16,7 +16,7 @@ export async function lockPlayerForUpdate(
   transaction: Pick<PrismaClient, '$queryRaw'>,
   playerId: string,
 ): Promise<void> {
-  await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${playerId} FOR UPDATE`;
+  await transaction.$queryRaw`SELECT "id" FROM "players" WHERE "id" = ${playerId}::uuid FOR UPDATE`;
 }
 
 /** Idempotent, server-only XP grants. Level is presentation/progression data, never game-engine input. */

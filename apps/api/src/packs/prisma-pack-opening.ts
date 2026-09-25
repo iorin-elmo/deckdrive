@@ -9,6 +9,7 @@ import {
   type ApiPackProduct,
   type CardGrant,
   type GeneratedPackOpening,
+  PackOpeningValidationError,
 } from './pack-opening.js';
 
 export interface OpenPackRequest {
@@ -75,6 +76,10 @@ export class PrismaPackOpeningService {
 
   async open(request: OpenPackRequest): Promise<OpenPackResult> {
     validateRequest(request);
+    if (request.idempotencyKey.startsWith(serverRewardIdempotencyPrefix))
+      throw new PackOpeningValidationError(
+        'Client idempotency keys may not use the server prefix.',
+      );
     const seed = request.seed ?? randomUUID();
     return this.prisma.$transaction(
       (transaction) =>
@@ -251,6 +256,9 @@ function validateRequest(request: OpenPackRequest): void {
   if (request.idempotencyKey.trim().length === 0)
     throw new Error('An idempotency key is required.');
 }
+
+/** Client-supplied keys may never overlap reserved, server-generated reward keys. */
+export const serverRewardIdempotencyPrefix = 'server:';
 
 function packRarity(definition: Prisma.JsonValue): PackRarity | undefined {
   if (typeof definition !== 'object' || definition === null || Array.isArray(definition))

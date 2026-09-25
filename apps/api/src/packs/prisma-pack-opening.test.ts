@@ -6,6 +6,7 @@ import {
   PrismaPackOpeningService,
   type PackOpeningOperations,
 } from './prisma-pack-opening.js';
+import { PackOpeningValidationError } from './pack-opening.js';
 
 const pool = [
   { id: 'n', rarity: 'N' },
@@ -64,6 +65,20 @@ describe('PrismaPackOpeningService', () => {
     expect(transaction.packOpening.count).not.toHaveBeenCalled();
   });
 
+  it('rejects a client idempotency key in the reserved server reward namespace', async () => {
+    const service = new PrismaPackOpeningService({
+      $transaction: vi.fn(),
+    } as unknown as PrismaClient);
+
+    await expect(
+      service.open({
+        playerId: 'player',
+        productId: 'NORMAL_PACK',
+        idempotencyKey: 'server:login:2026-09-25T00:00:00.000Z:pack',
+      }),
+    ).rejects.toBeInstanceOf(PackOpeningValidationError);
+  });
+
   it('grants a login pack without charging Gems', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'opening' });
     const currencyCreate = vi.fn();
@@ -91,7 +106,7 @@ describe('PrismaPackOpeningService', () => {
       {
         playerId: 'player',
         productId: 'NORMAL_PACK',
-        idempotencyKey: 'login:2026-09-25:pack',
+        idempotencyKey: 'server:login:2026-09-25:pack',
         seed: 'login-pack',
       },
     );

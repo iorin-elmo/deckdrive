@@ -259,7 +259,7 @@ export class PrismaMissionService {
         {
           playerId,
           productId: reward.productId,
-          idempotencyKey: `${idempotencyPrefix}:pack`,
+          idempotencyKey: `server:${idempotencyPrefix}:pack`,
         },
       );
       return { kind: reward.kind, productId: reward.productId, opening };
