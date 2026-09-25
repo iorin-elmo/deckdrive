@@ -11,7 +11,7 @@ import { ApiApplication, type ApiRequest } from './application.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
-const corsHeaders = 'content-type, idempotency-key, x-deckdrive-player-id';
+const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id';
 
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
@@ -34,7 +34,8 @@ export function createApiHttpServer(
         response.end();
         return;
       }
-      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      const path = url.pathname;
       if (
         shouldRejectDevelopmentLogin(
           request.method,
@@ -50,6 +51,10 @@ export function createApiHttpServer(
       const apiRequest: ApiRequest = {
         method: request.method ?? 'GET',
         path,
+        query: Object.fromEntries(url.searchParams.entries()),
+        ...(request.socket.remoteAddress === undefined
+          ? {}
+          : { clientAddress: request.socket.remoteAddress }),
         headers: Object.fromEntries(
           Object.entries(request.headers).map(([name, value]) => [
             name,
@@ -59,7 +64,13 @@ export function createApiHttpServer(
         body: await readJsonBody(request),
       };
       const apiResponse = await application.handle(apiRequest);
-      writeJson(response, apiResponse.status, apiResponse.body, responseHeaders);
+      writeJson(response, apiResponse.status, apiResponse.body, {
+        ...responseHeaders,
+        ...apiResponse.headers,
+        ...(apiResponse.headers?.['set-cookie'] === undefined
+          ? {}
+          : { 'cache-control': 'private, no-store' }),
+      });
     } catch (error) {
       if (response.headersSent) return;
       if (error instanceof HttpRequestError) {
@@ -151,13 +162,15 @@ function corsResponseHeaders(
     'access-control-allow-origin': origin,
     'access-control-allow-methods': corsMethods,
     'access-control-allow-headers': corsHeaders,
+    'access-control-allow-credentials': 'true',
     'access-control-max-age': '600',
     vary: 'Origin',
   };
 }
 
 function authenticatedResponseHeaders(request: IncomingMessage): OutgoingHttpHeaders {
-  return request.headers['x-deckdrive-player-id'] === undefined
+  return request.headers['x-deckdrive-player-id'] === undefined &&
+    request.headers.cookie === undefined
     ? {}
     : { 'cache-control': 'private, no-store' };
 }

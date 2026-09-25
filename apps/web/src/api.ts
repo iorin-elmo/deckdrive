@@ -121,6 +121,8 @@ export interface Cosmetic {
 
 export interface DeckDriveClient {
   developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
+  session(): Promise<{ playerId: string; displayName: string }>;
+  logout(): Promise<void>;
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
   collection(playerId: string): Promise<Collection>;
@@ -174,6 +176,14 @@ export class DeckDriveApi implements DeckDriveClient {
       method: 'POST',
       body: { email, displayName },
     });
+  }
+
+  async session(): Promise<{ playerId: string; displayName: string }> {
+    return this.request('/api/v1/auth/session');
+  }
+
+  async logout(): Promise<void> {
+    await this.request('/api/v1/auth/logout', { method: 'POST' });
   }
 
   async me(playerId: string): Promise<Player> {
@@ -282,6 +292,7 @@ export class DeckDriveApi implements DeckDriveClient {
     } = {},
   ): Promise<Result> {
     let response: Response;
+    const csrf = csrfToken();
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         method: options.method ?? 'GET',
@@ -291,7 +302,11 @@ export class DeckDriveApi implements DeckDriveClient {
             ? {}
             : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...((options.method === 'POST' || options.method === 'PUT') && csrf !== undefined
+            ? { 'X-CSRF-Token': csrf }
+            : {}),
         },
+        credentials: 'include',
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });
     } catch {
@@ -313,6 +328,20 @@ export class DeckDriveApi implements DeckDriveClient {
 }
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
+
+function csrfToken(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const cookie = document.cookie
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith('deckdrive_csrf='));
+  if (cookie === undefined) return undefined;
+  try {
+    return decodeURIComponent(cookie.slice('deckdrive_csrf='.length));
+  } catch {
+    return undefined;
+  }
+}
 
 const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
   (definition) => ({
@@ -416,6 +445,10 @@ export const previewApi: DeckDriveClient = {
   async developmentLogin() {
     return { playerId: 'preview-player' };
   },
+  async session() {
+    return { playerId: 'preview-player', displayName: 'Offline preview' };
+  },
+  async logout() {},
   async me() {
     return {
       id: 'preview-player',

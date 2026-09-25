@@ -192,6 +192,16 @@ function LoginPage() {
       navigate(returnTo);
     },
   });
+  const session = useQuery({
+    queryKey: ['oauth-session'],
+    queryFn: () => api.session(),
+    retry: false,
+  });
+  useEffect(() => {
+    if (session.data === undefined) return;
+    setPlayerId(session.data.playerId);
+    navigate(returnTo, { replace: true });
+  }, [navigate, returnTo, session.data, setPlayerId]);
   return (
     <main className="app-background flex min-h-screen items-center justify-center p-5 text-stone-100">
       <section aria-labelledby="login-title" className="surface-panel w-full max-w-md p-6 sm:p-8">
@@ -251,6 +261,22 @@ function LoginPage() {
             {t('signInDevelopment')}
           </ActionButton>
         </form>
+        <div className="my-6 flex items-center gap-3 text-xs text-stone-400" aria-hidden="true">
+          <span className="h-px flex-1 bg-stone-700" />
+          OAuth
+          <span className="h-px flex-1 bg-stone-700" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {(['google', 'discord', 'x'] as const).map((provider) => (
+            <a
+              className="rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
+              href={`/api/v1/auth/oauth/${provider}/start`}
+              key={provider}
+            >
+              {provider === 'x' ? 'X' : provider.slice(0, 1).toUpperCase() + provider.slice(1)}
+            </a>
+          ))}
+        </div>
       </section>
     </main>
   );
@@ -322,6 +348,7 @@ function AuthenticatedLayout() {
     clearPlayerId();
   }, [clearPlayerId, queryClient, unauthorized]);
   const signOut = () => {
+    if (!previewMode) void api.logout().catch(() => undefined);
     queryClient.clear();
     clearPlayerId();
   };
