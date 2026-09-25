@@ -27,6 +27,7 @@ const resources = {
     navCards: 'Cards',
     navDecks: 'Decks',
     navPacks: 'Packs',
+    navMissions: 'Progress',
     navCpu: 'CPU',
     navSettings: 'Settings',
     signOut: 'Sign out',
@@ -200,8 +201,41 @@ const resources = {
     serviceUnavailable: 'The service could not be reached.',
     retryAdvice: 'Check that the API is running, then try again.',
     sessionAdvice: 'Review the request details and your session, then try again.',
+    missionHub: 'Missions & progression',
+    missionHubDescription: 'Server time governs mission progress and reward claims.',
+    loginRewards: 'Login rewards',
+    loginRewardDescription: 'Claim one reward per day on a seven-day cycle.',
+    claimLogin: 'Claim login reward',
+    claimedToday: 'Today’s reward is claimed',
+    level: 'Level',
+    experience: 'Experience',
+    missions: 'Missions',
+    claim: 'Claim',
+    claimed: 'Claimed',
+    inProgress: 'In progress',
+    notOwned: 'Not owned',
+    cosmetics: 'Cosmetics',
+    cosmeticsDescription: 'Cosmetics change presentation only and never affect battle performance.',
+    noCosmetics: 'No cosmetics are owned yet.',
   },
   ja: {
+    navMissions: 'ミッション',
+    missionHub: 'ミッションと進行状況',
+    missionHubDescription: 'サーバー時刻を基準に、進捗と報酬を安全に管理します。',
+    loginRewards: 'ログインボーナス',
+    loginRewardDescription: '1日1回、7日サイクルで報酬を受け取れます。',
+    claimLogin: 'ログイン報酬を受け取る',
+    claimedToday: '本日の報酬は受取済みです',
+    level: 'レベル',
+    experience: '経験値',
+    missions: 'ミッション',
+    claim: '受け取る',
+    claimed: '受取済み',
+    inProgress: '進行中',
+    notOwned: '未所有',
+    cosmetics: 'コスメティック',
+    cosmeticsDescription: 'コスメティックは見た目のみを変更し、戦闘性能に影響しません。',
+    noCosmetics: '所有コスメティックはまだありません。',
     language: '🌐 言語',
     english: 'English',
     japanese: '日本語',
@@ -545,6 +579,24 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     STRENGTH: 'Strength',
     REGEN: 'Regeneration',
     THORNS: 'Thorns',
+    CPU_BATTLE: 'CPU battle',
+    PVP_BATTLE: 'PvP battle',
+    CARD_PLAY: 'Play cards',
+    DAMAGE: 'Deal damage',
+    BLOCK: 'Gain block',
+    WIN: 'Win battles',
+    RANKED_BATTLE: 'Ranked battle',
+    CLASS_USAGE: 'Use classes',
+    DECK_OBJECTIVE: 'Deck objective',
+    CARD_FRAME: 'Card frame',
+    CARD_FULL_ART_FX: 'Full-art effect',
+    CARD_ANIMATION: 'Card animation',
+    HOLOGRAM: 'Hologram',
+    LEADER_SKIN: 'Leader skin',
+    PLAYMAT: 'Playmat',
+    CARD_SLEEVE: 'Card sleeve',
+    TITLE: 'Title',
+    PROFILE_DECORATION: 'Profile decoration',
   },
   ja: {
     NORMAL_PACK: '通常パック',
@@ -574,11 +626,108 @@ const localizedValues: Readonly<Record<Locale, Readonly<Record<string, string>>>
     MAIN: 'メイン',
     END: '終了',
     MATCH_END: '対戦終了',
+    CPU_BATTLE: 'CPUバトル',
+    PVP_BATTLE: '対人バトル',
+    CARD_PLAY: 'カード使用',
+    DAMAGE: 'ダメージ',
+    BLOCK: 'ブロック',
+    WIN: '勝利',
+    RANKED_BATTLE: 'ランク戦',
+    CLASS_USAGE: 'クラス使用',
+    DECK_OBJECTIVE: 'デッキ目標',
+    CARD_FRAME: 'カードフレーム',
+    CARD_FULL_ART_FX: 'フルアートエフェクト',
+    CARD_ANIMATION: 'カードアニメーション',
+    HOLOGRAM: 'ホログラム',
+    LEADER_SKIN: 'リーダースキン',
+    PLAYMAT: 'プレイマット',
+    CARD_SLEEVE: 'カードスリーブ',
+    TITLE: '称号',
+    PROFILE_DECORATION: 'プロフィール装飾',
   },
 };
 
 export function localizeValue(value: string, locale: Locale): string {
   return localizedValues[locale][value] ?? value;
+}
+
+interface CosmeticLocalizationInput {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+interface CosmeticLocalization {
+  readonly kind: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+const cosmeticTranslations: Readonly<
+  Record<Locale, Readonly<Record<string, CosmeticLocalization>>>
+> = {
+  en: {},
+  ja: {
+    'frame.aurora': {
+      kind: 'カードフレーム',
+      name: 'オーロラフレーム',
+      description: '涼やかなシアンで彩るカードフレームです。',
+    },
+    'art.starlight': {
+      kind: 'フルアートエフェクト',
+      name: 'スターライト',
+      description: 'フルアートを星明かりで淡く演出します。',
+    },
+    'animation.comet': {
+      kind: 'カードアニメーション',
+      name: 'コメット',
+      description: 'カード登場時に彗星の軌跡を描きます。',
+    },
+    'hologram.prism': {
+      kind: 'ホログラム',
+      name: 'プリズム',
+      description: '虹色にきらめくホログラム仕上げです。',
+    },
+    'leader.vanguard': {
+      kind: 'リーダースキン',
+      name: 'ヴァンガード',
+      description: '先陣を切るリーダーのポートレートです。',
+    },
+    'playmat.observatory': {
+      kind: 'プレイマット',
+      name: '天文台',
+      description: '夜空を見上げる天文台のプレイマットです。',
+    },
+    'sleeve.circuit': {
+      kind: 'カードスリーブ',
+      name: 'サーキット',
+      description: '回路模様のカードスリーブです。',
+    },
+    'title.pathfinder': {
+      kind: '称号',
+      name: 'パスファインダー',
+      description: '新たな道を切り開く者の称号です。',
+    },
+    'profile.signal': {
+      kind: 'プロフィール装飾',
+      name: 'シグナル',
+      description: 'プロフィールを彩る信号の装飾です。',
+    },
+  },
+};
+
+export function localizeCosmetic(
+  cosmetic: CosmeticLocalizationInput,
+  locale: Locale,
+): CosmeticLocalization {
+  return (
+    cosmeticTranslations[locale][cosmetic.id] ?? {
+      kind: localizeValue(cosmetic.kind, locale),
+      name: cosmetic.name,
+      description: cosmetic.description,
+    }
+  );
 }
 
 const purchaseFrequencyPeriods: Readonly<Record<Locale, Readonly<Record<string, string>>>> = {

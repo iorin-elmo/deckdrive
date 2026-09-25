@@ -76,6 +76,107 @@ describe('ApiApplication authentication', () => {
     expect(findUnique).toHaveBeenCalledWith({ where: { id: 'player-1' }, select: { id: true } });
   });
 
+  it('reports login-claim state for the current UTC day only', async () => {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const application = new ApiApplication({
+      player: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 100, level: 1 }),
+      },
+      loginRewardClaim: { findUnique },
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/progression',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { loginClaimedToday: false } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { playerId_day: { playerId: 'player-1', day: today } },
+    });
+  });
+
+  it('returns only the authenticated player mission progress for the current server period', async () => {
+    const now = new Date();
+    const periodStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      mission: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'daily.cpu-battle',
+            cadence: 'DAILY',
+            metric: 'CPU_BATTLE',
+            target: 1,
+            rewardCurrency: 'GEM',
+            rewardAmount: 20,
+          },
+        ]),
+      },
+      playerMission: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            playerId: 'player-1',
+            missionId: 'daily.cpu-battle',
+            periodStart,
+            progress: 1,
+            claimedAt: null,
+          },
+        ]),
+      },
+    } as unknown as PrismaClient);
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/missions',
+      headers: { 'x-deckdrive-player-id': 'player-1' },
+    });
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: { missions: [{ id: 'daily.cpu-battle', progress: 1 }] },
+    });
+  });
+
+  it('returns a conflict when a mission reward idempotency key has different data', async () => {
+    const transaction = {
+      $queryRaw: vi.fn(),
+      mission: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'daily.cpu-battle',
+          cadence: 'DAILY',
+          target: 1,
+          rewardCurrency: 'GEM',
+          rewardAmount: 20,
+        }),
+      },
+      playerMission: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      currencyTransaction: {
+        upsert: vi
+          .fn()
+          .mockResolvedValue({ currency: 'EXCHANGE_POINT', amount: 20, reason: 'MISSION:other' }),
+      },
+    };
+    const application = new ApiApplication({
+      player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient);
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/missions/daily.cpu-battle/claim',
+        headers: { 'x-deckdrive-player-id': 'player-1' },
+      }),
+    ).resolves.toEqual({ status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } });
+  });
+
   it('returns only the authenticated player collection with card version IDs', async () => {
     const findMany = vi.fn().mockResolvedValue([
       {
@@ -341,6 +442,8 @@ describe('ApiApplication authentication', () => {
   });
 
   it('uses the stored CardDefinition ID when creating CPU card instances', async () => {
+    const matchCreate = vi.fn();
+    const lockPlayer = vi.fn();
     const application = new ApiApplication({
       player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
       deck: {
@@ -363,7 +466,19 @@ describe('ApiApplication authentication', () => {
           ],
         }),
       },
-      match: { create: vi.fn() },
+      $transaction: vi.fn((operation) =>
+        operation({
+          match: { create: matchCreate },
+          mission: { findMany: vi.fn().mockResolvedValue([]) },
+          playerMission: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
+          experienceTransaction: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+          $queryRaw: lockPlayer,
+          player: {
+            findUniqueOrThrow: vi.fn().mockResolvedValue({ experience: 0, level: 1 }),
+            update: vi.fn(),
+          },
+        }),
+      ),
     } as unknown as PrismaClient);
 
     const response = await application.handle({
@@ -376,6 +491,9 @@ describe('ApiApplication authentication', () => {
     expect(response.status).toBe(201);
     const state = (response.body as { state: { players: { hand: unknown[] }[] } }).state;
     expect(state.players[0]?.hand[0]).toMatchObject({ definitionId: 'engine-definition-id' });
+    expect(lockPlayer.mock.invocationCallOrder[0]).toBeLessThan(
+      matchCreate.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('rejects an incomplete deck before creating a CPU match', async () => {

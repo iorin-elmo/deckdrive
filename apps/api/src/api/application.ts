@@ -7,6 +7,7 @@ import {
   DevelopmentAuthenticationDisabledError,
   assertDevelopmentAuthentication,
 } from '../auth/development-auth.js';
+import { CosmeticIdempotencyConflictError } from '../cosmetics/prisma-cosmetic-service.js';
 import type { CpuDifficulty } from '../cpu/strategy.js';
 import {
   DeckValidationError,
@@ -26,6 +27,17 @@ import {
   packProducts,
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
+import { RewardValidationError } from '../rewards/reward-ledger.js';
+import {
+  LoginRewardConfigurationError,
+  MissionNotFoundError,
+  MissionNotReadyError,
+  PrismaMissionService,
+} from '../missions/prisma-mission-service.js';
+import {
+  lockPlayerForUpdate,
+  PrismaProgressionService,
+} from '../missions/prisma-progression-service.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -59,16 +71,22 @@ export class ApiApplication {
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
+      const missionId = path.match(/^\/api\/v1\/missions\/([^/]+)\/claim$/u)?.[1];
       const authenticatedRoute =
         (request.method === 'GET' &&
           (path === '/api/v1/me' ||
             path === '/api/v1/collection' ||
             path === '/api/v1/decks' ||
-            path === '/api/v1/packs')) ||
+            path === '/api/v1/packs' ||
+            path === '/api/v1/missions' ||
+            path === '/api/v1/progression' ||
+            path === '/api/v1/cosmetics')) ||
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
-            packProductId !== undefined)) ||
+            path === '/api/v1/login-rewards/claim' ||
+            packProductId !== undefined ||
+            missionId !== undefined)) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
       if (!authenticatedRoute) return { status: 404, body: { error: 'NOT_FOUND' } };
@@ -80,8 +98,18 @@ export class ApiApplication {
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
       if (request.method === 'GET' && path === '/api/v1/packs') return this.listPacks();
+      if (request.method === 'GET' && path === '/api/v1/missions')
+        return await this.listMissions(player.id);
+      if (request.method === 'GET' && path === '/api/v1/progression')
+        return await this.progression(player.id);
+      if (request.method === 'GET' && path === '/api/v1/cosmetics')
+        return await this.listCosmetics(player.id);
       if (request.method === 'POST' && packProductId !== undefined)
         return await this.openPack(player.id, packProductId, request);
+      if (request.method === 'POST' && missionId !== undefined)
+        return await this.claimMission(player.id, missionId);
+      if (request.method === 'POST' && path === '/api/v1/login-rewards/claim')
+        return await this.claimLoginReward(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
         return await this.createDeck(player.id, request.body);
       if (deckId !== undefined && request.method === 'PUT')
@@ -205,6 +233,58 @@ export class ApiApplication {
     };
   }
 
+  private async listMissions(playerId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: { missions: await new PrismaMissionService(this.prisma).list(playerId) },
+    };
+  }
+
+  private async claimMission(playerId: string, missionId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: await new PrismaMissionService(this.prisma).claim(playerId, missionId),
+    };
+  }
+
+  private async claimLoginReward(playerId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: await new PrismaMissionService(this.prisma).claimLoginReward(playerId),
+    };
+  }
+
+  private async progression(playerId: string): Promise<ApiResponse> {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const [player, lastLoginClaim] = await Promise.all([
+      this.prisma.player.findUniqueOrThrow({
+        where: { id: playerId },
+        select: { experience: true, level: true },
+      }),
+      this.prisma.loginRewardClaim.findUnique({
+        where: { playerId_day: { playerId, day: today } },
+      }),
+    ]);
+    return { status: 200, body: { ...player, loginClaimedToday: lastLoginClaim !== null } };
+  }
+
+  private async listCosmetics(playerId: string): Promise<ApiResponse> {
+    const cosmetics = await this.prisma.cosmetic.findMany({
+      orderBy: [{ kind: 'asc' }, { id: 'asc' }],
+      include: { owners: { where: { playerId }, select: { acquiredAt: true } } },
+    });
+    return {
+      status: 200,
+      body: {
+        cosmetics: cosmetics.map(({ owners, ...cosmetic }) => ({
+          ...cosmetic,
+          acquiredAt: owners[0]?.acquiredAt ?? null,
+        })),
+      },
+    };
+  }
+
   private async openPack(
     playerId: string,
     productId: string,
@@ -317,16 +397,33 @@ export class ApiApplication {
         },
       ],
     });
-    await this.prisma.match.create({
-      data: {
-        id: matchId,
-        engineVersion: state.engineVersion,
-        rulesVersion: state.rulesVersion,
-        cardDataVersion: state.cardDataVersion,
-        seed: state.seed,
-        initialState: json(state),
-        players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
-      },
+    await this.prisma.$transaction(async (transaction) => {
+      // Lock before creating match/mission child records so every per-player write
+      // in this authoritative transaction has a consistent lock order.
+      await lockPlayerForUpdate(transaction, playerId);
+      await transaction.match.create({
+        data: {
+          id: matchId,
+          engineVersion: state.engineVersion,
+          rulesVersion: state.rulesVersion,
+          cardDataVersion: state.cardDataVersion,
+          seed: state.seed,
+          initialState: json(state),
+          players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
+        },
+      });
+      await new PrismaMissionService(this.prisma).recordProgressInTransaction(
+        transaction,
+        playerId,
+        'CPU_BATTLE',
+        1,
+      );
+      await new PrismaProgressionService(this.prisma).grantExperienceInTransaction(transaction, {
+        playerId,
+        amount: 10,
+        reason: 'CPU_MATCH_STARTED',
+        idempotencyKey: `match:${matchId}:xp`,
+      });
     });
     return { status: 201, body: { id: matchId, difficulty, state } };
   }
@@ -412,6 +509,16 @@ export class ApiApplication {
     if (error instanceof PackPurchaseLimitError)
       return { status: 409, body: { error: 'PACK_PURCHASE_LIMIT_REACHED' } };
     if (error instanceof IdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof RewardValidationError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof CosmeticIdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof MissionNotFoundError)
+      return { status: 404, body: { error: 'MISSION_NOT_FOUND' } };
+    if (error instanceof MissionNotReadyError)
+      return { status: 409, body: { error: 'MISSION_NOT_READY' } };
+    if (error instanceof LoginRewardConfigurationError)
       return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof PackPoolUnavailableError)
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };

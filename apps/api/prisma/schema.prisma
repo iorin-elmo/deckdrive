@@ -26,6 +26,35 @@ enum PackProduct {
   MONTHLY_BUNDLE
 }
 
+enum MissionCadence {
+  DAILY
+  WEEKLY
+}
+
+enum MissionMetric {
+  CPU_BATTLE
+  PVP_BATTLE
+  CARD_PLAY
+  DAMAGE
+  BLOCK
+  WIN
+  RANKED_BATTLE
+  CLASS_USAGE
+  DECK_OBJECTIVE
+}
+
+enum CosmeticKind {
+  CARD_FRAME
+  CARD_FULL_ART_FX
+  CARD_ANIMATION
+  HOLOGRAM
+  LEADER_SKIN
+  PLAYMAT
+  CARD_SLEEVE
+  TITLE
+  PROFILE_DECORATION
+}
+
 model User {
   id          String   @id @default(uuid()) @db.Uuid
   email       String   @unique @db.Citext
@@ -42,14 +71,122 @@ model Player {
   userId    String        @unique @map("user_id") @db.Uuid
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  experience Int          @default(0)
+  level      Int          @default(1)
   user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   cards     PlayerCard[]
   decks     Deck[]
   matches   MatchPlayer[]
   currencyTransactions CurrencyTransaction[]
   packOpenings         PackOpening[]
+  missions             PlayerMission[]
+  loginRewardClaims    LoginRewardClaim[]
+  cosmetics            PlayerCosmetic[]
+  cosmeticGrants       CosmeticGrant[]
+  experienceTransactions ExperienceTransaction[]
 
   @@map("players")
+}
+
+model Mission {
+  id             String         @id
+  cadence        MissionCadence
+  metric         MissionMetric
+  target         Int
+  rewardCurrency Currency       @map("reward_currency")
+  rewardAmount   Int            @map("reward_amount")
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  playerMissions PlayerMission[]
+
+  @@map("missions")
+}
+
+model PlayerMission {
+  id          String   @id @default(uuid()) @db.Uuid
+  playerId    String   @map("player_id") @db.Uuid
+  missionId   String   @map("mission_id")
+  periodStart DateTime @map("period_start") @db.Timestamptz(6)
+  progress    Int      @default(0)
+  claimedAt   DateTime? @map("claimed_at") @db.Timestamptz(6)
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, missionId, periodStart])
+  @@index([playerId, periodStart])
+  @@map("player_missions")
+}
+
+model LoginRewardClaim {
+  id          String   @id @default(uuid()) @db.Uuid
+  playerId    String   @map("player_id") @db.Uuid
+  day         DateTime @db.Date
+  cycleDay    Int      @map("cycle_day")
+  reward      Json
+  claimedAt   DateTime @default(now()) @map("claimed_at") @db.Timestamptz(6)
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, day])
+  @@index([playerId, claimedAt])
+  @@map("login_reward_claims")
+}
+
+model Cosmetic {
+  id          String       @id
+  kind        CosmeticKind
+  name        String
+  description String
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  owners      PlayerCosmetic[]
+  grants      CosmeticGrant[]
+
+  @@map("cosmetics")
+}
+
+model PlayerCosmetic {
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  cosmeticId     String   @map("cosmetic_id")
+  source         String   @default("UNSPECIFIED")
+  idempotencyKey String   @map("idempotency_key")
+  acquiredAt     DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  cosmetic       Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, cosmeticId])
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, acquiredAt])
+  @@map("player_cosmetics")
+}
+
+model CosmeticGrant {
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  cosmeticId     String   @map("cosmetic_id")
+  source         String
+  idempotencyKey String   @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  cosmetic       Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, createdAt])
+  @@map("cosmetic_grants")
+}
+
+model ExperienceTransaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  amount         Int
+  reason         String
+  idempotencyKey String   @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, createdAt])
+  @@map("experience_transactions")
 }
 
 model CurrencyTransaction {
