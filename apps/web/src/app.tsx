@@ -266,17 +266,12 @@ function LoginPage() {
           OAuth
           <span className="h-px flex-1 bg-stone-700" />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {(['google', 'discord', 'x'] as const).map((provider) => (
-            <a
-              className="rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
-              href={`/api/v1/auth/oauth/${provider}/start`}
-              key={provider}
-            >
-              {provider === 'x' ? 'X' : provider.slice(0, 1).toUpperCase() + provider.slice(1)}
-            </a>
-          ))}
-        </div>
+        <a
+          className="block rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
+          href="/api/v1/auth/oauth/discord/start"
+        >
+          Discord
+        </a>
       </section>
     </main>
   );
