@@ -88,6 +88,7 @@ export class PrismaMissionService {
           idempotencyKey,
         },
       });
+      assertMissionReward(reward, mission.rewardCurrency, mission.rewardAmount, missionId);
       return { missionId, claimedAt: now, reward };
     });
   }
@@ -243,5 +244,21 @@ function assertLoginReward(
   )
     throw new RewardValidationError(
       'Login reward idempotency key was used for a different reward.',
+    );
+}
+
+function assertMissionReward(
+  reward: { readonly currency: string; readonly amount: number; readonly reason: string },
+  currency: string,
+  amount: number,
+  missionId: string,
+): void {
+  if (
+    reward.currency !== currency ||
+    reward.amount !== amount ||
+    reward.reason !== `MISSION:${missionId}`
+  )
+    throw new RewardValidationError(
+      'Mission reward idempotency key was used for a different reward.',
     );
 }

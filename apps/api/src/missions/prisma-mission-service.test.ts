@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../generated/prisma/client.js';
+import { RewardValidationError } from '../rewards/reward-ledger.js';
 import { MissionNotReadyError, PrismaMissionService } from './prisma-mission-service.js';
 
 describe('PrismaMissionService', () => {
   it('claims a completed mission and grants its reward in the same transaction', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const upsert = vi.fn().mockResolvedValue({ id: 'reward-1', amount: 20 });
+    const upsert = vi.fn().mockResolvedValue({
+      id: 'reward-1',
+      currency: 'GEM',
+      amount: 20,
+      reason: 'MISSION:daily.cpu-battle',
+    });
     const transaction = {
       mission: {
         findFirst: vi.fn().mockResolvedValue({
@@ -71,6 +77,37 @@ describe('PrismaMissionService', () => {
       new PrismaMissionService(prisma).claim('player-1', 'daily.cpu-battle'),
     ).rejects.toBeInstanceOf(MissionNotReadyError);
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an idempotency key that belongs to a different mission reward', async () => {
+    const transaction = {
+      mission: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'daily.cpu-battle',
+          cadence: 'DAILY',
+          target: 1,
+          rewardCurrency: 'GEM',
+          rewardAmount: 20,
+        }),
+      },
+      playerMission: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      currencyTransaction: {
+        upsert: vi
+          .fn()
+          .mockResolvedValue({ currency: 'EXCHANGE_POINT', amount: 20, reason: 'MISSION:other' }),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn((operation) => operation(transaction)),
+    } as unknown as PrismaClient;
+
+    await expect(
+      new PrismaMissionService(prisma).claim(
+        'player-1',
+        'daily.cpu-battle',
+        new Date('2026-09-25T10:00:00.000Z'),
+      ),
+    ).rejects.toBeInstanceOf(RewardValidationError);
   });
 
   it('makes a second login claim on the same UTC day a no-op', async () => {
