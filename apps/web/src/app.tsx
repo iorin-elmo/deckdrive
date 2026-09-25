@@ -326,17 +326,30 @@ function AuthenticatedLayout() {
   const location = useLocation();
   const playerId = useSessionStore((state) => state.playerId);
   const previewMode = useSessionStore((state) => state.previewMode);
+  const setPlayerId = useSessionStore((state) => state.setPlayerId);
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
   const queryClient = useQueryClient();
   const client = useApiClient();
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
+  const restoredSession = useQuery({
+    queryKey: ['oauth-session'],
+    queryFn: () => client.session(),
+    enabled: playerId !== null && !previewMode,
+    retry: false,
+  });
+  useEffect(() => {
+    if (restoredSession.data !== undefined && restoredSession.data.playerId !== playerId)
+      setPlayerId(restoredSession.data.playerId);
+  }, [playerId, restoredSession.data, setPlayerId]);
+  const sessionUnauthorized = !previewMode && isUnauthorizedApiError(restoredSession.error);
+  const sessionReady = previewMode || restoredSession.isSuccess;
   const player = useQuery({
     queryKey: ['me', playerId, previewMode],
     queryFn: () => client.me(playerId!),
-    enabled: playerId !== null,
+    enabled: playerId !== null && sessionReady,
   });
-  const unauthorized = isUnauthorizedApiError(player.error);
+  const unauthorized = sessionUnauthorized || isUnauthorizedApiError(player.error);
   useEffect(() => {
     if (!unauthorized) return;
     queryClient.clear();
@@ -356,10 +369,22 @@ function AuthenticatedLayout() {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
+  if (!previewMode && restoredSession.isPending)
+    return (
+      <main className="app-background flex min-h-screen items-center justify-center text-stone-100">
+        <LoaderCircle className="animate-spin" aria-label={t('loadingPlayer')} />
+      </main>
+    );
   if (unauthorized) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
+  if (!previewMode && restoredSession.isError)
+    return (
+      <main className="app-background min-h-screen p-5 text-stone-100">
+        <ApiFailure error={restoredSession.error} />
+      </main>
+    );
   return (
     <div className="app-background min-h-screen text-stone-100">
       <header className="border-b border-stone-800 bg-zinc-950/90">

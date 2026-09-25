@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { PrismaClient } from '../generated/prisma/client.js';
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { sha256 } from './crypto.js';
 import { OAuthRateLimiter, OAuthRequestError, OAuthService } from './oauth-service.js';
-import type { OAuthProviderAdapter } from './providers/provider.js';
+import type { OAuthIdentity, OAuthProviderAdapter } from './providers/provider.js';
 
 describe('OAuthRateLimiter', () => {
   it('rejects a request that exceeds its rolling window and permits it after expiry', () => {
@@ -142,4 +142,82 @@ describe('OAuthService', () => {
     expect(create).not.toHaveBeenCalled();
     expect(updateMany).not.toHaveBeenCalled();
   });
+
+  it('rejects linking an OAuth identity that is already owned by another user', async () => {
+    const service = new OAuthService(
+      {
+        oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'other-user' }) },
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(
+        service,
+        { providerUserId: 'discord-user', displayName: 'Discord User', emailVerified: false },
+        'link-user',
+      ),
+    ).rejects.toMatchObject({ code: 'OAUTH_ACCOUNT_LINK_REQUIRED' });
+  });
+
+  it('requires an explicit link when a verified OAuth email belongs to an existing user', async () => {
+    const service = new OAuthService(
+      {
+        oAuthAccount: { findUnique: vi.fn().mockResolvedValue(null) },
+        user: { findUnique: vi.fn().mockResolvedValue({ id: 'email-owner' }) },
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(service, {
+        providerUserId: 'discord-user',
+        displayName: 'Discord User',
+        email: 'player@example.test',
+        emailVerified: true,
+      }),
+    ).rejects.toMatchObject({ code: 'OAUTH_ACCOUNT_LINK_REQUIRED' });
+  });
+
+  it('uses the OAuth account created by a concurrent callback after a unique conflict', async () => {
+    const uniqueConflict = new Prisma.PrismaClientKnownRequestError('unique', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+    const service = new OAuthService(
+      {
+        oAuthAccount: {
+          findUnique: vi
+            .fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ userId: 'concurrent-winner' }),
+        },
+        $transaction: vi.fn((operation) =>
+          operation({ user: { create: vi.fn().mockRejectedValue(uniqueConflict) } }),
+        ),
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(service, {
+        providerUserId: 'discord-user',
+        displayName: 'Discord User',
+        emailVerified: false,
+      }),
+    ).resolves.toBe('concurrent-winner');
+  });
 });
+
+function resolveUser(
+  service: OAuthService,
+  identity: OAuthIdentity,
+  linkUserId: string | null = null,
+): Promise<string> {
+  const resolve = Reflect.get(service, 'resolveUser') as (
+    provider: 'discord',
+    value: OAuthIdentity,
+    linkUser: string | null,
+  ) => Promise<string>;
+  return resolve.call(service, 'discord', identity, linkUserId);
+}

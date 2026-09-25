@@ -195,6 +195,19 @@ export class ApiApplication {
       where: { id: session.playerId },
       select: { id: true, user: { select: { displayName: true } } },
     });
+    const existingCsrfToken = parseCookies(header(request.headers, 'cookie'))[csrfCookieName];
+    if (this.oauth.session().verifiesCsrf(session, existingCsrfToken)) {
+      return {
+        status: 200,
+        body: {
+          playerId: player.id,
+          displayName: player.user.displayName,
+          csrfToken: existingCsrfToken,
+        },
+      };
+    }
+    // Recover only when the shared CSRF cookie is unavailable or invalid. A
+    // normal restoration must not invalidate token copies held in other tabs.
     const csrfToken = await this.oauth.session().rotateCsrfToken(session.sessionId);
     if (csrfToken === undefined) throw new UnauthorizedError();
     return {

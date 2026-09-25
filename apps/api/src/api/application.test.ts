@@ -40,6 +40,43 @@ describe('ApiApplication authentication', () => {
     expect(response.headers?.['set-cookie']).toContain(`deckdrive_csrf=${csrfToken}`);
   });
 
+  it('reuses a valid CSRF cookie when restoring a session', async () => {
+    const sessionToken = 'session-token';
+    const csrfToken = 'csrf-token';
+    const updateMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256(csrfToken),
+            expiresAt: new Date('2026-10-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: { cookie: `deckdrive_session=${sessionToken}; deckdrive_csrf=${csrfToken}` },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { csrfToken } });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('requires a matching CSRF token before revoking a cookie-authenticated session', async () => {
     const sessionToken = 'session-token';
     const csrfToken = 'csrf-token';
