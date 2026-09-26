@@ -48,13 +48,11 @@ describe('OAuthService', () => {
   it.each(['missing', 'revoked', 'expired', 'different-session', 'different-user', 'valid'])(
     'checks the initiating link session at callback: %s',
     async (kind) => {
-      const exchangeCode = vi
-        .fn()
-        .mockResolvedValue({
-          providerUserId: 'discord-user',
-          displayName: 'Player',
-          emailVerified: false,
-        });
+      const exchangeCode = vi.fn().mockResolvedValue({
+        providerUserId: 'discord-user',
+        displayName: 'Player',
+        emailVerified: false,
+      });
       const now = new Date('2026-09-27T00:00:00Z');
       const service = new OAuthService(
         {
@@ -65,16 +63,14 @@ describe('OAuthService', () => {
             findUnique: vi.fn().mockResolvedValue({ linkUserId: 'user-1' }),
           },
           session: {
-            findUnique: vi
-              .fn()
-              .mockResolvedValue({
-                id: kind === 'different-session' ? 'other-session' : 'session-1',
-                userId: kind === 'different-user' ? 'other-user' : 'user-1',
-                csrfTokenHash: 'hash',
-                expiresAt: new Date(kind === 'expired' ? '2026-09-26' : '2099-01-01'),
-                revokedAt: kind === 'revoked' ? now : null,
-                user: { player: { id: 'player-1' } },
-              }),
+            findUnique: vi.fn().mockResolvedValue({
+              id: kind === 'different-session' ? 'other-session' : 'session-1',
+              userId: kind === 'different-user' ? 'other-user' : 'user-1',
+              csrfTokenHash: 'hash',
+              expiresAt: new Date(kind === 'expired' ? '2026-09-26' : '2099-01-01'),
+              revokedAt: kind === 'revoked' ? now : null,
+              user: { player: { id: 'player-1' } },
+            }),
             deleteMany: vi.fn(),
             create: vi.fn(),
           },
