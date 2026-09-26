@@ -194,6 +194,31 @@ describe('OAuthService', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  it('validates the OAuth callback URL before consuming authorization state', async () => {
+    const updateMany = vi.fn();
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { updateMany } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET: 'a'.repeat(32),
+        APP_BASE_URL: 'https://app.example.test',
+      },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(
+      service.complete('discord', { code: 'code', state: 'state' }, 'invalid-cookie', '127.0.0.1'),
+    ).rejects.toThrow('OAUTH_REDIRECT_BASE_URL is required');
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects linking an OAuth identity that is already owned by another user', async () => {
     const service = new OAuthService(
       {

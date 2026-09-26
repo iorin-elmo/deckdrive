@@ -149,6 +149,14 @@ function TitlePage() {
 
 function SettingsPage() {
   const { t } = useI18n();
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const linkDiscord = useMutation({
+    mutationFn: () => client.startOAuthLink('discord', '/settings'),
+    onSuccess: ({ authorizationUrl }) => {
+      window.location.assign(authorizationUrl);
+    },
+  });
   return (
     <>
       <PageHeading
@@ -159,6 +167,22 @@ function SettingsPage() {
       <section className="surface-panel mt-7 max-w-xl p-6">
         <LanguageControl />
       </section>
+      {!previewMode ? (
+        <section className="surface-panel mt-5 max-w-xl p-6">
+          <p className="eyebrow">{t('linkedAccounts')}</p>
+          <h2 className="mt-2 text-xl font-bold text-stone-50">{t('linkDiscord')}</h2>
+          <p className="mt-2 text-sm leading-6 text-stone-300">{t('linkDiscordDescription')}</p>
+          <ActionButton
+            className="mt-5"
+            type="button"
+            onClick={() => linkDiscord.mutate()}
+            disabled={linkDiscord.isPending}
+          >
+            {linkDiscord.isPending ? t('startingDiscordLink') : t('linkDiscord')}
+          </ActionButton>
+          {linkDiscord.isError ? <ApiFailure error={linkDiscord.error} /> : null}
+        </section>
+      ) : null}
     </>
   );
 }

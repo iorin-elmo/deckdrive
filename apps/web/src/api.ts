@@ -127,6 +127,7 @@ export interface DeckDriveClient {
   session(): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
   logout(): Promise<void>;
   oauthStartUrl(provider: 'discord', returnTo?: string): string;
+  startOAuthLink(provider: 'discord', returnTo?: string): Promise<{ authorizationUrl: string }>;
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
   collection(playerId: string): Promise<Collection>;
@@ -206,6 +207,18 @@ export class DeckDriveApi implements DeckDriveClient {
 
   oauthStartUrl(provider: 'discord', returnTo = '/home'): string {
     return `${this.baseUrl}/api/v1/auth/oauth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  async startOAuthLink(
+    provider: 'discord',
+    returnTo = '/settings',
+  ): Promise<{ authorizationUrl: string }> {
+    return this.request(
+      `/api/v1/auth/oauth/${provider}/link?returnTo=${encodeURIComponent(returnTo)}`,
+      {
+        method: 'POST',
+      },
+    );
   }
 
   async me(playerId: string): Promise<Player> {
@@ -477,6 +490,9 @@ export const previewApi: DeckDriveClient = {
   async logout() {},
   oauthStartUrl() {
     return '/api/v1/auth/oauth/discord/start';
+  },
+  async startOAuthLink() {
+    return { authorizationUrl: '' };
   },
   async me() {
     return {

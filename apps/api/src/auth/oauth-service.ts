@@ -165,6 +165,7 @@ export class OAuthService {
     this.completionLocation();
     this.rateLimiter.consume(`callback:${clientAddress ?? 'unknown'}`);
     this.requireStateSecret();
+    const redirectUri = this.callbackUrl(adapter.id);
     const code = input.code;
     const state = input.state;
     const stateCookie = this.readStateCookie(signedStateCookie);
@@ -196,7 +197,7 @@ export class OAuthService {
     let identity: OAuthIdentity;
     try {
       identity = await adapter.exchangeCode({
-        redirectUri: this.callbackUrl(adapter.id),
+        redirectUri,
         code,
         codeVerifier: stateCookie.codeVerifier,
       });
