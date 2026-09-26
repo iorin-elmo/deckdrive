@@ -223,10 +223,10 @@ function LoginPage() {
     retry: false,
   });
   useEffect(() => {
-    if (session.data === undefined) return;
+    if (session.data === undefined || oauthError !== null) return;
     setPlayerId(session.data.playerId);
     navigate(returnTo, { replace: true });
-  }, [navigate, returnTo, session.data, setPlayerId]);
+  }, [navigate, returnTo, session.data, setPlayerId, oauthError]);
   return (
     <main className="app-background flex min-h-screen items-center justify-center p-5 text-stone-100">
       <section aria-labelledby="login-title" className="surface-panel w-full max-w-md p-6 sm:p-8">

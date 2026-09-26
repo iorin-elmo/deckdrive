@@ -241,17 +241,21 @@ export class ApiApplication {
   }
 
   private async startOAuth(provider: string, request: ApiRequest): Promise<ApiResponse> {
-    const result = await this.oauth.start(
-      provider,
-      request.clientAddress,
-      undefined,
-      request.query?.returnTo,
-    );
-    return {
-      status: 302,
-      body: { redirect: result.location },
-      headers: { location: result.location, 'set-cookie': result.stateCookie },
-    };
+    try {
+      const result = await this.oauth.start(
+        provider,
+        request.clientAddress,
+        undefined,
+        request.query?.returnTo,
+      );
+      return {
+        status: 302,
+        body: { redirect: result.location },
+        headers: { location: result.location, 'set-cookie': result.stateCookie },
+      };
+    } catch (error) {
+      return this.oauthFailureResponse(error, undefined);
+    }
   }
 
   private async startOAuthLink(provider: string, request: ApiRequest): Promise<ApiResponse> {
@@ -262,6 +266,7 @@ export class ApiApplication {
       request.clientAddress,
       session.userId,
       request.query?.returnTo,
+      session.sessionId,
     );
     return {
       status: 200,
@@ -282,6 +287,7 @@ export class ApiApplication {
         request.query ?? {},
         stateCookie,
         request.clientAddress,
+        this.sessionToken(request),
       );
       return {
         status: 302,
@@ -669,7 +675,7 @@ export class ApiApplication {
         !this.oauth.session().verifiesCsrf(session, header(request.headers, 'x-csrf-token'))
       )
         throw new CsrfError();
-      return { id: session.playerId, userId: session.userId };
+      return { id: session.playerId, userId: session.userId, sessionId: session.sessionId };
     }
     const playerId = header(request.headers, 'x-deckdrive-player-id');
     if (
@@ -683,7 +689,7 @@ export class ApiApplication {
       select: { id: true },
     });
     if (player === null) throw new UnauthorizedError();
-    return { ...player, userId: undefined };
+    return { ...player, userId: undefined, sessionId: undefined };
   }
 
   private sessionToken(request: ApiRequest): string | undefined {

@@ -5,6 +5,20 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('redirects an unconfigured OAuth start to the application failure screen', async () => {
+    const application = new ApiApplication({} as PrismaClient, {
+      NODE_ENV: 'test',
+      APP_BASE_URL: 'https://app.example.test',
+    });
+    await expect(
+      application.handle({ method: 'GET', path: '/api/v1/auth/oauth/discord/start', headers: {} }),
+    ).resolves.toMatchObject({
+      status: 302,
+      headers: {
+        location: 'https://app.example.test/login?oauthError=OAUTH_PROVIDER_NOT_CONFIGURED',
+      },
+    });
+  });
   it('recovers the CSRF cookie when restoring a session without a valid cookie', async () => {
     const sessionToken = 'session-token';
     const application = new ApiApplication(

@@ -24,6 +24,7 @@ export class OAuthRateLimitError extends Error {}
 export class OAuthSecurityConfigurationError extends Error {}
 
 interface OAuthStateCookie {
+  readonly linkSessionId?: string;
   readonly state: string;
   readonly codeVerifier: string;
   readonly returnTo: string;
@@ -119,6 +120,7 @@ export class OAuthService {
     clientAddress: string | undefined,
     linkUserId?: string,
     returnTo?: string,
+    linkSessionId?: string,
   ): Promise<OAuthStartResult> {
     const adapter = this.adapter(provider);
     // Validate the post-authentication destination before creating one-time state.
@@ -147,7 +149,12 @@ export class OAuthService {
         })
         .toString(),
       stateCookie: this.stateCookie(
-        { state, codeVerifier, returnTo: oauthReturnPath(returnTo) },
+        {
+          state,
+          codeVerifier,
+          returnTo: oauthReturnPath(returnTo),
+          ...(linkSessionId === undefined ? {} : { linkSessionId }),
+        },
         stateSecret,
       ),
     };
@@ -158,6 +165,7 @@ export class OAuthService {
     input: Readonly<Record<string, string | undefined>>,
     signedStateCookie: string | undefined,
     clientAddress: string | undefined,
+    sessionToken?: string,
   ): Promise<OAuthCompletionResult> {
     const adapter = this.adapter(provider);
     // Do this before consuming state or creating a session, so a configuration
@@ -194,6 +202,15 @@ export class OAuthService {
       select: { linkUserId: true },
     });
     if (authorization === null) throw new OAuthRequestError('OAUTH_INVALID_REQUEST');
+    if (authorization.linkUserId !== null) {
+      const session = await this.sessionService.authenticate(sessionToken);
+      if (
+        session === undefined ||
+        session.sessionId !== stateCookie.linkSessionId ||
+        session.userId !== authorization.linkUserId
+      )
+        throw new OAuthRequestError('OAUTH_INVALID_REQUEST');
+    }
     let identity: OAuthIdentity;
     try {
       identity = await adapter.exchangeCode({
@@ -327,6 +344,9 @@ export class OAuthService {
             state: parsed.state,
             codeVerifier: parsed.codeVerifier,
             returnTo: oauthReturnPath(parsed.returnTo),
+            ...(typeof parsed.linkSessionId === 'string'
+              ? { linkSessionId: parsed.linkSessionId }
+              : {}),
           }
         : undefined;
     } catch {
