@@ -43,6 +43,10 @@ enum MissionMetric {
   DECK_OBJECTIVE
 }
 
+enum OAuthProvider {
+  DISCORD
+}
+
 enum CosmeticKind {
   CARD_FRAME
   CARD_FULL_ART_FX
@@ -57,13 +61,62 @@ enum CosmeticKind {
 
 model User {
   id          String   @id @default(uuid()) @db.Uuid
-  email       String   @unique @db.Citext
+  // OAuth identities are the account key; a provider may not supply a usable email address.
+  email       String?  @unique @db.Citext
   displayName String
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   player      Player?
+  oauthAccounts OAuthAccount[]
+  sessions      Session[]
+  oauthAuthorizations OAuthAuthorization[] @relation("OAuthAuthorizationLinkUser")
 
   @@map("users")
+}
+
+model OAuthAccount {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash")
+  csrfTokenHash String    @map("csrf_token_hash")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+model OAuthAuthorization {
+  id               String        @id @default(uuid()) @db.Uuid
+  provider         OAuthProvider
+  stateHash        String        @unique @map("state_hash")
+  codeVerifierHash String        @map("code_verifier_hash")
+  linkUserId       String?       @map("link_user_id") @db.Uuid
+  expiresAt        DateTime      @map("expires_at") @db.Timestamptz(6)
+  consumedAt       DateTime?     @map("consumed_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  linkUser         User?         @relation("OAuthAuthorizationLinkUser", fields: [linkUserId], references: [id], onDelete: Restrict)
+
+  @@index([expiresAt])
+  @@map("oauth_authorizations")
 }
 
 model Player {

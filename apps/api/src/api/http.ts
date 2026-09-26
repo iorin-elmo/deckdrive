@@ -11,17 +11,22 @@ import { ApiApplication, type ApiRequest } from './application.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
-const corsHeaders = 'content-type, idempotency-key, x-deckdrive-player-id';
+const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id';
 
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly developmentLoginLoopbackOnly?: boolean;
+  readonly trustedProxyAddresses?: readonly string[];
 }
 
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(
   application: ApiApplication,
-  { allowedOrigins = [], developmentLoginLoopbackOnly = false }: ApiHttpServerOptions = {},
+  {
+    allowedOrigins = [],
+    developmentLoginLoopbackOnly = false,
+    trustedProxyAddresses = [],
+  }: ApiHttpServerOptions = {},
 ): Server {
   return createServer(async (request, response) => {
     const responseHeaders = {
@@ -34,7 +39,8 @@ export function createApiHttpServer(
         response.end();
         return;
       }
-      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      const path = url.pathname;
       if (
         shouldRejectDevelopmentLogin(
           request.method,
@@ -47,9 +53,12 @@ export function createApiHttpServer(
         writeJson(response, 403, { error: 'DEVELOPMENT_AUTH_LOCAL_ONLY' }, responseHeaders);
         return;
       }
+      const resolvedClientAddress = clientAddress(request, trustedProxyAddresses);
       const apiRequest: ApiRequest = {
         method: request.method ?? 'GET',
         path,
+        query: Object.fromEntries(url.searchParams.entries()),
+        ...(resolvedClientAddress === undefined ? {} : { clientAddress: resolvedClientAddress }),
         headers: Object.fromEntries(
           Object.entries(request.headers).map(([name, value]) => [
             name,
@@ -59,7 +68,13 @@ export function createApiHttpServer(
         body: await readJsonBody(request),
       };
       const apiResponse = await application.handle(apiRequest);
-      writeJson(response, apiResponse.status, apiResponse.body, responseHeaders);
+      writeJson(response, apiResponse.status, apiResponse.body, {
+        ...responseHeaders,
+        ...apiResponse.headers,
+        ...(apiResponse.headers?.['set-cookie'] === undefined
+          ? {}
+          : { 'cache-control': 'private, no-store' }),
+      });
     } catch (error) {
       if (response.headersSent) return;
       if (error instanceof HttpRequestError) {
@@ -73,6 +88,25 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
+}
+
+/** Uses forwarded client addresses only when the direct peer is explicitly trusted. */
+export function clientAddress(
+  request: Pick<IncomingMessage, 'headers' | 'socket'>,
+  trustedProxyAddresses: readonly string[],
+): string | undefined {
+  const directAddress = request.socket.remoteAddress;
+  if (directAddress === undefined || !trustedProxyAddresses.includes(directAddress))
+    return directAddress;
+  const forwarded = request.headers['x-forwarded-for'];
+  // A trusted proxy is the only peer that may supply this header. Its rightmost
+  // value is the address it observed; leading values can be client supplied.
+  const addresses = (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+    ?.split(',')
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
+  const client = addresses?.at(-1);
+  return client === undefined ? directAddress : client;
 }
 
 export function isLoopbackAddress(address: string | undefined): boolean {
@@ -151,13 +185,15 @@ function corsResponseHeaders(
     'access-control-allow-origin': origin,
     'access-control-allow-methods': corsMethods,
     'access-control-allow-headers': corsHeaders,
+    'access-control-allow-credentials': 'true',
     'access-control-max-age': '600',
     vary: 'Origin',
   };
 }
 
 function authenticatedResponseHeaders(request: IncomingMessage): OutgoingHttpHeaders {
-  return request.headers['x-deckdrive-player-id'] === undefined
+  return request.headers['x-deckdrive-player-id'] === undefined &&
+    request.headers.cookie === undefined
     ? {}
     : { 'cache-control': 'private, no-store' };
 }

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ApiApplication } from './application.js';
 import {
   createApiHttpServer,
+  clientAddress,
   isLoopbackAddress,
   maximumRequestBodyBytes,
   shouldRejectDevelopmentLogin,
@@ -22,6 +23,24 @@ describe('isLoopbackAddress', () => {
     expect(isLoopbackAddress(undefined)).toBe(false);
     expect(isLoopbackAddress('192.168.1.10')).toBe(false);
     expect(isLoopbackAddress('::ffff:192.168.1.10')).toBe(false);
+  });
+});
+
+describe('clientAddress', () => {
+  const request = (remoteAddress: string, forwarded?: string) =>
+    ({
+      socket: { remoteAddress },
+      headers: forwarded === undefined ? {} : { 'x-forwarded-for': forwarded },
+    }) as never;
+
+  it('does not trust a forwarded address from an untrusted direct peer', () => {
+    expect(clientAddress(request('198.51.100.4', '203.0.113.8'), [])).toBe('198.51.100.4');
+  });
+
+  it('uses the rightmost forwarded address from a configured direct proxy', () => {
+    expect(clientAddress(request('127.0.0.1', 'spoofed, 203.0.113.8'), ['127.0.0.1'])).toBe(
+      '203.0.113.8',
+    );
   });
 });
 

@@ -49,6 +49,61 @@ describe('DeckDriveApi', () => {
     );
   });
 
+  it('builds Discord authorization URLs with an application-local return destination', () => {
+    expect(
+      new DeckDriveApi('https://api.example.test/').oauthStartUrl('discord', '/decks/deck-1/edit'),
+    ).toBe(
+      'https://api.example.test/api/v1/auth/oauth/discord/start?returnTo=%2Fdecks%2Fdeck-1%2Fedit',
+    );
+  });
+
+  it('retains the authenticated CSRF token for cross-origin mutations', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ playerId: 'player-1', displayName: 'Player', csrfToken: 'csrf' }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi('https://api.example.test');
+
+    await client.session();
+    await client.logout();
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://api.example.test/api/v1/auth/logout',
+      expect.objectContaining({ headers: { 'X-CSRF-Token': 'csrf' } }),
+    );
+  });
+
+  it('starts Discord account linking with the authenticated CSRF token', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ playerId: 'player-1', displayName: 'Player', csrfToken: 'csrf' }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ authorizationUrl: 'https://discord.com/api/oauth2/authorize' }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi('https://api.example.test');
+
+    await client.session();
+    await expect(client.startOAuthLink('discord', '/settings')).resolves.toEqual({
+      authorizationUrl: 'https://discord.com/api/oauth2/authorize',
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://api.example.test/api/v1/auth/oauth/discord/link?returnTo=%2Fsettings',
+      expect.objectContaining({ method: 'POST', headers: { 'X-CSRF-Token': 'csrf' } }),
+    );
+  });
+
   it('sends the player header and body for a CPU match request', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'match-1', difficulty: 'NORMAL', state: {} }), {

@@ -1,0 +1,95 @@
+import {
+  configuredProvider,
+  nonEmptyString,
+  OAuthProviderExchangeError,
+  type OAuthIdentity,
+  type OAuthProviderAdapter,
+  type OAuthProviderConfig,
+} from './provider.js';
+
+const authorizationEndpoint = 'https://discord.com/api/oauth2/authorize';
+const tokenEndpoint = 'https://discord.com/api/oauth2/token';
+const userInfoEndpoint = 'https://discord.com/api/users/@me';
+const requestTimeoutMilliseconds = 10_000;
+
+export class DiscordOAuthProvider implements OAuthProviderAdapter {
+  readonly id = 'discord' as const;
+
+  constructor(
+    private readonly config: OAuthProviderConfig,
+    private readonly request: typeof fetch = fetch,
+  ) {}
+
+  static fromEnvironment(environment: NodeJS.ProcessEnv): DiscordOAuthProvider {
+    return new DiscordOAuthProvider(configuredProvider('discord', environment));
+  }
+
+  authorizationUrl({
+    redirectUri,
+    state,
+    codeChallenge,
+  }: Parameters<OAuthProviderAdapter['authorizationUrl']>[0]): URL {
+    const url = new URL(authorizationEndpoint);
+    url.search = new URLSearchParams({
+      client_id: this.config.clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify email',
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    }).toString();
+    return url;
+  }
+
+  async exchangeCode({
+    redirectUri,
+    code,
+    codeVerifier,
+  }: Parameters<OAuthProviderAdapter['exchangeCode']>[0]): Promise<OAuthIdentity> {
+    const token = await this.requestWithTimeout(tokenEndpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: codeVerifier,
+      }),
+    });
+    const tokenBody = (await token.json().catch(() => undefined)) as
+      { access_token?: unknown } | undefined;
+    const accessToken = nonEmptyString(tokenBody?.access_token);
+    if (!token.ok || accessToken === undefined)
+      throw new OAuthProviderExchangeError('Discord token exchange failed.');
+    const profile = await this.requestWithTimeout(userInfoEndpoint, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const body = (await profile.json().catch(() => undefined)) as
+      Record<string, unknown> | undefined;
+    const providerUserId = nonEmptyString(body?.id);
+    if (!profile.ok || providerUserId === undefined)
+      throw new OAuthProviderExchangeError('Discord profile lookup failed.');
+    const email = nonEmptyString(body?.email);
+    return {
+      providerUserId,
+      displayName:
+        nonEmptyString(body?.global_name) ?? nonEmptyString(body?.username) ?? 'Discord player',
+      ...(email === undefined ? {} : { email }),
+      emailVerified: body?.verified === true,
+    };
+  }
+
+  private async requestWithTimeout(input: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.request(input, {
+        ...init,
+        signal: AbortSignal.timeout(requestTimeoutMilliseconds),
+      });
+    } catch {
+      throw new OAuthProviderExchangeError('Discord provider request failed.');
+    }
+  }
+}

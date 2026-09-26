@@ -149,6 +149,14 @@ function TitlePage() {
 
 function SettingsPage() {
   const { t } = useI18n();
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const linkDiscord = useMutation({
+    mutationFn: () => client.startOAuthLink('discord', '/settings'),
+    onSuccess: ({ authorizationUrl }) => {
+      window.location.assign(authorizationUrl);
+    },
+  });
   return (
     <>
       <PageHeading
@@ -159,6 +167,22 @@ function SettingsPage() {
       <section className="surface-panel mt-7 max-w-xl p-6">
         <LanguageControl />
       </section>
+      {!previewMode ? (
+        <section className="surface-panel mt-5 max-w-xl p-6">
+          <p className="eyebrow">{t('linkedAccounts')}</p>
+          <h2 className="mt-2 text-xl font-bold text-stone-50">{t('linkDiscord')}</h2>
+          <p className="mt-2 text-sm leading-6 text-stone-300">{t('linkDiscordDescription')}</p>
+          <ActionButton
+            className="mt-5"
+            type="button"
+            onClick={() => linkDiscord.mutate()}
+            disabled={linkDiscord.isPending}
+          >
+            {linkDiscord.isPending ? t('startingDiscordLink') : t('linkDiscord')}
+          </ActionButton>
+          {linkDiscord.isError ? <ApiFailure error={linkDiscord.error} /> : null}
+        </section>
+      ) : null}
     </>
   );
 }
@@ -183,6 +207,7 @@ function LoginPage() {
   const enablePreview = useSessionStore((state) => state.enablePreview);
   const { t } = useI18n();
   const returnTo = loginReturnPath(new URLSearchParams(location.search).get('returnTo'));
+  const oauthError = new URLSearchParams(location.search).get('oauthError');
   const [email, setEmail] = useState('debug@deckdrive.local');
   const [displayName, setDisplayName] = useState('Debug Player');
   const login = useMutation({
@@ -192,6 +217,16 @@ function LoginPage() {
       navigate(returnTo);
     },
   });
+  const session = useQuery({
+    queryKey: ['oauth-session'],
+    queryFn: () => api.session(),
+    retry: false,
+  });
+  useEffect(() => {
+    if (session.data === undefined) return;
+    setPlayerId(session.data.playerId);
+    navigate(returnTo, { replace: true });
+  }, [navigate, returnTo, session.data, setPlayerId]);
   return (
     <main className="app-background flex min-h-screen items-center justify-center p-5 text-stone-100">
       <section aria-labelledby="login-title" className="surface-panel w-full max-w-md p-6 sm:p-8">
@@ -204,6 +239,13 @@ function LoginPage() {
           {t('enterArena')}
         </h1>
         <p className="mt-3 text-sm leading-6 text-stone-300">{t('developmentLoginDescription')}</p>
+        {oauthError === null ? null : (
+          <div className="mt-5">
+            <AsyncNotice kind="error" title={t('oauthLoginFailed')}>
+              <p>{t('oauthLoginFailedDescription')}</p>
+            </AsyncNotice>
+          </div>
+        )}
         <form
           className="mt-7 space-y-5"
           onSubmit={(event) => {
@@ -251,6 +293,17 @@ function LoginPage() {
             {t('signInDevelopment')}
           </ActionButton>
         </form>
+        <div className="my-6 flex items-center gap-3 text-xs text-stone-400" aria-hidden="true">
+          <span className="h-px flex-1 bg-stone-700" />
+          OAuth
+          <span className="h-px flex-1 bg-stone-700" />
+        </div>
+        <a
+          className="block rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
+          href={api.oauthStartUrl('discord', returnTo)}
+        >
+          Discord
+        </a>
       </section>
     </main>
   );
@@ -305,34 +358,70 @@ function AuthenticatedLayout() {
   const location = useLocation();
   const playerId = useSessionStore((state) => state.playerId);
   const previewMode = useSessionStore((state) => state.previewMode);
+  const setPlayerId = useSessionStore((state) => state.setPlayerId);
   const clearPlayerId = useSessionStore((state) => state.clearPlayerId);
   const queryClient = useQueryClient();
   const client = useApiClient();
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
+  const restoredSession = useQuery({
+    queryKey: ['oauth-session'],
+    queryFn: () => client.session(),
+    enabled: playerId !== null && !previewMode,
+    retry: false,
+  });
+  useEffect(() => {
+    if (restoredSession.data !== undefined && restoredSession.data.playerId !== playerId)
+      setPlayerId(restoredSession.data.playerId);
+  }, [playerId, restoredSession.data, setPlayerId]);
+  const sessionUnauthorized = !previewMode && isUnauthorizedApiError(restoredSession.error);
+  const sessionReady = previewMode || restoredSession.isSuccess;
   const player = useQuery({
     queryKey: ['me', playerId, previewMode],
     queryFn: () => client.me(playerId!),
-    enabled: playerId !== null,
+    enabled: playerId !== null && sessionReady,
   });
-  const unauthorized = isUnauthorizedApiError(player.error);
+  const unauthorized = sessionUnauthorized || isUnauthorizedApiError(player.error);
   useEffect(() => {
     if (!unauthorized) return;
     queryClient.clear();
     clearPlayerId();
   }, [clearPlayerId, queryClient, unauthorized]);
+  const logout = useMutation({
+    mutationFn: () => (previewMode ? Promise.resolve() : api.logout()),
+    onSuccess: () => {
+      queryClient.clear();
+      clearPlayerId();
+    },
+    onError: (error) => {
+      if (!isUnauthorizedApiError(error)) return;
+      queryClient.clear();
+      clearPlayerId();
+    },
+  });
   const signOut = () => {
-    queryClient.clear();
-    clearPlayerId();
+    logout.mutate();
   };
   if (playerId === null) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
+  if (!previewMode && restoredSession.isPending)
+    return (
+      <main className="app-background flex min-h-screen items-center justify-center text-stone-100">
+        <LoaderCircle className="animate-spin" aria-label={t('loadingPlayer')} />
+      </main>
+    );
   if (unauthorized) {
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
+  if (!previewMode && restoredSession.isError)
+    return (
+      <main className="app-background min-h-screen p-5 text-stone-100">
+        <ApiFailure error={restoredSession.error} />
+      </main>
+    );
   return (
     <div className="app-background min-h-screen text-stone-100">
       <header className="border-b border-stone-800 bg-zinc-950/90">
@@ -376,7 +465,12 @@ function AuthenticatedLayout() {
                 {t(labelKey)}
               </NavLink>
             ))}
-            <button className="nav-link sm:ml-3" type="button" onClick={signOut}>
+            <button
+              className="nav-link sm:ml-3"
+              type="button"
+              onClick={signOut}
+              disabled={logout.isPending}
+            >
               <DoorOpen size={16} aria-hidden="true" />
               {t('signOut')}
             </button>
