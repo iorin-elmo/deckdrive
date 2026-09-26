@@ -27,7 +27,7 @@ export class PrismaSessionService {
   async create(userId: string): Promise<CreatedSession> {
     await this.removeExpiredSessions();
     const token = randomToken();
-    const csrfToken = randomToken();
+    const csrfToken = sessionCsrfToken(token);
     const expiresAt = new Date(this.now().getTime() + sessionLifetimeSeconds * 1000);
     await this.prisma.session.create({
       data: { userId, tokenHash: sha256(token), csrfTokenHash: sha256(csrfToken), expiresAt },
@@ -72,13 +72,30 @@ export class PrismaSessionService {
     });
   }
 
-  async rotateCsrfToken(sessionId: string): Promise<string | undefined> {
-    const csrfToken = randomToken();
+  async recoverCsrfToken(
+    session: AuthenticatedSession,
+    token: string,
+  ): Promise<string | undefined> {
+    // All recoveries for this opaque session converge on the same secret. The
+    // domain prefix keeps it distinct from the stored session-token hash.
+    const csrfToken = sessionCsrfToken(token);
     const updated = await this.prisma.session.updateMany({
-      where: { id: sessionId, revokedAt: null, expiresAt: { gt: this.now() } },
+      where: {
+        id: session.sessionId,
+        tokenHash: sha256(token),
+        csrfTokenHash: session.csrfTokenHash,
+        revokedAt: null,
+        expiresAt: { gt: this.now() },
+      },
       data: { csrfTokenHash: sha256(csrfToken) },
     });
-    return updated.count === 1 ? csrfToken : undefined;
+    if (updated.count === 1) return csrfToken;
+    const winner = await this.authenticate(token);
+    return winner !== undefined &&
+      winner.sessionId === session.sessionId &&
+      this.verifiesCsrf(winner, csrfToken)
+      ? csrfToken
+      : undefined;
   }
 
   verifiesCsrf(session: AuthenticatedSession, token: string | undefined): boolean {
@@ -96,4 +113,8 @@ export class PrismaSessionService {
       },
     });
   }
+}
+
+function sessionCsrfToken(token: string): string {
+  return sha256(`deckdrive:csrf:${token}`);
 }

@@ -242,7 +242,7 @@ function LoginPage() {
         {oauthError === null ? null : (
           <div className="mt-5">
             <AsyncNotice kind="error" title={t('oauthLoginFailed')}>
-              <p>{t('oauthLoginFailedDescription')}</p>
+              <p>{t(oauthErrorGuidance(oauthError))}</p>
             </AsyncNotice>
           </div>
         )}
@@ -1793,6 +1793,24 @@ export function deckBuilderInput(
 
 export function loginReturnPath(value: string | null): string {
   return value !== null && /^\/(?!\/)[^\\]*$/u.test(value) ? value : '/home';
+}
+
+export function oauthErrorGuidance(code: string) {
+  switch (code) {
+    case 'OAUTH_ACCOUNT_LINK_REQUIRED':
+      return 'oauthLinkRequired';
+    case 'OAUTH_RATE_LIMITED':
+      return 'oauthRateLimited';
+    case 'OAUTH_NOT_CONFIGURED':
+    case 'OAUTH_PROVIDER_NOT_CONFIGURED':
+      return 'oauthNotConfigured';
+    case 'OAUTH_PROVIDER_UNAVAILABLE':
+      return 'oauthProviderUnavailable';
+    case 'OAUTH_INVALID_REQUEST':
+      return 'oauthInvalidRequest';
+    default:
+      return 'oauthLoginFailedDescription';
+  }
 }
 
 export function isUnauthorizedApiError(error: unknown): boolean {

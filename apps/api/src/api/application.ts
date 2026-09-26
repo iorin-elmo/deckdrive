@@ -210,7 +210,9 @@ export class ApiApplication {
     // Recover only when the shared CSRF cookie is unavailable or invalid. A
     // normal restoration must not invalidate token copies held in other tabs.
     // Cross-site navigations cannot enter this branch and invalidate active tabs.
-    const csrfToken = await this.oauth.session().rotateCsrfToken(session.sessionId);
+    const csrfToken = await this.oauth
+      .session()
+      .recoverCsrfToken(session, this.sessionToken(request)!);
     if (csrfToken === undefined) throw new UnauthorizedError();
     return {
       status: 200,

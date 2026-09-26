@@ -15,6 +15,56 @@ const validSession = {
 };
 
 describe('PrismaSessionService', () => {
+  it('converges concurrent recoveries on a valid token without overwriting the winner', async () => {
+    let storedHash = validSession.csrfTokenHash;
+    const updateMany = vi.fn(async ({ where, data }) => {
+      if (where.csrfTokenHash !== storedHash) return { count: 0 };
+      storedHash = data.csrfTokenHash;
+      return { count: 1 };
+    });
+    const service = new PrismaSessionService(
+      {
+        session: {
+          updateMany,
+          findUnique: vi.fn(async () => ({ ...validSession, csrfTokenHash: storedHash })),
+        },
+      } as unknown as PrismaClient,
+      () => now,
+    );
+    const session = await service.authenticate('session-token');
+    const [first, second] = await Promise.all([
+      service.recoverCsrfToken(session!, 'session-token'),
+      service.recoverCsrfToken(session!, 'session-token'),
+    ]);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
+    expect(storedHash).toBe(sha256(first!));
+    expect(updateMany.mock.calls[0]?.[0].where.csrfTokenHash).toBe(validSession.csrfTokenHash);
+  });
+
+  it('does not recover a token when the session is revoked during recovery', async () => {
+    const service = new PrismaSessionService(
+      {
+        session: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          findUnique: vi.fn().mockResolvedValue({ ...validSession, revokedAt: now }),
+        },
+      } as unknown as PrismaClient,
+      () => now,
+    );
+    await expect(
+      service.recoverCsrfToken(
+        {
+          sessionId: 'session-1',
+          userId: 'user-1',
+          playerId: 'player-1',
+          csrfTokenHash: validSession.csrfTokenHash,
+          expiresAt: validSession.expiresAt,
+        },
+        'session-token',
+      ),
+    ).resolves.toBeUndefined();
+  });
   it('accepts a valid session and validates its CSRF token', async () => {
     const service = new PrismaSessionService(
       {
@@ -70,7 +120,16 @@ describe('PrismaSessionService', () => {
     );
 
     await service.create('user-1');
-    const csrfToken = await service.rotateCsrfToken('session-1');
+    const csrfToken = await service.recoverCsrfToken(
+      {
+        sessionId: 'session-1',
+        userId: 'user-1',
+        playerId: 'player-1',
+        csrfTokenHash: 'old-hash',
+        expiresAt: validSession.expiresAt,
+      },
+      'session-token',
+    );
 
     expect(deleteMany).toHaveBeenCalledWith({
       where: expect.objectContaining({ OR: expect.any(Array) }),

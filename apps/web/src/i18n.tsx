@@ -17,6 +17,13 @@ const resources = {
     settingsDescription: 'Choose the language shown throughout DeckDrive.',
     oauthLoginFailed: 'Discord sign-in was not completed',
     oauthLoginFailedDescription: 'Please try signing in with Discord again.',
+    oauthLinkRequired:
+      'Sign in to your existing account and link Discord from Settings. If this Discord account is already linked to another account, use that account or choose a different Discord account.',
+    oauthRateLimited: 'Too many attempts. Wait at least 10 minutes before trying again.',
+    oauthNotConfigured: 'Discord sign-in is not available yet. Please contact the administrator.',
+    oauthProviderUnavailable: 'Discord could not be reached. Please wait and try again later.',
+    oauthInvalidRequest:
+      'This sign-in attempt was cancelled or expired. Start Discord sign-in again. For account linking, stay signed in to the same account.',
     linkedAccounts: 'LINKED ACCOUNTS',
     linkDiscord: 'Link Discord',
     linkDiscordDescription: 'Link a Discord identity to this signed-in account.',
@@ -250,6 +257,13 @@ const resources = {
     settingsDescription: 'DeckDrive全体で表示する言語を選択します。',
     oauthLoginFailed: 'Discordログインを完了できませんでした',
     oauthLoginFailedDescription: 'もう一度Discordでログインしてください。',
+    oauthLinkRequired:
+      '既存のアカウントでログインし、設定画面からDiscordを連携してください。このDiscordが別のアカウントに連携済みの場合は、そのアカウントを利用するか別のDiscordアカウントを選んでください。',
+    oauthRateLimited: '試行回数が上限に達しました。10分以上待ってから再度お試しください。',
+    oauthNotConfigured: 'Discordログインの準備ができていません。管理者にお問い合わせください。',
+    oauthProviderUnavailable: 'Discordに接続できませんでした。時間をおいて再度お試しください。',
+    oauthInvalidRequest:
+      'ログインが中断されたか、有効期限が切れました。Discordログインを最初からやり直してください。アカウント連携中は同じアカウントでログインした状態を保ってください。',
     linkedAccounts: '連携アカウント',
     linkDiscord: 'Discordを連携',
     linkDiscordDescription: 'このログイン中のアカウントにDiscordアカウントを連携します。',
