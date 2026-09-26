@@ -10,7 +10,6 @@ import {
 import { CosmeticIdempotencyConflictError } from '../cosmetics/prisma-cosmetic-service.js';
 import {
   csrfCookieName,
-  oauthStateCookieName,
   parseCookies,
   sessionCookieName,
   serializeCookie,
@@ -20,6 +19,7 @@ import {
   OAuthRequestError,
   OAuthSecurityConfigurationError,
   OAuthService,
+  oauthStateCookieNameFor,
 } from '../auth/oauth-service.js';
 import {
   OAuthProviderConfigurationError,
@@ -271,7 +271,11 @@ export class ApiApplication {
   }
 
   private async completeOAuth(provider: string, request: ApiRequest): Promise<ApiResponse> {
-    const stateCookie = parseCookies(header(request.headers, 'cookie'))[oauthStateCookieName];
+    const state = request.query?.state;
+    const stateCookie =
+      state === undefined
+        ? undefined
+        : parseCookies(header(request.headers, 'cookie'))[oauthStateCookieNameFor(state)];
     const result = await this.oauth.complete(
       provider,
       request.query ?? {},
@@ -285,7 +289,7 @@ export class ApiApplication {
         location: this.oauth.completionLocation(result.returnTo),
         'set-cookie': [
           ...this.oauth.sessionCookie(result.session),
-          this.oauth.expiredStateCookie(),
+          this.oauth.expiredStateCookie(result.state),
         ],
       },
     };

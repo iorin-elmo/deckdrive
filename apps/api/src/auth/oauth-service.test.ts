@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
-import { oauthStateCookieName, parseCookies } from './cookies.js';
+import { parseCookies } from './cookies.js';
 import { sha256 } from './crypto.js';
 import {
   OAuthRateLimiter,
   OAuthRequestError,
   OAuthService,
   oauthReturnPath,
+  oauthStateCookieNameFor,
 } from './oauth-service.js';
 import type { OAuthIdentity, OAuthProviderAdapter } from './providers/provider.js';
 
@@ -83,12 +84,42 @@ describe('OAuthService', () => {
     expect(state).not.toBeNull();
     expect(data.stateHash).toBe(sha256(state!));
     expect(deleteMany).toHaveBeenCalledTimes(1);
-    const signedState = parseCookies(result.stateCookie)[oauthStateCookieName];
+    const signedState = parseCookies(result.stateCookie)[oauthStateCookieNameFor(state!)];
     const payload = signedState?.split('.')[0];
     expect(payload).toBeDefined();
     expect(JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8'))).toMatchObject({
       returnTo: '/decks/deck-1/edit',
     });
+  });
+
+  it('keeps signed OAuth state cookies independent for concurrent login attempts', async () => {
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn().mockImplementation(({ state }) => {
+        const url = new URL('https://provider.example/authorize');
+        url.searchParams.set('state', state);
+        return url;
+      }),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    const first = await service.start('discord', '127.0.0.1');
+    const second = await service.start('discord', '127.0.0.1');
+    const firstState = new URL(first.location).searchParams.get('state');
+    const secondState = new URL(second.location).searchParams.get('state');
+
+    expect(firstState).not.toBeNull();
+    expect(secondState).not.toBeNull();
+    expect(oauthStateCookieNameFor(firstState!)).not.toBe(oauthStateCookieNameFor(secondState!));
+    expect(parseCookies(first.stateCookie)[oauthStateCookieNameFor(firstState!)]).toBeDefined();
+    expect(parseCookies(second.stateCookie)[oauthStateCookieNameFor(secondState!)]).toBeDefined();
   });
 
   it('rejects a callback without the matching signed state cookie before token exchange', async () => {

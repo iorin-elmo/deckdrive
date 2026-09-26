@@ -5,7 +5,7 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
-  it('refreshes the CSRF cookie whenever restoring an authenticated session', async () => {
+  it('recovers the CSRF cookie when restoring a session without a valid cookie', async () => {
     const sessionToken = 'session-token';
     const application = new ApiApplication(
       {

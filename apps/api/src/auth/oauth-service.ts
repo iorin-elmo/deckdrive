@@ -37,6 +37,7 @@ export interface OAuthStartResult {
 export interface OAuthCompletionResult {
   readonly session: CreatedSession;
   readonly returnTo: string;
+  readonly state: string;
 }
 
 /**
@@ -204,7 +205,11 @@ export class OAuthService {
       throw new OAuthProviderExchangeError('OAuth provider request failed.');
     }
     const userId = await this.resolveUser(adapter.id, identity, authorization.linkUserId);
-    return { session: await this.sessionService.create(userId), returnTo: stateCookie.returnTo };
+    return {
+      session: await this.sessionService.create(userId),
+      returnTo: stateCookie.returnTo,
+      state: stateCookie.state,
+    };
   }
 
   session(): PrismaSessionService {
@@ -236,8 +241,8 @@ export class OAuthService {
     });
   }
 
-  expiredStateCookie(): string {
-    return serializeCookie(oauthStateCookieName, '', {
+  expiredStateCookie(state: string): string {
+    return serializeCookie(oauthStateCookieNameFor(state), '', {
       httpOnly: true,
       secure: this.isSecure,
       sameSite: 'Lax',
@@ -279,13 +284,17 @@ export class OAuthService {
 
   private stateCookie(value: OAuthStateCookie, stateSecret: string): string {
     const payload = Buffer.from(JSON.stringify(value)).toString('base64url');
-    return serializeCookie(oauthStateCookieName, `${payload}.${sign(payload, stateSecret)}`, {
-      httpOnly: true,
-      secure: this.isSecure,
-      sameSite: 'Lax',
-      maxAge: Math.floor(authorizationLifetimeMilliseconds / 1000),
-      path: '/api/v1/auth/oauth',
-    });
+    return serializeCookie(
+      oauthStateCookieNameFor(value.state),
+      `${payload}.${sign(payload, stateSecret)}`,
+      {
+        httpOnly: true,
+        secure: this.isSecure,
+        sameSite: 'Lax',
+        maxAge: Math.floor(authorizationLifetimeMilliseconds / 1000),
+        path: '/api/v1/auth/oauth',
+      },
+    );
   }
 
   private readStateCookie(value: string | undefined): OAuthStateCookie | undefined {
@@ -482,4 +491,9 @@ export function oauthReturnPath(value: string | undefined): string {
   )
     return '/home';
   return value;
+}
+
+/** Keeps concurrent OAuth attempts in separate, fixed-length cookie names. */
+export function oauthStateCookieNameFor(state: string): string {
+  return `${oauthStateCookieName}_${sha256(state).slice(0, 32)}`;
 }
