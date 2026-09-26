@@ -207,6 +207,7 @@ function LoginPage() {
   const enablePreview = useSessionStore((state) => state.enablePreview);
   const { t } = useI18n();
   const returnTo = loginReturnPath(new URLSearchParams(location.search).get('returnTo'));
+  const oauthError = new URLSearchParams(location.search).get('oauthError');
   const [email, setEmail] = useState('debug@deckdrive.local');
   const [displayName, setDisplayName] = useState('Debug Player');
   const login = useMutation({
@@ -238,6 +239,13 @@ function LoginPage() {
           {t('enterArena')}
         </h1>
         <p className="mt-3 text-sm leading-6 text-stone-300">{t('developmentLoginDescription')}</p>
+        {oauthError === null ? null : (
+          <div className="mt-5">
+            <AsyncNotice kind="error" title={t('oauthLoginFailed')}>
+              <p>{t('oauthLoginFailedDescription')}</p>
+            </AsyncNotice>
+          </div>
+        )}
         <form
           className="mt-7 space-y-5"
           onSubmit={(event) => {

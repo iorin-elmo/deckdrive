@@ -62,6 +62,7 @@ describe('DiscordOAuthProvider', () => {
       expect.objectContaining({
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        signal: expect.any(AbortSignal),
       }),
     );
     const tokenRequest = request.mock.calls[0]?.[1] as RequestInit;
@@ -73,9 +74,14 @@ describe('DiscordOAuthProvider', () => {
       code: 'authorization-code',
       code_verifier: 'verifier-value',
     });
-    expect(request).toHaveBeenNthCalledWith(2, 'https://discord.com/api/users/@me', {
-      headers: { authorization: 'Bearer access-token' },
-    });
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'https://discord.com/api/users/@me',
+      expect.objectContaining({
+        headers: { authorization: 'Bearer access-token' },
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it('rejects an unsuccessful or malformed token response before profile lookup', async () => {
@@ -107,5 +113,22 @@ describe('DiscordOAuthProvider', () => {
       }),
     ).rejects.toBeInstanceOf(OAuthProviderExchangeError);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps a stalled Discord request to the provider exchange error', async () => {
+    const request = vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+    const provider = new DiscordOAuthProvider(config, request as typeof fetch);
+
+    await expect(
+      provider.exchangeCode({
+        redirectUri: 'https://api.example.test/callback',
+        code: 'code',
+        codeVerifier: 'v',
+      }),
+    ).rejects.toBeInstanceOf(OAuthProviderExchangeError);
+    expect(request).toHaveBeenCalledWith(
+      'https://discord.com/api/oauth2/token',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 });

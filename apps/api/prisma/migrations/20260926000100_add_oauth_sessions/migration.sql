@@ -36,6 +36,7 @@ CREATE TABLE "sessions" (
 CREATE UNIQUE INDEX "sessions_token_hash_key" ON "sessions"("token_hash");
 CREATE INDEX "sessions_user_id_expires_at_idx" ON "sessions"("user_id", "expires_at");
 CREATE INDEX "sessions_expires_at_idx" ON "sessions"("expires_at");
+CREATE INDEX "sessions_revoked_at_idx" ON "sessions"("revoked_at");
 
 CREATE TABLE "oauth_authorizations" (
   "id" UUID NOT NULL,

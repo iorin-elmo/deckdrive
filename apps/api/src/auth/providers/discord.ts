@@ -10,6 +10,7 @@ import {
 const authorizationEndpoint = 'https://discord.com/api/oauth2/authorize';
 const tokenEndpoint = 'https://discord.com/api/oauth2/token';
 const userInfoEndpoint = 'https://discord.com/api/users/@me';
+const requestTimeoutMilliseconds = 10_000;
 
 export class DiscordOAuthProvider implements OAuthProviderAdapter {
   readonly id = 'discord' as const;
@@ -46,7 +47,7 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
     code,
     codeVerifier,
   }: Parameters<OAuthProviderAdapter['exchangeCode']>[0]): Promise<OAuthIdentity> {
-    const token = await this.request(tokenEndpoint, {
+    const token = await this.requestWithTimeout(tokenEndpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -63,7 +64,7 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
     const accessToken = nonEmptyString(tokenBody?.access_token);
     if (!token.ok || accessToken === undefined)
       throw new OAuthProviderExchangeError('Discord token exchange failed.');
-    const profile = await this.request(userInfoEndpoint, {
+    const profile = await this.requestWithTimeout(userInfoEndpoint, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
     const body = (await profile.json().catch(() => undefined)) as
@@ -79,5 +80,16 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
       ...(email === undefined ? {} : { email }),
       emailVerified: body?.verified === true,
     };
+  }
+
+  private async requestWithTimeout(input: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.request(input, {
+        ...init,
+        signal: AbortSignal.timeout(requestTimeoutMilliseconds),
+      });
+    } catch {
+      throw new OAuthProviderExchangeError('Discord provider request failed.');
+    }
   }
 }

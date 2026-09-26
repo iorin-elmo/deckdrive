@@ -206,7 +206,7 @@ export class ApiApplication {
         },
       };
     }
-    if (!this.oauth.isApplicationOrigin(header(request.headers, 'origin'))) throw new CsrfError();
+    if (!this.trustedCsrfRecoveryRequest(request)) throw new CsrfError();
     // Recover only when the shared CSRF cookie is unavailable or invalid. A
     // normal restoration must not invalidate token copies held in other tabs.
     // Cross-site navigations cannot enter this branch and invalidate active tabs.
@@ -276,21 +276,44 @@ export class ApiApplication {
       state === undefined
         ? undefined
         : parseCookies(header(request.headers, 'cookie'))[oauthStateCookieNameFor(state)];
-    const result = await this.oauth.complete(
-      provider,
-      request.query ?? {},
-      stateCookie,
-      request.clientAddress,
+    try {
+      const result = await this.oauth.complete(
+        provider,
+        request.query ?? {},
+        stateCookie,
+        request.clientAddress,
+      );
+      return {
+        status: 302,
+        body: { authenticated: true },
+        headers: {
+          location: this.oauth.completionLocation(result.returnTo),
+          'set-cookie': [
+            ...this.oauth.sessionCookie(result.session),
+            this.oauth.expiredStateCookie(result.state),
+          ],
+        },
+      };
+    } catch (error) {
+      return this.oauthFailureResponse(error, state);
+    }
+  }
+
+  private trustedCsrfRecoveryRequest(request: ApiRequest): boolean {
+    return (
+      this.oauth.isApplicationOrigin(header(request.headers, 'origin')) ||
+      header(request.headers, 'sec-fetch-site') === 'same-origin'
     );
+  }
+
+  private oauthFailureResponse(error: unknown, state: string | undefined): ApiResponse {
+    const code = oauthFailureCode(error);
     return {
       status: 302,
-      body: { authenticated: true },
+      body: { authenticated: false, error: code },
       headers: {
-        location: this.oauth.completionLocation(result.returnTo),
-        'set-cookie': [
-          ...this.oauth.sessionCookie(result.session),
-          this.oauth.expiredStateCookie(result.state),
-        ],
+        location: this.oauth.failureLocation(code),
+        ...(state === undefined ? {} : { 'set-cookie': this.oauth.expiredStateCookie(state) }),
       },
     };
   }
@@ -711,6 +734,15 @@ export class ApiApplication {
 class UnauthorizedError extends Error {}
 class CsrfError extends Error {}
 class BadRequestError extends Error {}
+
+function oauthFailureCode(error: unknown): string {
+  if (error instanceof OAuthRateLimitError) return 'OAUTH_RATE_LIMITED';
+  if (error instanceof OAuthSecurityConfigurationError) return 'OAUTH_NOT_CONFIGURED';
+  if (error instanceof OAuthProviderConfigurationError) return 'OAUTH_PROVIDER_NOT_CONFIGURED';
+  if (error instanceof OAuthProviderExchangeError) return 'OAUTH_PROVIDER_UNAVAILABLE';
+  if (error instanceof OAuthRequestError) return error.code;
+  return 'OAUTH_FAILED';
+}
 
 function isUnsafeMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'DELETE';

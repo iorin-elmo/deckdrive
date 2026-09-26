@@ -43,6 +43,42 @@ describe('ApiApplication authentication', () => {
     expect(response.headers?.['set-cookie']).toContain(`deckdrive_csrf=${csrfToken}`);
   });
 
+  it('recovers a missing CSRF cookie for a same-origin browser request without Origin', async () => {
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('previous-csrf-token'),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: {
+          cookie: 'deckdrive_session=session-token',
+          'sec-fetch-site': 'same-origin',
+        },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { csrfToken: expect.any(String) } });
+  });
+
   it('does not rotate CSRF state for a cross-site navigation without a CSRF cookie', async () => {
     const updateMany = vi.fn();
     const application = new ApiApplication(
@@ -76,6 +112,33 @@ describe('ApiApplication authentication', () => {
       }),
     ).resolves.toEqual({ status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } });
     expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns OAuth callback failures to the application and clears the matching state cookie', async () => {
+    const application = new ApiApplication({} as PrismaClient, {
+      NODE_ENV: 'test',
+      SESSION_SECRET: 'a'.repeat(32),
+      APP_BASE_URL: 'https://app.example.test',
+      OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+      DISCORD_CLIENT_ID: 'client-id',
+      DISCORD_CLIENT_SECRET: 'client-secret',
+    });
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/auth/oauth/discord/callback',
+      query: { state: 'state-value', error: 'access_denied' },
+      headers: {},
+    });
+
+    expect(response).toMatchObject({
+      status: 302,
+      body: { authenticated: false, error: 'OAUTH_INVALID_REQUEST' },
+      headers: {
+        location: 'https://app.example.test/login?oauthError=OAUTH_INVALID_REQUEST',
+        'set-cookie': expect.stringContaining('deckdrive_oauth_'),
+      },
+    });
   });
 
   it('reuses a valid CSRF cookie when restoring a session', async () => {

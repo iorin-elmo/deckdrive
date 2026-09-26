@@ -100,6 +100,7 @@ model Session {
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
+  @@index([revokedAt])
   @@map("sessions")
 }
 

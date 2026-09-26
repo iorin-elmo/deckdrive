@@ -258,6 +258,12 @@ export class OAuthService {
     return `${this.applicationBaseUrl}/login?returnTo=${encodeURIComponent(oauthReturnPath(returnTo))}`;
   }
 
+  failureLocation(error: string): string {
+    if (this.applicationBaseUrl === undefined)
+      throw new OAuthSecurityConfigurationError('APP_BASE_URL is required for OAuth callbacks.');
+    return `${this.applicationBaseUrl}/login?oauthError=${encodeURIComponent(error)}`;
+  }
+
   isApplicationOrigin(origin: string | undefined): boolean {
     return origin !== undefined && origin === this.applicationBaseUrl;
   }
