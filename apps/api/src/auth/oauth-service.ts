@@ -252,6 +252,10 @@ export class OAuthService {
     return `${this.applicationBaseUrl}/login?returnTo=${encodeURIComponent(oauthReturnPath(returnTo))}`;
   }
 
+  isApplicationOrigin(origin: string | undefined): boolean {
+    return origin !== undefined && origin === this.applicationBaseUrl;
+  }
+
   private adapter(provider: string): OAuthProviderAdapter {
     if (!isOAuthProviderId(provider)) throw new OAuthRequestError('OAUTH_INVALID_REQUEST');
     const adapter = this.adapters.get(provider);

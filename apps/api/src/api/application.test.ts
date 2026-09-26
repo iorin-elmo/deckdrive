@@ -32,12 +32,50 @@ describe('ApiApplication authentication', () => {
     const response = await application.handle({
       method: 'GET',
       path: '/api/v1/auth/session',
-      headers: { cookie: `deckdrive_session=${sessionToken}` },
+      headers: {
+        cookie: `deckdrive_session=${sessionToken}`,
+        origin: 'http://localhost:5173',
+      },
     });
 
     expect(response).toMatchObject({ status: 200, body: { csrfToken: expect.any(String) } });
     const csrfToken = (response.body as { csrfToken: string }).csrfToken;
     expect(response.headers?.['set-cookie']).toContain(`deckdrive_csrf=${csrfToken}`);
+  });
+
+  it('does not rotate CSRF state for a cross-site navigation without a CSRF cookie', async () => {
+    const updateMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('valid-csrf-token'),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: { cookie: 'deckdrive_session=session-token', origin: 'https://outside.example' },
+      }),
+    ).resolves.toEqual({ status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } });
+    expect(updateMany).not.toHaveBeenCalled();
   });
 
   it('reuses a valid CSRF cookie when restoring a session', async () => {

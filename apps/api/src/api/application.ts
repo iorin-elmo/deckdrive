@@ -206,8 +206,10 @@ export class ApiApplication {
         },
       };
     }
+    if (!this.oauth.isApplicationOrigin(header(request.headers, 'origin'))) throw new CsrfError();
     // Recover only when the shared CSRF cookie is unavailable or invalid. A
     // normal restoration must not invalidate token copies held in other tabs.
+    // Cross-site navigations cannot enter this branch and invalidate active tabs.
     const csrfToken = await this.oauth.session().rotateCsrfToken(session.sessionId);
     if (csrfToken === undefined) throw new UnauthorizedError();
     return {
