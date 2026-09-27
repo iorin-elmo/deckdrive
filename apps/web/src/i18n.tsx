@@ -32,6 +32,8 @@ const resources = {
     titleDescription:
       'Build a precise deck, challenge a CPU rival, and study every decision from the arena.',
     developmentLogin: 'Development login',
+    discordLogin: 'Sign in with Discord',
+    startDiscord: 'Get started with Discord',
     enterGame: 'Enter game',
     startDevelopment: 'Start in development',
     continue: 'Continue',
@@ -271,6 +273,8 @@ const resources = {
     titleEyebrow: '戦術カードバトル',
     titleDescription: 'デッキを組み、CPUライバルに挑み、アリーナでの判断を振り返りましょう。',
     developmentLogin: '開発用ログイン',
+    discordLogin: 'Discordでログイン',
+    startDiscord: 'Discordで始める',
     enterGame: 'ゲームを始める',
     startDevelopment: '開発モードで始める',
     continue: '続ける',

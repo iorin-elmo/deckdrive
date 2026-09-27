@@ -110,7 +110,9 @@ function TitlePage() {
         <header className="flex items-center justify-between">
           <span className="text-sm font-bold tracking-[0.18em] text-cyan-200">DECKDRIVE</span>
           <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
-            {playerId === null ? t('developmentLogin') : t('enterGame')}
+            {playerId === null
+              ? t(import.meta.env.DEV ? 'developmentLogin' : 'discordLogin')
+              : t('enterGame')}
             <ChevronRight size={16} aria-hidden="true" />
           </Link>
         </header>
@@ -129,7 +131,9 @@ function TitlePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link className="hero-command" to={playerId === null ? '/login' : '/home'}>
               <Play size={18} fill="currentColor" aria-hidden="true" />
-              {playerId === null ? t('startDevelopment') : t('continue')}
+              {playerId === null
+                ? t(import.meta.env.DEV ? 'startDevelopment' : 'startDiscord')
+                : t('continue')}
             </Link>
             <Link className="hero-secondary" to="/cards">
               {t('exploreCards')}
@@ -335,7 +339,9 @@ function PublicCardLayout({ children }: { children: ReactNode }) {
               </span>
             ) : null}
             <Link className="quiet-link" to={playerId === null ? '/login' : '/home'}>
-              {playerId === null ? t('developmentLogin') : t('enterGame')}
+              {playerId === null
+                ? t(import.meta.env.DEV ? 'developmentLogin' : 'discordLogin')
+                : t('enterGame')}
               <ChevronRight size={16} aria-hidden="true" />
             </Link>
           </div>
