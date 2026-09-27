@@ -5,6 +5,52 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it.each(['production', 'development'])(
+    'expires logout cookies with an accepted policy in %s',
+    async (NODE_ENV) => {
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const application = new ApiApplication(
+        {
+          session: {
+            findUnique: vi.fn().mockResolvedValue({
+              id: 'session-1',
+              userId: 'user-1',
+              csrfTokenHash: sha256('csrf'),
+              expiresAt: new Date('2099-01-01'),
+              revokedAt: null,
+              user: { player: { id: 'player-1' } },
+            }),
+            updateMany,
+          },
+        } as unknown as PrismaClient,
+        { NODE_ENV },
+      );
+      const response = await application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: { cookie: 'deckdrive_session=token', 'x-csrf-token': 'csrf' },
+      });
+      expect(response.status).toBe(204);
+      const cookies = response.headers?.['set-cookie'] as string[];
+      expect(cookies).toHaveLength(2);
+      for (const cookie of cookies) {
+        expect(cookie).toContain('Max-Age=0');
+        expect(cookie).toContain('Path=/');
+        if (NODE_ENV === 'production') {
+          expect(cookie).toContain('SameSite=None');
+          expect(cookie).toContain('Secure');
+        } else expect(cookie).not.toContain('Secure');
+      }
+      expect(cookies[0]).toContain('deckdrive_session=;');
+      expect(cookies[0]).toContain('HttpOnly');
+      expect(cookies[1]).toContain('deckdrive_csrf=;');
+      if (NODE_ENV === 'development') {
+        expect(cookies[0]).toContain('SameSite=Lax');
+        expect(cookies[1]).toContain('SameSite=Strict');
+      }
+      expect(updateMany).toHaveBeenCalledOnce();
+    },
+  );
   it('rejects the legacy player header in production even when VITEST is set', async () => {
     vi.stubEnv('VITEST', 'true');
     try {

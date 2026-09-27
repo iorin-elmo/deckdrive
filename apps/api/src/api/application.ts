@@ -233,10 +233,14 @@ export class ApiApplication {
           serializeCookie(sessionCookieName, '', {
             httpOnly: true,
             secure,
-            sameSite: 'Lax',
+            sameSite: secure ? 'None' : 'Lax',
             maxAge: 0,
           }),
-          serializeCookie(csrfCookieName, '', { secure, sameSite: 'Strict', maxAge: 0 }),
+          serializeCookie(csrfCookieName, '', {
+            secure,
+            sameSite: secure ? 'None' : 'Strict',
+            maxAge: 0,
+          }),
         ],
       },
     };
