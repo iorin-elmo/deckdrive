@@ -63,6 +63,32 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it.each(['production', 'development'])(
+    'uses the appropriate state cookie policy for linking in %s',
+    async (NODE_ENV) => {
+      const service = new OAuthService(
+        { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+        {
+          NODE_ENV,
+          SESSION_SECRET: 'a'.repeat(32),
+          APP_BASE_URL: 'https://app.example.test',
+          OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+          DISCORD_CLIENT_ID: 'client',
+          DISCORD_CLIENT_SECRET: 'secret',
+        },
+      );
+      const result = await service.start('discord', 'client', 'user-1', '/settings', 'session-1');
+      const state = new URL(result.location).searchParams.get('state')!;
+      for (const cookie of [result.stateCookie, service.expiredStateCookie(state)]) {
+        expect(cookie).toContain(NODE_ENV === 'production' ? 'SameSite=None' : 'SameSite=Lax');
+        expect(cookie).toContain('HttpOnly');
+        expect(cookie).toContain('Path=/api/v1/auth/oauth');
+        if (NODE_ENV === 'production') expect(cookie).toContain('Secure');
+        else expect(cookie).not.toContain('Secure');
+      }
+      expect(service.expiredStateCookie(state)).toContain('Max-Age=0');
+    },
+  );
   it.each(['matching', 'different-user', 'expired', 'missing'])(
     'handles an existing login session: %s',
     async (kind) => {

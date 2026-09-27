@@ -255,7 +255,7 @@ export class OAuthService {
     return serializeCookie(oauthStateCookieNameFor(state), '', {
       httpOnly: true,
       secure: this.isSecure,
-      sameSite: 'Lax',
+      sameSite: this.isSecure ? 'None' : 'Lax',
       maxAge: 0,
       path: '/api/v1/auth/oauth',
     });
@@ -306,7 +306,7 @@ export class OAuthService {
       {
         httpOnly: true,
         secure: this.isSecure,
-        sameSite: 'Lax',
+        sameSite: this.isSecure ? 'None' : 'Lax',
         maxAge: Math.floor(authorizationLifetimeMilliseconds / 1000),
         path: '/api/v1/auth/oauth',
       },
