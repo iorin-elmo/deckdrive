@@ -485,7 +485,7 @@ function oauthRedirectBaseUrl(environment: NodeJS.ProcessEnv): string | undefine
   if (configured === undefined || configured.trim().length === 0) {
     return environment.NODE_ENV === 'production' ? undefined : 'http://localhost:3000';
   }
-  return new URL(configured).origin;
+  return validatedOAuthOrigin(configured, environment.NODE_ENV === 'production');
 }
 
 function oauthStateSecret(environment: NodeJS.ProcessEnv): string | undefined {
@@ -504,13 +504,25 @@ function applicationBaseUrl(environment: NodeJS.ProcessEnv): string | undefined 
   if (configured === undefined || configured.trim().length === 0) {
     return environment.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
   }
-  return new URL(configured).origin;
+  return validatedOAuthOrigin(configured, environment.NODE_ENV === 'production');
+}
+
+function validatedOAuthOrigin(value: string, production: boolean): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && (production || url.protocol !== 'http:')) return undefined;
+    if (url.username || url.password) return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Limits post-login navigation to an application-local route. */
 export function oauthReturnPath(value: string | undefined): string {
   if (
     value === undefined ||
+    Buffer.byteLength(value, 'utf8') > 1024 ||
     !value.startsWith('/') ||
     value.startsWith('//') ||
     value.startsWith('/\\') ||

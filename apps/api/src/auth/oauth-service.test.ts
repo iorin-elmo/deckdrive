@@ -37,6 +37,11 @@ describe('OAuthRateLimiter', () => {
 });
 
 describe('oauthReturnPath', () => {
+  it('bounds UTF-8 destinations before encoding the state cookie', () => {
+    expect(oauthReturnPath('/' + 'a'.repeat(1023))).toHaveLength(1024);
+    expect(oauthReturnPath('/' + 'a'.repeat(1024))).toBe('/home');
+    expect(oauthReturnPath('/' + 'あ'.repeat(342))).toBe('/home');
+  });
   it('permits application-local routes and rejects external destinations', () => {
     expect(oauthReturnPath('/decks/deck-1/edit')).toBe('/decks/deck-1/edit');
     expect(oauthReturnPath('//example.test')).toBe('/home');
@@ -45,6 +50,26 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it.each(['APP_BASE_URL', 'OAUTH_REDIRECT_BASE_URL'])(
+    'rejects a production HTTP %s before creating state',
+    async (key) => {
+      const create = vi.fn();
+      const service = new OAuthService(
+        { oAuthAuthorization: { create } } as unknown as PrismaClient,
+        {
+          NODE_ENV: 'production',
+          SESSION_SECRET: 'a'.repeat(32),
+          APP_BASE_URL: 'https://app.example.test',
+          OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+          [key]: 'http://unsafe.example.test',
+          DISCORD_CLIENT_ID: 'client',
+          DISCORD_CLIENT_SECRET: 'secret',
+        },
+      );
+      await expect(service.start('discord', '127.0.0.1')).rejects.toThrow(key);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
   it.each(['production', 'development'])('sets the session cookie policy for %s', (NODE_ENV) => {
     const service = new OAuthService({} as PrismaClient, { NODE_ENV });
     const cookie = service.sessionCookie({

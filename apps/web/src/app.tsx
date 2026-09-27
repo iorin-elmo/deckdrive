@@ -234,11 +234,15 @@ function LoginPage() {
           <ChevronRight className="rotate-180" size={16} aria-hidden="true" />
           {t('backToTitle')}
         </Link>
-        <p className="eyebrow">{t('developmentAccess')}</p>
+        <p className="eyebrow">{import.meta.env.DEV ? t('developmentAccess') : 'Discord'}</p>
         <h1 id="login-title" className="mt-2 text-3xl font-black text-stone-50">
           {t('enterArena')}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-stone-300">{t('developmentLoginDescription')}</p>
+        {import.meta.env.DEV ? (
+          <p className="mt-3 text-sm leading-6 text-stone-300">
+            {t('developmentLoginDescription')}
+          </p>
+        ) : null}
         {oauthError === null ? null : (
           <div className="mt-5">
             <AsyncNotice kind="error" title={t('oauthLoginFailed')}>
@@ -246,58 +250,62 @@ function LoginPage() {
             </AsyncNotice>
           </div>
         )}
-        <form
-          className="mt-7 space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            login.mutate();
-          }}
-        >
-          <label className="field-label">
-            {t('email')}
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label className="field-label">
-            {t('displayName')}
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              autoComplete="nickname"
-              required
-            />
-          </label>
-          {login.isError ? (
-            canOpenOfflinePreview(login.error) ? (
-              <ApiFailure
-                error={login.error}
-                onPreview={() => {
-                  enablePreview();
-                  navigate(returnTo);
-                }}
-              />
-            ) : (
-              <ApiFailure error={login.error} />
-            )
-          ) : null}
-          <ActionButton className="w-full" type="submit" disabled={login.isPending}>
-            {login.isPending ? (
-              <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
-            ) : (
-              <LogIn size={17} aria-hidden="true" />
-            )}
-            {t('signInDevelopment')}
-          </ActionButton>
-        </form>
-        <div className="my-6 flex items-center gap-3 text-xs text-stone-400" aria-hidden="true">
-          <span className="h-px flex-1 bg-stone-700" />
-          OAuth
-          <span className="h-px flex-1 bg-stone-700" />
-        </div>
+        {import.meta.env.DEV ? (
+          <>
+            <form
+              className="mt-7 space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                login.mutate();
+              }}
+            >
+              <label className="field-label">
+                {t('email')}
+                <input
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label className="field-label">
+                {t('displayName')}
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  autoComplete="nickname"
+                  required
+                />
+              </label>
+              {login.isError ? (
+                canOpenOfflinePreview(login.error) ? (
+                  <ApiFailure
+                    error={login.error}
+                    onPreview={() => {
+                      enablePreview();
+                      navigate(returnTo);
+                    }}
+                  />
+                ) : (
+                  <ApiFailure error={login.error} />
+                )
+              ) : null}
+              <ActionButton className="w-full" type="submit" disabled={login.isPending}>
+                {login.isPending ? (
+                  <LoaderCircle className="animate-spin" size={17} aria-hidden="true" />
+                ) : (
+                  <LogIn size={17} aria-hidden="true" />
+                )}
+                {t('signInDevelopment')}
+              </ActionButton>
+            </form>
+            <div className="my-6 flex items-center gap-3 text-xs text-stone-400" aria-hidden="true">
+              <span className="h-px flex-1 bg-stone-700" />
+              OAuth
+              <span className="h-px flex-1 bg-stone-700" />
+            </div>
+          </>
+        ) : null}
         <a
           className="block rounded border border-stone-600 px-2 py-2 text-center text-sm font-semibold text-stone-100 hover:border-cyan-300 hover:text-cyan-100"
           href={api.oauthStartUrl('discord', returnTo)}
