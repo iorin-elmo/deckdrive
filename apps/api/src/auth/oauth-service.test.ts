@@ -38,9 +38,10 @@ describe('OAuthRateLimiter', () => {
 
 describe('oauthReturnPath', () => {
   it('bounds UTF-8 destinations before encoding the state cookie', () => {
-    expect(oauthReturnPath('/' + 'a'.repeat(1023))).toHaveLength(1024);
-    expect(oauthReturnPath('/' + 'a'.repeat(1024))).toBe('/home');
-    expect(oauthReturnPath('/' + 'あ'.repeat(342))).toBe('/home');
+    expect(oauthReturnPath('/' + 'a'.repeat(255))).toHaveLength(256);
+    expect(oauthReturnPath('/' + 'a'.repeat(256))).toBe('/home');
+    expect(oauthReturnPath('/' + '\u0001'.repeat(255))).toBe('/home');
+    expect(oauthReturnPath('/' + 'あ'.repeat(86))).toBe('/home');
   });
   it('permits application-local routes and rejects external destinations', () => {
     expect(oauthReturnPath('/decks/deck-1/edit')).toBe('/decks/deck-1/edit');
@@ -50,6 +51,28 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it('keeps ten maximum-size link state cookies within an 8 KiB budget', async () => {
+    const service = new OAuthService(
+      { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+      {
+        SESSION_SECRET: 'a'.repeat(32),
+        DISCORD_CLIENT_ID: 'client',
+        DISCORD_CLIENT_SECRET: 'secret',
+      },
+    );
+    const cookies: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const result = await service.start(
+        'discord',
+        '127.0.0.1',
+        'user-1',
+        '/' + 'a'.repeat(255),
+        '12345678-1234-1234-1234-123456789012',
+      );
+      cookies.push(result.stateCookie.split(';')[0]!);
+    }
+    expect(Buffer.byteLength(cookies.join('; '), 'utf8')).toBeLessThan(8192);
+  });
   it.each(['APP_BASE_URL', 'OAUTH_REDIRECT_BASE_URL'])(
     'rejects a production HTTP %s before creating state',
     async (key) => {
@@ -90,6 +113,7 @@ describe('OAuthService', () => {
         emailVerified: false,
       });
       const now = new Date('2026-09-27T00:00:00Z');
+      const createSession = vi.fn();
       const service = new OAuthService(
         {
           oAuthAuthorization: {
@@ -108,7 +132,7 @@ describe('OAuthService', () => {
               user: { player: { id: 'player-1' } },
             }),
             deleteMany: vi.fn(),
-            create: vi.fn(),
+            create: createSession,
           },
           oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'user-1' }) },
         } as unknown as PrismaClient,
@@ -136,6 +160,8 @@ describe('OAuthService', () => {
       );
       if (kind === 'valid') {
         await expect(result).resolves.toMatchObject({ returnTo: '/settings' });
+        expect((await result).session).toBeUndefined();
+        expect(createSession).not.toHaveBeenCalled();
         expect(exchangeCode).toHaveBeenCalledOnce();
       } else {
         await expect(result).rejects.toMatchObject({ code: 'OAUTH_INVALID_REQUEST' });

@@ -36,7 +36,7 @@ export interface OAuthStartResult {
 }
 
 export interface OAuthCompletionResult {
-  readonly session: CreatedSession;
+  readonly session?: CreatedSession;
   readonly returnTo: string;
   readonly state: string;
 }
@@ -224,7 +224,9 @@ export class OAuthService {
     }
     const userId = await this.resolveUser(adapter.id, identity, authorization.linkUserId);
     return {
-      session: await this.sessionService.create(userId),
+      ...(authorization.linkUserId === null
+        ? { session: await this.sessionService.create(userId) }
+        : {}),
       returnTo: stateCookie.returnTo,
       state: stateCookie.state,
     };
@@ -522,7 +524,8 @@ function validatedOAuthOrigin(value: string, production: boolean): string | unde
 export function oauthReturnPath(value: string | undefined): string {
   if (
     value === undefined ||
-    Buffer.byteLength(value, 'utf8') > 1024 ||
+    Buffer.byteLength(value, 'utf8') > 256 ||
+    Buffer.byteLength(JSON.stringify(value), 'utf8') > 258 ||
     !value.startsWith('/') ||
     value.startsWith('//') ||
     value.startsWith('/\\') ||

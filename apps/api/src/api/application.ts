@@ -297,7 +297,7 @@ export class ApiApplication {
         headers: {
           location: this.oauth.completionLocation(result.returnTo),
           'set-cookie': [
-            ...this.oauth.sessionCookie(result.session),
+            ...(result.session === undefined ? [] : this.oauth.sessionCookie(result.session)),
             this.oauth.expiredStateCookie(result.state),
           ],
         },
