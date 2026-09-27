@@ -5,6 +5,26 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('rejects the legacy player header in production even when VITEST is set', async () => {
+    vi.stubEnv('VITEST', 'true');
+    try {
+      const findUnique = vi.fn();
+      const application = new ApiApplication(
+        { player: { findUnique } } as unknown as PrismaClient,
+        { NODE_ENV: 'production' },
+      );
+      await expect(
+        application.handle({
+          method: 'GET',
+          path: '/api/v1/me',
+          headers: { 'x-deckdrive-player-id': 'player-1' },
+        }),
+      ).resolves.toEqual({ status: 401, body: { error: 'UNAUTHORIZED' } });
+      expect(findUnique).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it('redirects an unconfigured OAuth start to the application failure screen', async () => {
     const application = new ApiApplication({} as PrismaClient, {
       NODE_ENV: 'test',
@@ -423,7 +443,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.2.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.2.0' },
     );
 
     await expect(
@@ -525,7 +545,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.0.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.0.0' },
     );
 
     await expect(
@@ -560,7 +580,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.0.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.0.0' },
     );
 
     await expect(

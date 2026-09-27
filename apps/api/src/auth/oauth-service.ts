@@ -243,7 +243,7 @@ export class OAuthService {
       serializeCookie('deckdrive_session', session.token, {
         httpOnly: true,
         secure: this.isSecure,
-        sameSite: 'Lax',
+        sameSite: this.isSecure ? 'None' : 'Lax',
         maxAge,
       }),
       this.csrfCookie(session.csrfToken, session.expiresAt),

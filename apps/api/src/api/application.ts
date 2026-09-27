@@ -757,11 +757,7 @@ function isUnsafeMethod(method: string): boolean {
 }
 
 function developmentPlayerHeaderAllowed(environment: NodeJS.ProcessEnv): boolean {
-  return (
-    environment.NODE_ENV === 'development' ||
-    environment.NODE_ENV === 'test' ||
-    process.env.VITEST === 'true'
-  );
+  return environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test';
 }
 
 function sortVersionedCards<T extends { readonly cardId: string; readonly version: string }>(

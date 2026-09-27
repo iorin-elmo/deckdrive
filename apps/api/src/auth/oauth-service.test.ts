@@ -45,6 +45,17 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it.each(['production', 'development'])('sets the session cookie policy for %s', (NODE_ENV) => {
+    const service = new OAuthService({} as PrismaClient, { NODE_ENV });
+    const cookie = service.sessionCookie({
+      token: 'token',
+      csrfToken: 'csrf',
+      expiresAt: new Date('2099-01-01'),
+    })[0];
+    expect(cookie).toContain(NODE_ENV === 'production' ? 'SameSite=None' : 'SameSite=Lax');
+    if (NODE_ENV === 'production') expect(cookie).toContain('Secure');
+    expect(cookie).toContain('HttpOnly');
+  });
   it.each(['missing', 'revoked', 'expired', 'different-session', 'different-user', 'valid'])(
     'checks the initiating link session at callback: %s',
     async (kind) => {

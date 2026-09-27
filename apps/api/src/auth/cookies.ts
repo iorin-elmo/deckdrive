@@ -5,7 +5,7 @@ export const oauthStateCookieName = 'deckdrive_oauth';
 export interface CookieOptions {
   readonly httpOnly?: boolean;
   readonly secure?: boolean;
-  readonly sameSite?: 'Lax' | 'Strict';
+  readonly sameSite?: 'Lax' | 'Strict' | 'None';
   readonly maxAge?: number;
   readonly path?: string;
 }
