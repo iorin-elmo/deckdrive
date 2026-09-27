@@ -209,8 +209,12 @@ export class OAuthService {
       throw new OAuthProviderExchangeError('OAuth provider request failed.');
     }
     const userId = await this.resolveUser(adapter.id, identity, authorization.linkUserId);
+    const existingSession =
+      authorization.linkUserId === null
+        ? await this.sessionService.authenticate(sessionToken)
+        : undefined;
     return {
-      ...(authorization.linkUserId === null
+      ...(authorization.linkUserId === null && existingSession?.userId !== userId
         ? { session: await this.sessionService.create(userId) }
         : {}),
       returnTo: stateCookie.returnTo,
@@ -510,6 +514,9 @@ function validatedOAuthOrigin(value: string, production: boolean): string | unde
 export function oauthReturnPath(value: string | undefined): string {
   if (
     value === undefined ||
+    [...value].some(
+      (character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127,
+    ) ||
     Buffer.byteLength(value, 'utf8') > 256 ||
     Buffer.byteLength(JSON.stringify(value), 'utf8') > 258 ||
     !value.startsWith('/') ||

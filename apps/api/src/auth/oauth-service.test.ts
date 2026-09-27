@@ -46,6 +46,9 @@ describe('OAuthRateLimiter', () => {
 });
 
 describe('oauthReturnPath', () => {
+  it.each(['\n', '\r', '\t', '\u0000', '\u007f'])('rejects control characters: %j', (control) => {
+    expect(oauthReturnPath('/' + control + '//evil.example')).toBe('/home');
+  });
   it('bounds UTF-8 destinations before encoding the state cookie', () => {
     expect(oauthReturnPath('/' + 'a'.repeat(255))).toHaveLength(256);
     expect(oauthReturnPath('/' + 'a'.repeat(256))).toBe('/home');
@@ -60,6 +63,66 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it.each(['matching', 'different-user', 'expired', 'missing'])(
+    'handles an existing login session: %s',
+    async (kind) => {
+      const create = vi.fn();
+      const service = new OAuthService(
+        {
+          oAuthAuthorization: {
+            create: vi.fn(),
+            deleteMany: vi.fn(),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUnique: vi.fn().mockResolvedValue({ linkUserId: null }),
+          },
+          oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'user-1' }) },
+          session: {
+            create,
+            deleteMany: vi.fn(),
+            findUnique: vi.fn().mockResolvedValue({
+              id: 'session-1',
+              userId: kind === 'different-user' ? 'other-user' : 'user-1',
+              csrfTokenHash: 'hash',
+              revokedAt: null,
+              expiresAt: new Date(kind === 'expired' ? '2000-01-01' : '2099-01-01'),
+              user: { player: { id: 'player-1' } },
+            }),
+          },
+        } as unknown as PrismaClient,
+        { SESSION_SECRET: 'a'.repeat(32) },
+        new OAuthRateLimiter(),
+        () => new Date('2026-09-27'),
+        [
+          {
+            id: 'discord',
+            authorizationUrl: ({ state }) =>
+              new URL(`https://discord.com/authorize?state=${state}`),
+            exchangeCode: vi.fn().mockResolvedValue({
+              providerUserId: 'discord-user',
+              displayName: 'Player',
+              emailVerified: false,
+            }),
+          },
+        ],
+      );
+      const start = await service.start('discord', 'client');
+      const state = new URL(start.location).searchParams.get('state')!;
+      const result = await service.complete(
+        'discord',
+        { code: 'code', state },
+        parseCookies(start.stateCookie)[oauthStateCookieNameFor(state)],
+        'client',
+        kind === 'missing' ? undefined : 'token',
+      );
+      if (kind === 'matching') {
+        expect(result.session).toBeUndefined();
+        expect(create).not.toHaveBeenCalled();
+      } else {
+        expect(result.session).toBeDefined();
+        expect(create).toHaveBeenCalledOnce();
+      }
+    },
+  );
   it('keeps ten maximum-size link state cookies within an 8 KiB budget', async () => {
     const service = new OAuthService(
       { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,

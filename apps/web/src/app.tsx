@@ -1816,7 +1816,13 @@ export function deckBuilderInput(
 }
 
 export function loginReturnPath(value: string | null): string {
-  return value !== null && /^\/(?!\/)[^\\]*$/u.test(value) ? value : '/home';
+  return value !== null &&
+    ![...value].some(
+      (character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127,
+    ) &&
+    /^\/(?!\/)[^\\]*$/u.test(value)
+    ? value
+    : '/home';
 }
 
 export function oauthErrorGuidance(code: string) {
