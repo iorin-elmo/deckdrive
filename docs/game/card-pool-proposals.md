@@ -18,6 +18,7 @@
 - 新formatの `ReplaySnapshot` は `actionIndex` ではなく直前に解決した `inputSequence` を必須の境界キーとして持ち、永続化の一意キーを `(replayId, inputSequence)` に変更する。snapshotは各 `BattleInput` 後に保存でき、同じ元 `PLAY_CARD` に属する保留境界と提出・timeout後の境界を別々に記録できる。永続テーブル・索引・read/write API・validatorをこのキーへ移行し、checksumにもこの境界値を含める。旧formatのsnapshotは既存の `actionIndex` を維持し、version別のread/write/validatorで扱い、暗黙移行しない。
 - `PENDING_CARD_CHOICE` への遷移では、pending state・対応snapshot・`CARD_CHOICE_DEADLINE_ISSUED` の署名済みpayloadを含むdeadline outbox recordを同一の権威ストレージトランザクションで永続化する。outboxは `(matchId, choiceRequestId)` を一意キーとし、commit後にbattle serviceがrecordからdeadline storeと `ServerCommand` を冪等に作成する。commit後の送信前にserviceが停止した場合、再起動時に未送信outboxを走査して同じ署名済みcommandを再発行する。すでに同じrequestのdeadline commandが記録済みなら重複適用せず、異なるpayloadは拒否する。このため、永続化された `PENDING_CARD_CHOICE` に対応するdeadline commandまたは再発行可能なoutboxが常に存在し、クライアントactionが拒否され続ける状態を残さない。outboxとdeadline storeは権威サービスの内部永続化であり、プレイヤー向けstate/snapshotには公開しない。
 - `PLAY_CARD` が `PENDING_CARD_CHOICE` を作るトランザクションでは、元の `PLAY_CARD` inputの直後の `inputSequence` を `CARD_CHOICE_DEADLINE_ISSUED` に予約して入力ジャーナルと `serverCommands` に同時に記録する。outbox workerはこの既存journal recordを配信するだけで、新しいsequenceを採番しない。`CARD_CHOICE_REQUESTED` をクライアントへ返すのはこのトランザクションのcommit後とし、`SUBMIT_CARD_CHOICE` / `CARD_CHOICE_TIMEOUT` の受付は `(matchId, choiceRequestId)` の排他ロック内で、先行するdeadline command recordの存在とsequenceを確認してから次のsequenceを採番する。記録済みdeadline commandより先の提出・timeoutは拒否し、再起動後も同じjournal recordを読み直す。この直列化により、Replayでは常に `PLAY_CARD`、deadline command、提出またはtimeoutの順で入力列を復元できる。
+- `PLAY_CARD` に限らず、`SUBMIT_CARD_CHOICE` を含む任意の `BattleInput` が解決の再開中に次の `PENDING_CARD_CHOICE` を作る場合も、同じ入力の直後の `inputSequence` を新しい `CARD_CHOICE_DEADLINE_ISSUED` に予約する。新requestのpending state・snapshot・deadline outbox・input journal recordを同一トランザクションで保存し、`(matchId, choiceRequestId)` の排他ロックと既存の直列化規則を適用する。したがって各段階のrequestは、requestを生んだinput、対応するdeadline command、次の提出またはtimeoutの順に独立して復元される。
 - `CARD_CHOICE_TIMEOUT` の具体recordには、deadline commandを参照する `deadlineCommandSequence`、`deadlineAt`、battle serviceの時計で採番した `timeoutAt`、およびこれらとmatch ID・request ID・所有者・timeout input sequenceを束縛する署名付き `timeoutAttestation` を必須にする。battle serviceは自身の時刻が `deadlineAt` 以上の場合だけattestationを発行し、同じ排他トランザクションでtimeout recordを入力ジャーナルへ保存する。Replay validatorは公開検証鍵でdeadline commandの認可とtimeout attestationの両方を検証し、request・所有者・deadline command sequenceの一致と `timeoutAt >= deadlineAt` を要求する。replay再生時には実時計を読まず、記録済みの値と署名だけを検証する。これらの時刻・attestationは権威 `serverCommands` だけに保存し、battle state・snapshot・プレイヤー向け投影には含めない。
 - timeout commandが保存済み効果を再開した後は、各解決手順の直後に通常の終端判定を行う。HP終端または特殊勝利が成立した場合はrequestを消去して残りの手順と `TURN_ENDED` を実行せず、`MATCH_FINISHED` を終端イベントとして記録する。戦闘が継続している場合だけrequestを消去して `TURN_ENDED` を記録する。validatorは終端結果があるtimeout経路で `MATCH_FINISHED` 後のevent、または `TURN_ENDED` を拒否する。
 - サーバー権威のaction/event/replayには完全な情報を保存する。プレイヤー向けイベント・snapshot・replayでは `visibility: ownerOnly` のレコードについて、相手への投影からカードID、定義IDとversion、発生元カードID・定義IDとversion、カード位置、選択値をすべて省略する。payloadの配列・入れ子に含まれる同種の識別情報も省略し、別フィールドへ複製して公開してはならない。山札からの選択IDを含む `PLAY_CARD.choices` も同様に扱う。
@@ -154,7 +155,7 @@ Replayは元の `PLAY_CARD` と各 `SUBMIT_CARD_CHOICE` をactionとして保存
 | 白の試薬 | N / 1・素材 | 2回復。賢者の石のレシピに使える。 | alchemist_004 | 1.0.0 | SKILL |
 | 火薬瓶 | R / 1 | 7ダメージ。赤の試薬と触媒を合成して作る。 | alchemist_005 | 1.0.0 | ATTACK |
 | 結晶薬 | R / 1 | 8ブロックを得る。青の試薬と触媒を合成して作る。 | alchemist_006 | 1.0.0 | SKILL |
-| 変成液 | R / 1 | 手札のカード1枚を廃棄し、そのカードの現在の実コスト以下のカードを山札全体から所有者だけが検索する。検索で確認した各カードを `DECK_CARD_REVEALED`（`visibility: ownerOnly`）で記録する。1枚を選び、確認イベントの直後に `CARD_MOVED`（`visibility: ownerOnly`）で手札へ移す。検索操作のイベント可視性はカードインスタンスの既存 `visibility` より優先するが、カードインスタンス自体の `visibility` は変更しない。条件に合うカードがなければ手札へ加えない。選択後は残りの山札があれば `DECK_SHUFFLED`（`reason: ALCHEMY_TRANSFORM`）で切り直す。検索開始時に山札が空なら通常の山札補充規則を適用する。 | alchemist_007 | 1.0.0 | SKILL |
+| 変成液 | R / 1 | 手札のカード1枚を廃棄し、そのカードの現在の実コスト以下のカードを山札全体から所有者だけが検索する。検索で確認した各カードを、カードインスタンスの既存 `visibility` を引き継いだ `DECK_CARD_REVEALED` で記録する。1枚を選び、確認イベントの直後に同じ `visibility` の `CARD_MOVED` で手札へ移す。所有者だけの検索は非公開カードを新たに公開しないが、既に `allPlayers` のカードを再び秘匿しない。条件に合うカードがなければ手札へ加えない。選択後は残りの山札があれば `DECK_SHUFFLED`（`reason: ALCHEMY_TRANSFORM`）で切り直す。検索開始時に山札が空なら通常の山札補充規則を適用する。 | alchemist_007 | 1.0.0 | SKILL |
 | 不安定な合成 | R / 0 | 素材2枚を合成する。対応するレシピがあれば完成品を作る。なければ合成失敗として2ブロックを得る。 | alchemist_008 | 1.0.0 | SKILL |
 | 実験記録 | R / 1 | この戦闘中に合成した回数だけ、1枚引く（最大3枚）。 | alchemist_009 | 1.0.0 | POWER |
 | 賢者の触媒 | SR / 2 | 次に行う合成では、素材を選ぶ前に山札が空なら通常の山札補充規則を適用し、一番上を1枚公開する（`DECK_CARD_REVEALED`、`visibility: allPlayers`）。素材なら直後に `CARD_MOVED`（`visibility: allPlayers`）で手札へ移す。素材でなければ位置を変えず何も加えない。補充後も山札が空なら何もしない。完成品のコストは変わらない。 | alchemist_010 | 1.0.0 | POWER |
@@ -181,7 +182,7 @@ action境界のbattle state、snapshot、replayでは、各ownerの `arrowQueue`
 | カード | レアリティ / コスト | 効果案 | ID | version | type |
 | --- | --- | --- | --- | --- | --- |
 | 狩人の弓 | N / 1 | 3ブロックを得て、矢を1枚装填する。 | hunter_001 | 1.0.0 | SKILL |
-| 矢継ぎ | N / 1 | 山札が空なら通常の山札補充規則を先に適用する。山札を所有者にだけ公開して検索し、検索で確認した各カードを `DECK_CARD_REVEALED`（`visibility: ownerOnly`）で記録する。矢1枚を選び、確認イベントの直後に `CARD_MOVED`（`visibility: ownerOnly`）で手札へ移す。検索操作のイベント可視性はカードインスタンスの既存 `visibility` より優先するが、カードインスタンス自体の `visibility` は変更しない。矢が見つからなければ何も手札へ移さない。検索後、山札にカードが残っていれば `DECK_SHUFFLED`（`reason: HUNTER_ARROW_SEARCH`）で切り直す。 | hunter_002 | 1.0.0 | SKILL |
+| 矢継ぎ | N / 1 | 山札が空なら通常の山札補充規則を先に適用する。山札を所有者にだけ公開して検索し、検索で確認した各カードを、カードインスタンスの既存 `visibility` を引き継いだ `DECK_CARD_REVEALED` で記録する。矢1枚を選び、確認イベントの直後に同じ `visibility` の `CARD_MOVED` で手札へ移す。所有者だけの検索は非公開カードを新たに公開しないが、既に `allPlayers` のカードを再び秘匿しない。矢が見つからなければ何も手札へ移さない。検索後、山札にカードが残っていれば `DECK_SHUFFLED`（`reason: HUNTER_ARROW_SEARCH`）で切り直す。 | hunter_002 | 1.0.0 | SKILL |
 | 毒矢 | N / 1・矢 | 4ダメージを与え、毒2を付与する。状態異常案。 | hunter_003 | 1.0.0 | ATTACK |
 | 速射 | R / 1 | 装填キューの先頭2本を発射する。各矢のダメージは-1。 | hunter_004 | 1.0.0 | ATTACK |
 | 貫通矢 | R / 2・矢 | 6ダメージ。敵のブロックを無視する。 | hunter_005 | 1.0.0 | ATTACK |
@@ -210,7 +211,7 @@ action境界のbattle state、snapshot、replayでは、各ownerの `arrowQueue`
 | 偽の切り札 | R / 2 | 手札からカード1枚のコピーを作り、手札に加える。コピーはターン終了時に廃棄される。 | trickster_007 | 1.0.0 | POWER |
 | 仕込み直し | R / 1 | 捨て札からカード1枚を選び、`CARD_MOVED` で山札の一番上に置く。 | trickster_008 | 1.0.0 | SKILL |
 | 時間泥棒 | SR / 2 | 6ダメージ。敵が次にカードを使うたび、そのコストを1増やす（最大2回）。 | trickster_009 | 1.0.0 | REACTION |
-| 手品師の袖 | SR / 2 | 3枚引き、手札から1枚を選んでコストをこのターン中0にする。 | trickster_010 | 1.0.0 | SKILL |
+| 手品師の袖 | SR / 2 | 3枚引く。ドロー完了後の手札全体を候補として所有者だけに `CARD_CHOICE_REQUESTED` を送り、`PENDING_CARD_CHOICE` で停止する。`SUBMIT_CARD_CHOICE` の `CARD` 選択で1枚を選び、そのコストをこのターン中0にする。候補が0枚なら選択要求を作らず、コスト固定を行わない。 | trickster_010 | 1.0.0 | SKILL |
 | 予定変更 | SR / 1 | このターン、カードを引くたび1ブロックを得る。ターン終了時に2ダメージを受ける。 | trickster_011 | 1.0.0 | POWER |
 | 大脱出 | UR / 3 | 解決時の手札枚数と手札順を記録する。手札中の装填済み矢をarrowQueueの順で `ARROW_REMOVED`（`visibility: ownerOnly`）に記録してキューから除き、その後、手札順に全カードを `CARD_MOVED`（`visibility: ownerOnly`）で山札へ戻す。山札を `DECK_SHUFFLED`（`reason: TRICKSTER_ESCAPE`）で切り直して記録した枚数を引き、引いたカード1枚につき2ブロックを得る。切り直し後のID順は山札所有者以外に公開しない。 | trickster_012 | 1.0.0 | SKILL |
 
@@ -223,7 +224,7 @@ action境界のbattle state、snapshot、replayでは、各ownerの `arrowQueue`
 | 応急手当 | N / 1 | 4回復。 | neutral_001 | 1.0.0 | SKILL |
 | 整理整頓 | N / 0 | 手札1枚を捨て、1枚引く。 | neutral_002 | 1.0.0 | SKILL |
 | 旅人の護符 | N / 1 | 5ブロックを得る。 | neutral_003 | 1.0.0 | SKILL |
-| 戦術の確認 | R / 1 | 山札が空なら通常の山札補充規則を先に適用する。山札の上から最大3枚（`min(3, 山札枚数)`）を所有者にだけ見せ、上から順にindex 0から `DECK_CARD_REVEALED`（`visibility: ownerOnly`）として記録する。見られるカードが0枚なら何もしない。1枚を選び、確認イベントの直後に `CARD_MOVED`（`visibility: ownerOnly`）で手札へ移す。残りのカードは元の相対順を保って山札の下へ移し、各移動を `CARD_MOVED`（`visibility: ownerOnly`）に記録する。検索操作のイベント可視性はカードインスタンスの既存 `visibility` より優先するが、カードインスタンス自体の `visibility` は変更しない。選択IDはaction/replayでは所有者だけに見せる。 | neutral_004 | 1.0.0 | SKILL |
+| 戦術の確認 | R / 1 | 山札が空なら通常の山札補充規則を先に適用する。山札の上から最大3枚（`min(3, 山札枚数)`）を所有者にだけ見せ、上から順にindex 0から、カードインスタンスの既存 `visibility` を引き継いだ `DECK_CARD_REVEALED` として記録する。見られるカードが0枚なら何もしない。1枚を選び、確認イベントの直後に同じ `visibility` の `CARD_MOVED` で手札へ移す。残りのカードは元の相対順を保って山札の下へ移し、各移動を同じ `visibility` の `CARD_MOVED` に記録する。所有者だけの検索は非公開カードを新たに公開しないが、既に `allPlayers` のカードを再び秘匿しない。選択IDはaction/replayでは所有者だけに見せる。 | neutral_004 | 1.0.0 | SKILL |
 | 予備の食料 | R / 1 | 3回復。手札が2枚以下なら、さらに1枚引く。 | neutral_005 | 1.0.0 | SKILL |
 | 古びた羅針盤 | R / 1 | 山札の上からカードを1枚全員に公開する（`DECK_CARD_REVEALED`、`visibility: allPlayers`）。そのカードのコスト分ブロックを得る（最大6）。 | neutral_006 | 1.0.0 | SKILL |
 | 休息の心得 | SR / 2 | 6回復。次の自分のターン開始時、5ブロックを得る。 | neutral_007 | 1.0.0 | POWER |
