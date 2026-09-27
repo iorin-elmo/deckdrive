@@ -206,6 +206,7 @@ function LanguageControl({ className }: { readonly className?: string }) {
 
 function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const setPlayerId = useSessionStore((state) => state.setPlayerId);
   const enablePreview = useSessionStore((state) => state.enablePreview);
@@ -216,8 +217,10 @@ function LoginPage() {
   const [displayName, setDisplayName] = useState('Debug Player');
   const login = useMutation({
     mutationFn: () => api.developmentLogin(email, displayName),
-    onSuccess: ({ playerId }) => {
-      setPlayerId(playerId);
+    onSuccess: async (authenticatedSession) => {
+      await queryClient.cancelQueries({ queryKey: ['oauth-session'], exact: true });
+      queryClient.setQueryData(['oauth-session'], authenticatedSession);
+      setPlayerId(authenticatedSession.playerId);
       navigate(returnTo);
     },
   });
