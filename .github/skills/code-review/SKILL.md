@@ -20,7 +20,7 @@ PRが設計契約を満たしているかを確認し、同じ根本原因から
 最初に次を確認する。
 
 1. PR本文
-2. linked Issue と受け入れ条件
+2. linked Issueがある場合は、そのIssueと受け入れ条件
 3. changed files
 4. `docs/IMPLEMENTATION_SPEC.md`
 5. relevant ADR
@@ -320,7 +320,7 @@ bug候補を発見した場合、既存テストがなぜ検出できなかっ�
 
 - changed fileを全て確認した
 - relevant specを確認した
-- linked Issue acceptance criteriaを確認した
+- linked Issueがある場合、その受け入れ条件を確認した
 - producer/consumerを追跡した
 - failure/retry/concurrencyを確認した
 - testsを確認した
@@ -328,7 +328,7 @@ bug候補を発見した場合、既存テストがなぜ検出できなかっ�
 - 各findingについてsibling searchを行った
 - finding同士をdeduplicateした
 
-未確認項目がある場合、レビューを確定せず先に確認する。
+該当する確認項目に未確認項目がある場合、レビューを確定せず先に確認する。該当しない項目は対象外として扱い、その理由を必要に応じて記録する。
 
 ---
 

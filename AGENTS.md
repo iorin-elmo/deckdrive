@@ -83,10 +83,11 @@ UI変更ではhappy pathだけを完成扱いしない。
 設計判断を確認するときは次の順で情報を集める。
 
 1. `docs/IMPLEMENTATION_SPEC.md` の Absolute Design Principles
-2. 対象機能に関する受理済みADR
-3. 対象モジュールの詳細設計ドキュメント
-4. 対応Issueの受け入れ条件
-5. PR本文
+2. `docs/copilot-instructions.md` の開発・PR運用ルール
+3. 対象機能に関する受理済みADR
+4. 対象モジュールの詳細設計ドキュメント
+5. 対応Issueがある場合の受け入れ条件
+6. PR本文
 
 下位の文書が上位の原則を暗黙に上書きしてはいけない。
 

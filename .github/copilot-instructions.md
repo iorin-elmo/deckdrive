@@ -22,10 +22,11 @@ formatter、lint、単純な命名、機械的なstyle指摘は、実害がな�
 レビュー開始時に、変更範囲に応じて以下を確認する。
 
 - `docs/IMPLEMENTATION_SPEC.md`
+- `docs/copilot-instructions.md`（開発・PR運用の正本）
 - `docs/PARALLEL_WORK_PLAN.md`
 - `docs/architecture/adr/`
 - 変更対象に対応する `docs/api/`, `docs/game/`, `docs/web/`, `docs/operations/`
-- PRが解決するGitHub Issueの受け入れ条件
+- PRが解決するGitHub Issueがある場合、その受け入れ条件
 - PR本文に記載された意図的なscope
 
 `IMPLEMENTATION_SPEC.md` の Absolute Design Principles は最優先の不変条件として扱う。
