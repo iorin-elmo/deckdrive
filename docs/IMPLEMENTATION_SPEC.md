@@ -2307,7 +2307,11 @@ secretはcommit禁止。
 # 94. API
 
 ```text
-POST /api/v1/auth/oauth/:provider
+GET  /api/v1/auth/oauth/discord/start
+GET  /api/v1/auth/oauth/discord/callback
+POST /api/v1/auth/oauth/discord/link
+GET  /api/v1/auth/session
+POST /api/v1/auth/logout
 GET  /api/v1/me
 
 GET  /api/v1/cards
