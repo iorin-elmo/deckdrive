@@ -13,6 +13,15 @@ import {
 import type { OAuthIdentity, OAuthProviderAdapter } from './providers/provider.js';
 
 describe('OAuthRateLimiter', () => {
+  it('evicts the least recently accepted client while retaining active limits', () => {
+    const limiter = new OAuthRateLimiter(2, 100, () => new Date(0), 2);
+    limiter.consume('first');
+    limiter.consume('second');
+    limiter.consume('first');
+    limiter.consume('third');
+    expect(() => limiter.consume('first')).toThrow();
+    expect(() => limiter.consume('second')).not.toThrow();
+  });
   it('rejects a request that exceeds its rolling window and permits it after expiry', () => {
     let timestamp = 0;
     const limiter = new OAuthRateLimiter(2, 100, () => new Date(timestamp));

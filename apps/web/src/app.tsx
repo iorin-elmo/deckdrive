@@ -427,7 +427,7 @@ function AuthenticatedLayout() {
   if (!previewMode && restoredSession.isError)
     return (
       <main className="app-background min-h-screen p-5 text-stone-100">
-        <ApiFailure error={restoredSession.error} />
+        <ApiFailure error={restoredSession.error} onRetry={() => void restoredSession.refetch()} />
       </main>
     );
   return (

@@ -46,7 +46,7 @@ export interface OAuthCompletionResult {
  * multiple API processes should replace it with their shared rate-limit store.
  */
 export class OAuthRateLimiter {
-  private readonly attempts = new Map<string, { attempts: number[]; lastSeen: number }>();
+  private readonly attempts = new Map<string, number[]>();
 
   constructor(
     private readonly maximumAttempts = 10,
@@ -57,33 +57,19 @@ export class OAuthRateLimiter {
 
   consume(key: string): void {
     const now = this.now().getTime();
-    this.removeExpired(now);
-    let bucket = this.attempts.get(key);
-    if (bucket === undefined) {
-      this.evictLeastRecentKey();
-      bucket = { attempts: [], lastSeen: now };
-      this.attempts.set(key, bucket);
-    }
-    if (bucket.attempts.length >= this.maximumAttempts) throw new OAuthRateLimitError();
-    bucket.attempts.push(now);
-    bucket.lastSeen = now;
-  }
-
-  private removeExpired(now: number): void {
-    for (const [key, bucket] of this.attempts) {
-      bucket.attempts = bucket.attempts.filter(
-        (attempt) => attempt > now - this.windowMilliseconds,
-      );
-      if (bucket.attempts.length === 0) this.attempts.delete(key);
-    }
-  }
-
-  private evictLeastRecentKey(): void {
-    if (this.attempts.size < this.maximumKeys) return;
-    const oldest = [...this.attempts.entries()].reduce((candidate, entry) =>
-      entry[1].lastSeen < candidate[1].lastSeen ? entry : candidate,
+    // Expire only this client's bounded window. Map insertion order tracks
+    // accepted activity, allowing eviction without scanning all retained keys.
+    const bucket = (this.attempts.get(key) ?? []).filter(
+      (attempt) => attempt > now - this.windowMilliseconds,
     );
-    this.attempts.delete(oldest[0]);
+    if (bucket.length >= this.maximumAttempts) throw new OAuthRateLimitError();
+    this.attempts.delete(key);
+    if (this.attempts.size >= this.maximumKeys) {
+      const oldest = this.attempts.keys().next().value;
+      if (oldest !== undefined) this.attempts.delete(oldest);
+    }
+    bucket.push(now);
+    this.attempts.set(key, bucket);
   }
 }
 
