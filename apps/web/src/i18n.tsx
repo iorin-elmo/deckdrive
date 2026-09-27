@@ -16,6 +16,9 @@ const resources = {
     settingsEyebrow: 'PREFERENCES',
     settingsDescription: 'Choose the language shown throughout DeckDrive.',
     oauthLoginFailed: 'Discord sign-in was not completed',
+    logoutFailed: 'Sign-out failed',
+    logoutFailedDescription:
+      'Sign-out could not be completed. You are still signed in. Please try again.',
     oauthLoginFailedDescription: 'Please try signing in with Discord again.',
     oauthLinkRequired:
       'Sign in to your existing account and link Discord from Settings. If this Discord account is already linked to another account, use that account or choose a different Discord account.',
@@ -258,6 +261,9 @@ const resources = {
     settingsEyebrow: '環境設定',
     settingsDescription: 'DeckDrive全体で表示する言語を選択します。',
     oauthLoginFailed: 'Discordログインを完了できませんでした',
+    logoutFailed: 'ログアウトできませんでした',
+    logoutFailedDescription:
+      'ログアウトを完了できず、ログイン状態が続いています。再度お試しください。',
     oauthLoginFailedDescription: 'もう一度Discordでログインしてください。',
     oauthLinkRequired:
       '既存のアカウントでログインし、設定画面からDiscordを連携してください。このDiscordが別のアカウントに連携済みの場合は、そのアカウントを利用するか別のDiscordアカウントを選んでください。',

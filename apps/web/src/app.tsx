@@ -500,6 +500,16 @@ function AuthenticatedLayout() {
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
+        {logout.isError && !isUnauthorizedApiError(logout.error) ? (
+          <div className="mb-6">
+            <AsyncNotice kind="error" title={t('logoutFailed')}>
+              <p>{t('logoutFailedDescription')}</p>
+              <ActionButton className="mt-4" type="button" onClick={signOut}>
+                {t('tryAgain')}
+              </ActionButton>
+            </AsyncNotice>
+          </div>
+        ) : null}
         {player.isError ? <ApiFailure error={player.error} /> : <Outlet />}
       </main>
     </div>
