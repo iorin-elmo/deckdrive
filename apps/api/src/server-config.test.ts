@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { apiCorsOrigins, apiHost, apiPort } from './server-config.js';
+import { apiCorsOrigins, apiHost, apiPort, apiTrustedProxyAddresses } from './server-config.js';
 
 describe('apiPort', () => {
   it('uses 3000 by default', () => {
@@ -47,5 +47,12 @@ describe('apiHost', () => {
 
   it('rejects an explicit empty host', () => {
     expect(() => apiHost('  ')).toThrow('HOST must include');
+  });
+});
+
+describe('apiTrustedProxyAddresses', () => {
+  it('defaults to no trusted proxy and trims configured addresses', () => {
+    expect(apiTrustedProxyAddresses(undefined)).toEqual([]);
+    expect(apiTrustedProxyAddresses(' 127.0.0.1, ::1 ')).toEqual(['127.0.0.1', '::1']);
   });
 });

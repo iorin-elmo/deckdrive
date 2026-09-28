@@ -1,9 +1,304 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../generated/prisma/client.js';
+import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it.each(['production', 'development'])(
+    'expires logout cookies with an accepted policy in %s',
+    async (NODE_ENV) => {
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const application = new ApiApplication(
+        {
+          session: {
+            findUnique: vi.fn().mockResolvedValue({
+              id: 'session-1',
+              userId: 'user-1',
+              csrfTokenHash: sha256('csrf'),
+              expiresAt: new Date('2099-01-01'),
+              revokedAt: null,
+              user: { player: { id: 'player-1' } },
+            }),
+            updateMany,
+          },
+        } as unknown as PrismaClient,
+        { NODE_ENV },
+      );
+      const response = await application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: { cookie: 'deckdrive_session=token', 'x-csrf-token': 'csrf' },
+      });
+      expect(response.status).toBe(204);
+      const cookies = response.headers?.['set-cookie'] as string[];
+      expect(cookies).toHaveLength(2);
+      for (const cookie of cookies) {
+        expect(cookie).toContain('Max-Age=0');
+        expect(cookie).toContain('Path=/');
+        if (NODE_ENV === 'production') {
+          expect(cookie).toContain('SameSite=None');
+          expect(cookie).toContain('Secure');
+        } else expect(cookie).not.toContain('Secure');
+      }
+      expect(cookies[0]).toContain('deckdrive_session=;');
+      expect(cookies[0]).toContain('HttpOnly');
+      expect(cookies[1]).toContain('deckdrive_csrf=;');
+      if (NODE_ENV === 'development') {
+        expect(cookies[0]).toContain('SameSite=Lax');
+        expect(cookies[1]).toContain('SameSite=Strict');
+      }
+      expect(updateMany).toHaveBeenCalledOnce();
+    },
+  );
+  it('rejects the legacy player header in production even when VITEST is set', async () => {
+    vi.stubEnv('VITEST', 'true');
+    try {
+      const findUnique = vi.fn();
+      const application = new ApiApplication(
+        { player: { findUnique } } as unknown as PrismaClient,
+        { NODE_ENV: 'production' },
+      );
+      await expect(
+        application.handle({
+          method: 'GET',
+          path: '/api/v1/me',
+          headers: { 'x-deckdrive-player-id': 'player-1' },
+        }),
+      ).resolves.toEqual({ status: 401, body: { error: 'UNAUTHORIZED' } });
+      expect(findUnique).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+  it('redirects an unconfigured OAuth start to the application failure screen', async () => {
+    const application = new ApiApplication({} as PrismaClient, {
+      NODE_ENV: 'test',
+      APP_BASE_URL: 'https://app.example.test',
+    });
+    await expect(
+      application.handle({ method: 'GET', path: '/api/v1/auth/oauth/discord/start', headers: {} }),
+    ).resolves.toMatchObject({
+      status: 302,
+      headers: {
+        location: 'https://app.example.test/login?oauthError=OAUTH_PROVIDER_NOT_CONFIGURED',
+      },
+    });
+  });
+  it('recovers the CSRF cookie when restoring a session without a valid cookie', async () => {
+    const sessionToken = 'session-token';
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('previous-csrf-token'),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/auth/session',
+      headers: {
+        cookie: `deckdrive_session=${sessionToken}`,
+        origin: 'http://localhost:5173',
+      },
+    });
+
+    expect(response).toMatchObject({ status: 200, body: { csrfToken: expect.any(String) } });
+    const csrfToken = (response.body as { csrfToken: string }).csrfToken;
+    expect(response.headers?.['set-cookie']).toContain(`deckdrive_csrf=${csrfToken}`);
+  });
+
+  it('recovers a missing CSRF cookie for a same-origin browser request without Origin', async () => {
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('previous-csrf-token'),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: {
+          cookie: 'deckdrive_session=session-token',
+          'sec-fetch-site': 'same-origin',
+        },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { csrfToken: expect.any(String) } });
+  });
+
+  it('does not rotate CSRF state for a cross-site navigation without a CSRF cookie', async () => {
+    const updateMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256('valid-csrf-token'),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: { cookie: 'deckdrive_session=session-token', origin: 'https://outside.example' },
+      }),
+    ).resolves.toEqual({ status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns OAuth callback failures to the application and clears the matching state cookie', async () => {
+    const application = new ApiApplication({} as PrismaClient, {
+      NODE_ENV: 'test',
+      SESSION_SECRET: 'a'.repeat(32),
+      APP_BASE_URL: 'https://app.example.test',
+      OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+      DISCORD_CLIENT_ID: 'client-id',
+      DISCORD_CLIENT_SECRET: 'client-secret',
+    });
+
+    const response = await application.handle({
+      method: 'GET',
+      path: '/api/v1/auth/oauth/discord/callback',
+      query: { state: 'state-value', error: 'access_denied' },
+      headers: {},
+    });
+
+    expect(response).toMatchObject({
+      status: 302,
+      body: { authenticated: false, error: 'OAUTH_INVALID_REQUEST' },
+      headers: {
+        location: 'https://app.example.test/login?oauthError=OAUTH_INVALID_REQUEST',
+        'set-cookie': expect.stringContaining('deckdrive_oauth_'),
+      },
+    });
+  });
+
+  it('reuses a valid CSRF cookie when restoring a session', async () => {
+    const sessionToken = 'session-token';
+    const csrfToken = 'csrf-token';
+    const updateMany = vi.fn();
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256(csrfToken),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+        player: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'player-1',
+            user: { displayName: 'Player' },
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'GET',
+        path: '/api/v1/auth/session',
+        headers: { cookie: `deckdrive_session=${sessionToken}; deckdrive_csrf=${csrfToken}` },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { csrfToken } });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('requires a matching CSRF token before revoking a cookie-authenticated session', async () => {
+    const sessionToken = 'session-token';
+    const csrfToken = 'csrf-token';
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const application = new ApiApplication(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'session-1',
+            userId: 'user-1',
+            csrfTokenHash: sha256(csrfToken),
+            expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+            revokedAt: null,
+            user: { player: { id: 'player-1' } },
+          }),
+          updateMany,
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test', SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: { cookie: `deckdrive_session=${sessionToken}` },
+      }),
+    ).resolves.toEqual({ status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } });
+    await expect(
+      application.handle({
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+        headers: {
+          cookie: `deckdrive_session=${sessionToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      }),
+    ).resolves.toMatchObject({ status: 204 });
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('sorts listCards responses by numeric semantic version for the same card', async () => {
     const application = new ApiApplication({
       cardVersion: {
@@ -194,7 +489,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.2.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.2.0' },
     );
 
     await expect(
@@ -296,7 +591,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.0.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.0.0' },
     );
 
     await expect(
@@ -331,7 +626,7 @@ describe('ApiApplication authentication', () => {
         player: { findUnique: vi.fn().mockResolvedValue({ id: 'player-1' }) },
         playerCard: { findMany },
       } as unknown as PrismaClient,
-      { CARD_DATA_VERSION: '1.0.0' },
+      { NODE_ENV: 'test', CARD_DATA_VERSION: '1.0.0' },
     );
 
     await expect(

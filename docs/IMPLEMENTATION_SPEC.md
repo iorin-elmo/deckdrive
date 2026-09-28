@@ -1060,10 +1060,11 @@ missions
 OAuth Provider Adapter:
 
 ```text
-Google
 Discord
-X
 ```
+
+Provider scope is governed by [ADR 0002](architecture/adr/0002-authentication-provider-scope.md):
+Discord is the only supported social provider. Google and X are explicitly out of scope.
 
 DB:
 
@@ -2288,15 +2289,11 @@ Production OAuth secretをlocalへ持ち込まない。
 ```text
 DATABASE_URL
 SESSION_SECRET
-
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
+OAUTH_REDIRECT_BASE_URL
+APP_BASE_URL
 
 DISCORD_CLIENT_ID
 DISCORD_CLIENT_SECRET
-
-X_CLIENT_ID
-X_CLIENT_SECRET
 
 PUBLIC_BASE_URL
 ```
@@ -2310,7 +2307,11 @@ secretはcommit禁止。
 # 94. API
 
 ```text
-POST /api/v1/auth/oauth/:provider
+GET  /api/v1/auth/oauth/discord/start
+GET  /api/v1/auth/oauth/discord/callback
+POST /api/v1/auth/oauth/discord/link
+GET  /api/v1/auth/session
+POST /api/v1/auth/logout
 GET  /api/v1/me
 
 GET  /api/v1/cards
@@ -2719,12 +2720,10 @@ Cosmetics
 実装:
 
 ```text
-Google
 Discord
-X
 ```
 
-Provider Adapterを使用。
+Provider Adapterを使用。対応プロバイダーは ADR 0002 に従い Discord のみとする。
 
 ---
 
