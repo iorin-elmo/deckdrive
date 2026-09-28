@@ -39,8 +39,8 @@ identifies that immutable definition snapshot. Its verification API is
 `draftDefinitionRevision`, and the final argument verifies deadline
 authorization and timeout attestations. Each input
 has a shared `inputSequence` and a kind of `CLIENT_ACTION` or
-`SERVER_COMMAND`. Persisted `actions` and
-`serverCommands` may remain separate arrays, but recording and verification
+`SERVER_COMMAND`. The persisted schema stores `actions` and
+`serverCommands` as separate required arrays, while recording and verification
 must merge them by `inputSequence`; duplicate or missing sequence values are
 invalid. Snapshots for this format use the last resolved `inputSequence`
 instead of `actionIndex`.
