@@ -22,9 +22,56 @@ the event history to avoid storing every growing event prefix repeatedly;
 `BattleState` at that boundary. The initial state and snapshot state contain no
 filesystem paths, timestamps, network data, or runtime-global state.
 
+## Versioned input sequence extension
+
+Replay format version `1` has no server commands, so its player `actions` are
+the complete deterministic input sequence and the existing
+`recordReplay(initialState, actions, definitions, options)` API remains fixed
+to that format.
+
+A protocol that introduces result-affecting `ServerCommand` values uses
+`formatVersion: 2` and `battleProtocolVersion: 2`. Its recording API is
+`recordReplayV2(initialState, inputs, definitionSnapshot, { draftDefinitionRevision, battleProtocolVersion, ...options })`,
+where `inputs` is the complete ordered `BattleInput` sequence and the revision
+identifies that immutable definition snapshot. Its verification API is
+`verifyReplayV2(replay, definitionSnapshots, serverCommandVerifier)`;
+`definitionSnapshots` resolves an exact snapshot by the replay's
+`draftDefinitionRevision`, and the final argument verifies deadline
+authorization and timeout attestations. Each input
+has a shared `inputSequence` and a kind of `CLIENT_ACTION` or
+`SERVER_COMMAND`. The persisted schema stores `actions` and
+`serverCommands` as separate required arrays, while recording and verification
+must merge them by `inputSequence`; duplicate or missing sequence values are
+invalid. Snapshots for this format use the last resolved `inputSequence`
+instead of `actionIndex`.
+
+The deterministic contract for this format is `seed + initialState + complete
+BattleInput sequence = finalState and events`. The versioned verifier must
+replay both client actions and server commands and compare every input,
+snapshot, event, and final state. Passing only player actions to the old format
+`1` verifier cannot verify a replay that declares the new format.
+The new replay stores `draftDefinitionRevision` and `battleProtocolVersion` as
+required top-level fields. Recording verifies that the revision equals the
+canonical digest of `definitionSnapshot`;
+verification resolves the immutable snapshot by that revision, verifies its
+digest, and rejects a missing or mismatched snapshot without falling back to
+current definitions. The revision field is covered by the replay's canonical
+checksum, and its canonical digest binds the full external definition snapshot.
+The digest is the `sha256:<lowercase hex>` value defined by the card registry's
+canonical definition serialization; recording and verification reject any
+revision with another shape or serialization.
+The protocol version is also covered by the canonical checksum. Shape
+validation requires it to match `initialState`, every snapshot, and the
+allowed `GameAction` and `ServerCommand` variants. A format `2` replay without
+this field, or one that declares an old protocol while containing pending
+choice inputs or state, is invalid. Format version `1` has no
+`battleProtocolVersion` field and remains on its fixed legacy action contract.
+The replay loader dispatches to `verifyReplay` or `verifyReplayV2` strictly by
+the persisted `formatVersion` field and rejects unknown versions without fallback.
+
 ## Verification and version policy
 
-`verifyReplay(replay, definitions)` first validates the persisted shape and
+For format version `1`, `verifyReplay(replay, definitions)` first validates the persisted shape and
 verifies the checksum, then reruns
 every action from `initialState` and compares the resulting metadata, events,
 snapshots, and final state. It therefore detects changed actions, events,
