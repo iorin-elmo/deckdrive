@@ -31,7 +31,7 @@ to that format.
 
 A protocol that introduces result-affecting `ServerCommand` values must use a
 new replay format. Its recording API is
-`recordReplayV2(initialState, inputs, definitionSnapshot, { draftDefinitionRevision, ...options })`,
+`recordReplayV2(initialState, inputs, definitionSnapshot, { draftDefinitionRevision, battleProtocolVersion, ...options })`,
 where `inputs` is the complete ordered `BattleInput` sequence and the revision
 identifies that immutable definition snapshot. Its verification API is
 `verifyReplayV2(replay, definitionSnapshots, serverCommandVerifier)`;
@@ -50,12 +50,19 @@ BattleInput sequence = finalState and events`. The versioned verifier must
 replay both client actions and server commands and compare every input,
 snapshot, event, and final state. Passing only player actions to the old format
 `1` verifier cannot verify a replay that declares the new format.
-The new replay stores `draftDefinitionRevision` as a required top-level field.
-Recording verifies that it equals the canonical digest of `definitionSnapshot`;
+The new replay stores `draftDefinitionRevision` and `battleProtocolVersion` as
+required top-level fields. Recording verifies that the revision equals the
+canonical digest of `definitionSnapshot`;
 verification resolves the immutable snapshot by that revision, verifies its
 digest, and rejects a missing or mismatched snapshot without falling back to
 current definitions. The revision field is covered by the replay's canonical
 checksum, and its canonical digest binds the full external definition snapshot.
+The protocol version is also covered by the canonical checksum. Shape
+validation requires it to match `initialState`, every snapshot, and the
+allowed `GameAction` and `ServerCommand` variants. A new-format replay without
+this field, or one that declares an old protocol while containing pending
+choice inputs or state, is invalid. Format version `1` has no
+`battleProtocolVersion` field and remains on its fixed legacy action contract.
 The replay loader dispatches to `verifyReplay` or `verifyReplayV2` strictly by
 the persisted `formatVersion` field and rejects unknown versions without fallback.
 
