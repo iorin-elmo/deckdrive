@@ -60,12 +60,12 @@ seed
 +
 initial state
 +
-action sequence
+complete input sequence (GameAction + ServerCommand)
 =
 same result
 ```
 
-を保証する。
+を保証する。`ServerCommand` を持たない旧Replay formatではinput sequenceは従来のaction sequenceと同じである。timeoutなど結果を変えるサーバー入力を導入するformatでは、プレイヤーactionだけを同一にして決定性を主張せず、共通sequenceで順序付けた完全な `BattleInput` 列を同一条件として扱う。
 
 ---
 
@@ -595,10 +595,12 @@ rulesVersion
 cardDataVersion
 seed
 initialState
-actions
+inputs (GameAction + ServerCommand。format version 1はactionsのみ)
 events
 finalState
 ```
+
+Replayの記録・検証APIは `replayFormatVersion` で入力schemaを切り替える。ServerCommandを導入したformatでは、共通 `inputSequence` を持つ完全な `BattleInput` 列を受け取り、player actionだけを渡す旧APIで検証してはならない。
 
 CLI:
 
@@ -2622,13 +2624,13 @@ UIなしでもテスト可能にする。
 
 ```text
 seed
-action recording
+input recording (format version 1はactionのみ)
 event recording
 snapshot
 replay CLI
 ```
 
-同一seedで同一結果になることをテスト。
+同一seed・初期state・完全なinput sequenceで同一結果になることをテスト。
 
 ---
 

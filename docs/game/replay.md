@@ -22,9 +22,37 @@ the event history to avoid storing every growing event prefix repeatedly;
 `BattleState` at that boundary. The initial state and snapshot state contain no
 filesystem paths, timestamps, network data, or runtime-global state.
 
+## Versioned input sequence extension
+
+Replay format version `1` has no server commands, so its player `actions` are
+the complete deterministic input sequence and the existing
+`recordReplay(initialState, actions, definitions, options)` API remains fixed
+to that format.
+
+A protocol that introduces result-affecting `ServerCommand` values must use a
+new replay format. Its recording API is
+`recordReplayV2(initialState, inputs, definitions, options)`, where `inputs`
+is the complete ordered `BattleInput` sequence. Its verification API is
+`verifyReplayV2(replay, definitions, serverCommandVerifier)`; the final
+argument verifies deadline authorization and timeout attestations. Each input
+has a shared `inputSequence` and a kind of `CLIENT_ACTION` or
+`SERVER_COMMAND`. Persisted `actions` and
+`serverCommands` may remain separate arrays, but recording and verification
+must merge them by `inputSequence`; duplicate or missing sequence values are
+invalid. Snapshots for this format use the last resolved `inputSequence`
+instead of `actionIndex`.
+
+The deterministic contract for this format is `seed + initialState + complete
+BattleInput sequence = finalState and events`. The versioned verifier must
+replay both client actions and server commands and compare every input,
+snapshot, event, and final state. Passing only player actions to the old format
+`1` verifier cannot verify a replay that declares the new format.
+The replay loader dispatches to `verifyReplay` or `verifyReplayV2` strictly by
+`replayFormatVersion` and rejects unknown versions without fallback.
+
 ## Verification and version policy
 
-`verifyReplay(replay, definitions)` first validates the persisted shape and
+For format version `1`, `verifyReplay(replay, definitions)` first validates the persisted shape and
 verifies the checksum, then reruns
 every action from `initialState` and compares the resulting metadata, events,
 snapshots, and final state. It therefore detects changed actions, events,
