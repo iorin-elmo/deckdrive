@@ -596,9 +596,9 @@ cardDataVersion
 seed
 initialState
 draftDefinitionRevision (リリース前定義を使う新formatでは必須)
-battleProtocolVersion (ServerCommandを導入する新formatでは必須)
+battleProtocolVersion (format version 2では値2を必須とする)
 actions
-serverCommands (新formatでは必須。format version 1には存在しない)
+serverCommands (format version 2では必須。format version 1には存在しない)
 events
 finalState
 ```

@@ -29,8 +29,8 @@ the complete deterministic input sequence and the existing
 `recordReplay(initialState, actions, definitions, options)` API remains fixed
 to that format.
 
-A protocol that introduces result-affecting `ServerCommand` values must use a
-new replay format. Its recording API is
+A protocol that introduces result-affecting `ServerCommand` values uses
+`formatVersion: 2` and `battleProtocolVersion: 2`. Its recording API is
 `recordReplayV2(initialState, inputs, definitionSnapshot, { draftDefinitionRevision, battleProtocolVersion, ...options })`,
 where `inputs` is the complete ordered `BattleInput` sequence and the revision
 identifies that immutable definition snapshot. Its verification API is
@@ -57,9 +57,12 @@ verification resolves the immutable snapshot by that revision, verifies its
 digest, and rejects a missing or mismatched snapshot without falling back to
 current definitions. The revision field is covered by the replay's canonical
 checksum, and its canonical digest binds the full external definition snapshot.
+The digest is the `sha256:<lowercase hex>` value defined by the card registry's
+canonical definition serialization; recording and verification reject any
+revision with another shape or serialization.
 The protocol version is also covered by the canonical checksum. Shape
 validation requires it to match `initialState`, every snapshot, and the
-allowed `GameAction` and `ServerCommand` variants. A new-format replay without
+allowed `GameAction` and `ServerCommand` variants. A format `2` replay without
 this field, or one that declares an old protocol while containing pending
 choice inputs or state, is invalid. Format version `1` has no
 `battleProtocolVersion` field and remains on its fixed legacy action contract.
