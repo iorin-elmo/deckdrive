@@ -6,6 +6,44 @@ import { OAuthProviderExchangeError } from './provider.js';
 const config = { clientId: 'discord-client', clientSecret: 'discord-secret' };
 
 describe('DiscordOAuthProvider', () => {
+  it.each([
+    [400, 'invalid_grant', 'OAUTH_INVALID_REQUEST'],
+    [401, 'invalid_client', 'OAUTH_PROVIDER_NOT_CONFIGURED'],
+    [400, 'unauthorized_client', 'OAUTH_PROVIDER_NOT_CONFIGURED'],
+    [429, 'rate_limited', 'OAUTH_PROVIDER_UNAVAILABLE'],
+    [503, 'unavailable', 'OAUTH_PROVIDER_UNAVAILABLE'],
+  ])('classifies token rejection %s / %s', async (status, error, code) => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error }), { status: Number(status) }));
+    const provider = new DiscordOAuthProvider(config, request as typeof fetch);
+    await expect(
+      provider.exchangeCode({
+        redirectUri: 'https://api.example.test/callback',
+        code: 'code',
+        codeVerifier: 'verifier',
+      }),
+    ).rejects.toMatchObject({ code });
+    expect(request).toHaveBeenCalledOnce();
+  });
+  it.each([
+    [401, 'OAUTH_INVALID_REQUEST'],
+    [403, 'OAUTH_INVALID_REQUEST'],
+    [429, 'OAUTH_PROVIDER_UNAVAILABLE'],
+    [503, 'OAUTH_PROVIDER_UNAVAILABLE'],
+  ])('classifies profile rejection %s', async (status, code) => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' })))
+      .mockResolvedValueOnce(new Response('{}', { status: Number(status) }));
+    await expect(
+      new DiscordOAuthProvider(config, request as typeof fetch).exchangeCode({
+        redirectUri: 'https://api.example.test/callback',
+        code: 'code',
+        codeVerifier: 'verifier',
+      }),
+    ).rejects.toMatchObject({ code });
+  });
   it('builds an authorization-code PKCE URL with Discord credentials and scopes', () => {
     const provider = new DiscordOAuthProvider(config);
 

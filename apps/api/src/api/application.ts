@@ -713,7 +713,15 @@ export class ApiApplication {
     if (error instanceof OAuthProviderConfigurationError)
       return { status: 503, body: { error: 'OAUTH_PROVIDER_NOT_CONFIGURED' } };
     if (error instanceof OAuthProviderExchangeError)
-      return { status: 502, body: { error: 'OAUTH_PROVIDER_UNAVAILABLE' } };
+      return {
+        status:
+          error.code === 'OAUTH_INVALID_REQUEST'
+            ? 400
+            : error.code === 'OAUTH_PROVIDER_NOT_CONFIGURED'
+              ? 503
+              : 502,
+        body: { error: error.code },
+      };
     if (error instanceof OAuthRequestError) return { status: 400, body: { error: error.code } };
     if (error instanceof BadRequestError)
       return { status: 400, body: { error: 'INVALID_REQUEST' } };
@@ -751,7 +759,7 @@ function oauthFailureCode(error: unknown): string {
   if (error instanceof OAuthRateLimitError) return 'OAUTH_RATE_LIMITED';
   if (error instanceof OAuthSecurityConfigurationError) return 'OAUTH_NOT_CONFIGURED';
   if (error instanceof OAuthProviderConfigurationError) return 'OAUTH_PROVIDER_NOT_CONFIGURED';
-  if (error instanceof OAuthProviderExchangeError) return 'OAUTH_PROVIDER_UNAVAILABLE';
+  if (error instanceof OAuthProviderExchangeError) return error.code;
   if (error instanceof OAuthRequestError) return error.code;
   return 'OAUTH_FAILED';
 }

@@ -32,7 +32,17 @@ export class OAuthProviderConfigurationError extends Error {
   }
 }
 
-export class OAuthProviderExchangeError extends Error {}
+export class OAuthProviderExchangeError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | 'OAUTH_INVALID_REQUEST'
+      | 'OAUTH_PROVIDER_NOT_CONFIGURED'
+      | 'OAUTH_PROVIDER_UNAVAILABLE' = 'OAUTH_PROVIDER_UNAVAILABLE',
+  ) {
+    super(message);
+  }
+}
 
 export function configuredProvider(
   provider: OAuthProviderId,

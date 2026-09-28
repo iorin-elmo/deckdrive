@@ -60,7 +60,8 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
       }),
     });
     const tokenBody = (await token.json().catch(() => undefined)) as
-      { access_token?: unknown } | undefined;
+      { access_token?: unknown; error?: unknown } | undefined;
+    rejectHttpFailure(token, tokenBody?.error, true);
     const accessToken = nonEmptyString(tokenBody?.access_token);
     if (!token.ok || accessToken === undefined)
       throw new OAuthProviderExchangeError('Discord token exchange failed.');
@@ -69,6 +70,7 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
     });
     const body = (await profile.json().catch(() => undefined)) as
       Record<string, unknown> | undefined;
+    rejectHttpFailure(profile);
     const providerUserId = nonEmptyString(body?.id);
     if (!profile.ok || providerUserId === undefined)
       throw new OAuthProviderExchangeError('Discord profile lookup failed.');
@@ -92,4 +94,18 @@ export class DiscordOAuthProvider implements OAuthProviderAdapter {
       throw new OAuthProviderExchangeError('Discord provider request failed.');
     }
   }
+}
+
+function rejectHttpFailure(response: Response, error?: unknown, tokenExchange = false): void {
+  if (response.ok) return;
+  if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+    const configurationFailure =
+      tokenExchange &&
+      (error === 'invalid_client' || error === 'unauthorized_client' || response.status === 401);
+    throw new OAuthProviderExchangeError(
+      'Discord rejected authorization.',
+      configurationFailure ? 'OAUTH_PROVIDER_NOT_CONFIGURED' : 'OAUTH_INVALID_REQUEST',
+    );
+  }
+  throw new OAuthProviderExchangeError('Discord is temporarily unavailable.');
 }
