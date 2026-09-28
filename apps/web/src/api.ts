@@ -123,7 +123,7 @@ export interface DeckDriveClient {
   developmentLogin(
     email: string,
     displayName: string,
-  ): Promise<{ playerId: string; csrfToken: string }>;
+  ): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
   session(): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
   logout(): Promise<void>;
   oauthStartUrl(provider: 'discord', returnTo?: string): string;
@@ -180,8 +180,8 @@ export class DeckDriveApi implements DeckDriveClient {
   async developmentLogin(
     email: string,
     displayName: string,
-  ): Promise<{ playerId: string; csrfToken: string }> {
-    const result = await this.request<{ playerId: string; csrfToken: string }>(
+  ): Promise<{ playerId: string; displayName: string; csrfToken: string }> {
+    const result = await this.request<{ playerId: string; displayName: string; csrfToken: string }>(
       '/api/v1/auth/development',
       {
         method: 'POST',
@@ -478,7 +478,11 @@ function previewBattle(matchId: string): BattleState {
 /** Explicit local-only fixture client for inspecting Phase 5 UI without a database. */
 export const previewApi: DeckDriveClient = {
   async developmentLogin() {
-    return { playerId: 'preview-player', csrfToken: 'preview-csrf-token' };
+    return {
+      playerId: 'preview-player',
+      displayName: 'Offline preview',
+      csrfToken: 'preview-csrf-token',
+    };
   },
   async session() {
     return {

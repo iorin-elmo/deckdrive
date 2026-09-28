@@ -63,6 +63,26 @@ describe('oauthReturnPath', () => {
 });
 
 describe('OAuthService', () => {
+  it.each([
+    'replace-me',
+    'replace-with-a-long-random-development-secret',
+    'development-only-oauth-state-secret-not-for-production',
+  ])('rejects public secret placeholders in production: %s', async (SESSION_SECRET) => {
+    const create = vi.fn();
+    const service = new OAuthService(
+      { oAuthAuthorization: { create } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET,
+        APP_BASE_URL: 'https://app.example.test',
+        OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+        DISCORD_CLIENT_ID: 'client',
+        DISCORD_CLIENT_SECRET: 'secret',
+      },
+    );
+    await expect(service.start('discord', 'client')).rejects.toThrow('SESSION_SECRET');
+    expect(create).not.toHaveBeenCalled();
+  });
   it.each(['production', 'development'])(
     'uses the appropriate state cookie policy for linking in %s',
     async (NODE_ENV) => {
@@ -306,6 +326,7 @@ describe('OAuthService', () => {
     expect(state).not.toBeNull();
     expect(data.stateHash).toBe(sha256(state!));
     expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(deleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lte: expect.any(Date) } } });
     const signedState = parseCookies(result.stateCookie)[oauthStateCookieNameFor(state!)];
     const payload = signedState?.split('.')[0];
     expect(payload).toBeDefined();

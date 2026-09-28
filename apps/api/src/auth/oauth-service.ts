@@ -12,7 +12,6 @@ import {
 import { PrismaSessionService, type CreatedSession } from './session-service.js';
 
 const authorizationLifetimeMilliseconds = 10 * 60 * 1000;
-const consumedAuthorizationRetentionMilliseconds = 24 * 60 * 60 * 1000;
 
 export class OAuthRequestError extends Error {
   constructor(readonly code: 'OAUTH_INVALID_REQUEST' | 'OAUTH_ACCOUNT_LINK_REQUIRED') {
@@ -441,16 +440,7 @@ export class OAuthService {
   private async removeExpiredAuthorizations(): Promise<void> {
     const now = this.now();
     await this.prisma.oAuthAuthorization.deleteMany({
-      where: {
-        OR: [
-          { expiresAt: { lte: now } },
-          {
-            consumedAt: {
-              lte: new Date(now.getTime() - consumedAuthorizationRetentionMilliseconds),
-            },
-          },
-        ],
-      },
+      where: { expiresAt: { lte: now } },
     });
   }
 }
@@ -482,6 +472,12 @@ function oauthRedirectBaseUrl(environment: NodeJS.ProcessEnv): string | undefine
 
 function oauthStateSecret(environment: NodeJS.ProcessEnv): string | undefined {
   const configured = environment.SESSION_SECRET;
+  if (
+    environment.NODE_ENV === 'production' &&
+    (configured === 'replace-with-a-long-random-development-secret' ||
+      configured === 'development-only-oauth-state-secret-not-for-production')
+  )
+    return undefined;
   if (configured !== undefined && configured.length >= 32) return configured;
   if (environment.NODE_ENV === 'production') return undefined;
   return 'development-only-oauth-state-secret-not-for-production';
