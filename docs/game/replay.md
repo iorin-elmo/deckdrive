@@ -31,10 +31,13 @@ to that format.
 
 A protocol that introduces result-affecting `ServerCommand` values must use a
 new replay format. Its recording API is
-`recordReplayV2(initialState, inputs, definitions, options)`, where `inputs`
-is the complete ordered `BattleInput` sequence. Its verification API is
-`verifyReplayV2(replay, definitions, serverCommandVerifier)`; the final
-argument verifies deadline authorization and timeout attestations. Each input
+`recordReplayV2(initialState, inputs, definitionSnapshot, { draftDefinitionRevision, ...options })`,
+where `inputs` is the complete ordered `BattleInput` sequence and the revision
+identifies that immutable definition snapshot. Its verification API is
+`verifyReplayV2(replay, definitionSnapshots, serverCommandVerifier)`;
+`definitionSnapshots` resolves an exact snapshot by the replay's
+`draftDefinitionRevision`, and the final argument verifies deadline
+authorization and timeout attestations. Each input
 has a shared `inputSequence` and a kind of `CLIENT_ACTION` or
 `SERVER_COMMAND`. Persisted `actions` and
 `serverCommands` may remain separate arrays, but recording and verification
@@ -47,8 +50,14 @@ BattleInput sequence = finalState and events`. The versioned verifier must
 replay both client actions and server commands and compare every input,
 snapshot, event, and final state. Passing only player actions to the old format
 `1` verifier cannot verify a replay that declares the new format.
+The new replay stores `draftDefinitionRevision` as a required top-level field.
+Recording verifies that it equals the canonical digest of `definitionSnapshot`;
+verification resolves the immutable snapshot by that revision, verifies its
+digest, and rejects a missing or mismatched snapshot without falling back to
+current definitions. The revision field is covered by the replay's canonical
+checksum, and its canonical digest binds the full external definition snapshot.
 The replay loader dispatches to `verifyReplay` or `verifyReplayV2` strictly by
-`replayFormatVersion` and rejects unknown versions without fallback.
+the persisted `formatVersion` field and rejects unknown versions without fallback.
 
 ## Verification and version policy
 

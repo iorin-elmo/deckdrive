@@ -595,12 +595,13 @@ rulesVersion
 cardDataVersion
 seed
 initialState
+draftDefinitionRevision (リリース前定義を使う新formatでは必須)
 inputs (GameAction + ServerCommand。format version 1はactionsのみ)
 events
 finalState
 ```
 
-Replayの記録・検証APIは `replayFormatVersion` で入力schemaを切り替える。ServerCommandを導入したformatでは、共通 `inputSequence` を持つ完全な `BattleInput` 列を受け取り、player actionだけを渡す旧APIで検証してはならない。
+Replayの記録・検証APIは永続フィールド `formatVersion` で入力schemaを切り替える。ServerCommandを導入したformatでは、共通 `inputSequence` を持つ完全な `BattleInput` 列を受け取り、player actionだけを渡す旧APIで検証してはならない。`draftDefinitionRevision` はReplayのtop-level fieldとしてcanonical checksumに含め、同じrevisionで登録された不変なcard definition snapshotだけをrecord/verifyへ渡す。
 
 CLI:
 
