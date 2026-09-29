@@ -81,6 +81,10 @@ verifier from `BATTLE_COMMAND_SECRET` and the comma-separated
 without one, while format 1 remains readable without this setting. Deadline and
 timeout timestamps use non-negative UTC epoch milliseconds and are covered by
 the signed payloads and the Replay V2 checksum.
+The pending state keeps a SHA-256 commitment to the issued deadline record,
+allowing a live timeout to reject a different signed deadline. Raw timestamps
+and authorization tokens remain only in the server-command journal. The
+commitment is excluded from player-facing state projections.
 New commands are signed with the current secret. When rotating it, move the old
 secret into `BATTLE_COMMAND_PREVIOUS_SECRETS` and retain it for as long as any
 replay signed with that secret must remain verifiable. All API instances and

@@ -478,7 +478,15 @@ function isBattleStateV2(value: unknown): value is BattleStateV2 {
     (value.phase === 'PLAYER_TURN' ||
       value.phase === 'PENDING_CARD_CHOICE' ||
       value.phase === 'MATCH_END') &&
-    (value.phase === 'PENDING_CARD_CHOICE') === (value.pendingCardChoice !== undefined)
+    (value.phase === 'PENDING_CARD_CHOICE') === (value.pendingCardChoice !== undefined) &&
+    (value.pendingCardChoice === undefined ||
+      (isRecord(value.pendingCardChoice) &&
+        (value.pendingCardChoice.deadlineCommandSequence === undefined
+          ? value.pendingCardChoice.deadlineCommitment === undefined
+          : Number.isSafeInteger(value.pendingCardChoice.deadlineCommandSequence) &&
+            (value.pendingCardChoice.deadlineCommandSequence as number) > 0 &&
+            typeof value.pendingCardChoice.deadlineCommitment === 'string' &&
+            /^[0-9a-f]{64}$/.test(value.pendingCardChoice.deadlineCommitment))))
   );
 }
 

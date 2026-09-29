@@ -9,9 +9,7 @@
           "type": "TRANSFORM_HAND_CARD"
         }
       ],
-      "keywords": [
-        "alchemy"
-      ],
+      "keywords": ["alchemy"],
       "deckLimit": 3
     },
     {
@@ -25,10 +23,7 @@
           "target": "SELF"
         }
       ],
-      "keywords": [
-        "material",
-        "reagent:white"
-      ],
+      "keywords": ["material", "reagent:white"],
       "deckLimit": 3
     },
     {
@@ -42,10 +37,7 @@
           "target": "ENEMY"
         }
       ],
-      "keywords": [
-        "material",
-        "reagent:red"
-      ],
+      "keywords": ["material", "reagent:red"],
       "deckLimit": 3
     },
     {
@@ -65,10 +57,7 @@
           ]
         }
       ],
-      "keywords": [
-        "magic",
-        "wish"
-      ],
+      "keywords": ["magic", "wish"],
       "deckLimit": 3
     },
     {
@@ -81,9 +70,7 @@
           "blockPerChant": 3
         }
       ],
-      "keywords": [
-        "magic"
-      ],
+      "keywords": ["magic"],
       "deckLimit": 3
     }
   ],
@@ -219,9 +206,7 @@
         "choices": [
           {
             "kind": "CARD_INSTANCES",
-            "cardInstanceIds": [
-              "material"
-            ]
+            "cardInstanceIds": ["material"]
           }
         ]
       }
@@ -442,9 +427,7 @@
           "choices": [
             {
               "kind": "CARD_INSTANCES",
-              "cardInstanceIds": [
-                "material"
-              ]
+              "cardInstanceIds": ["material"]
             }
           ]
         }
@@ -604,9 +587,7 @@
         "choiceRequestId": "choice:1",
         "playerId": "golden-player-one",
         "choiceKind": "CARD",
-        "candidateIds": [
-          "candidate"
-        ],
+        "candidateIds": ["candidate"],
         "visibility": "ownerOnly",
         "sequence": 9
       },
@@ -644,9 +625,7 @@
         "type": "CARD_CHOICE_SUBMITTED",
         "choiceRequestId": "choice:1",
         "playerId": "golden-player-one",
-        "selectedIds": [
-          "candidate"
-        ],
+        "selectedIds": ["candidate"],
         "visibility": "ownerOnly",
         "sequence": 12
       },
@@ -697,12 +676,8 @@
         "ownerPlayerId": "golden-player-one",
         "pile": "drawPile",
         "reason": "DRAW_PILE_EMPTY_RECYCLE",
-        "cardInstanceIds": [
-          "transform"
-        ],
-        "cardInstanceIdsBefore": [
-          "transform"
-        ],
+        "cardInstanceIds": ["transform"],
+        "cardInstanceIdsBefore": ["transform"],
         "sourceCardInstanceId": null,
         "sourceDefinitionId": null,
         "sourceDefinitionVersion": null,
@@ -812,12 +787,8 @@
         "ownerPlayerId": "golden-player-one",
         "pile": "drawPile",
         "reason": "DRAW_PILE_EMPTY_RECYCLE",
-        "cardInstanceIds": [
-          "wish"
-        ],
-        "cardInstanceIdsBefore": [
-          "wish"
-        ],
+        "cardInstanceIds": ["wish"],
+        "cardInstanceIdsBefore": ["wish"],
         "sourceCardInstanceId": null,
         "sourceDefinitionId": null,
         "sourceDefinitionVersion": null,
@@ -1090,9 +1061,7 @@
             "sourceDefinitionId": "alchemist_007",
             "sourceDefinitionVersion": "1.0.0",
             "choiceKind": "CARD",
-            "candidateIds": [
-              "candidate"
-            ],
+            "candidateIds": ["candidate"],
             "minSelections": 1,
             "maxSelections": 1,
             "resolution": {
@@ -1115,9 +1084,7 @@
                     "type": "TRANSFORM_HAND_CARD"
                   }
                 ],
-                "keywords": [
-                  "alchemy"
-                ],
+                "keywords": ["alchemy"],
                 "deckLimit": 3
               },
               "action": {
@@ -1127,9 +1094,7 @@
                 "choices": [
                   {
                     "kind": "CARD_INSTANCES",
-                    "cardInstanceIds": [
-                      "material"
-                    ]
+                    "cardInstanceIds": ["material"]
                   }
                 ]
               },
@@ -1241,9 +1206,7 @@
             "sourceDefinitionId": "alchemist_007",
             "sourceDefinitionVersion": "1.0.0",
             "choiceKind": "CARD",
-            "candidateIds": [
-              "candidate"
-            ],
+            "candidateIds": ["candidate"],
             "minSelections": 1,
             "maxSelections": 1,
             "resolution": {
@@ -1267,9 +1230,7 @@
                     "type": "TRANSFORM_HAND_CARD"
                   }
                 ],
-                "keywords": [
-                  "alchemy"
-                ],
+                "keywords": ["alchemy"],
                 "deckLimit": 3
               },
               "action": {
@@ -1279,14 +1240,13 @@
                 "choices": [
                   {
                     "kind": "CARD_INSTANCES",
-                    "cardInstanceIds": [
-                      "material"
-                    ]
+                    "cardInstanceIds": ["material"]
                   }
                 ]
               },
               "nextEffectIndex": 1
-            }
+            },
+            "deadlineCommitment": "ee3a3c9b43fadbe4cb0772a8686e65223b868ac7d50528d242cc1cbc165b6e36"
           }
         }
       },
@@ -2193,9 +2153,7 @@
           "choiceRequestId": "choice:1",
           "playerId": "golden-player-one",
           "choiceKind": "CARD",
-          "candidateIds": [
-            "candidate"
-          ],
+          "candidateIds": ["candidate"],
           "visibility": "ownerOnly",
           "sequence": 9
         },
@@ -2233,9 +2191,7 @@
           "type": "CARD_CHOICE_SUBMITTED",
           "choiceRequestId": "choice:1",
           "playerId": "golden-player-one",
-          "selectedIds": [
-            "candidate"
-          ],
+          "selectedIds": ["candidate"],
           "visibility": "ownerOnly",
           "sequence": 12
         },
@@ -2286,12 +2242,8 @@
           "ownerPlayerId": "golden-player-one",
           "pile": "drawPile",
           "reason": "DRAW_PILE_EMPTY_RECYCLE",
-          "cardInstanceIds": [
-            "transform"
-          ],
-          "cardInstanceIdsBefore": [
-            "transform"
-          ],
+          "cardInstanceIds": ["transform"],
+          "cardInstanceIdsBefore": ["transform"],
           "sourceCardInstanceId": null,
           "sourceDefinitionId": null,
           "sourceDefinitionVersion": null,
@@ -2401,12 +2353,8 @@
           "ownerPlayerId": "golden-player-one",
           "pile": "drawPile",
           "reason": "DRAW_PILE_EMPTY_RECYCLE",
-          "cardInstanceIds": [
-            "wish"
-          ],
-          "cardInstanceIdsBefore": [
-            "wish"
-          ],
+          "cardInstanceIds": ["wish"],
+          "cardInstanceIdsBefore": ["wish"],
           "sourceCardInstanceId": null,
           "sourceDefinitionId": null,
           "sourceDefinitionVersion": null,
@@ -2489,6 +2437,6 @@
       }
     },
     "snapshotInterval": 1,
-    "checksum": "sha256:21c5414568c56a7d9d046eec7c65d6fd419491842c6fe047adbc45f9b12ab466"
+    "checksum": "sha256:31312c5cdcb8d80a26d6261a5448feb710d53c4e6fb2e2240cacdb7d5608027f"
   }
 }

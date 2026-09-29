@@ -1,3 +1,4 @@
+import { calculateDeadlineCommitmentV2 } from '@deck-drive/game-engine';
 import type {
   BattleStateV2,
   CardChoiceDeadlineIssuedCommand,
@@ -26,6 +27,35 @@ function createServerCommandAuthorizerWithSecrets(
           secret,
         ),
       );
+    }
+    if (
+      state.pendingCardChoice?.deadlineCommitment !==
+      calculateDeadlineCommitmentV2(
+        state.matchId,
+        command.deadlineCommandSequence,
+        command.playerId,
+        command.choiceRequestId,
+        command.deadlineAt,
+        command.timeoutAuthorization,
+      )
+    ) {
+      return false;
+    }
+    const issuedAt = command.deadlineAt - 60_000;
+    if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) return false;
+    const deadlinePayload = deadlineAuthorizationPayload(state, command.deadlineCommandSequence, {
+      type: 'CARD_CHOICE_DEADLINE_ISSUED',
+      playerId: command.playerId,
+      choiceRequestId: command.choiceRequestId,
+      issuedAt,
+      deadlineAt: command.deadlineAt,
+    });
+    if (
+      !secrets.some((secret) =>
+        matchesSignature(deadlinePayload, command.timeoutAuthorization, secret),
+      )
+    ) {
+      return false;
     }
     return secrets.some((secret) =>
       matchesSignature(

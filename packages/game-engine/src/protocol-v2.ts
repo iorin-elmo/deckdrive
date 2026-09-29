@@ -7,6 +7,7 @@ import type {
   Status,
 } from './index.js';
 import { SeededRandom } from './random/index.js';
+import { sha256Hex } from './sha256.js';
 
 export const battleProtocolVersion = 2 as const;
 
@@ -80,8 +81,10 @@ export interface PendingCardChoice {
   readonly minSelections: number;
   readonly maxSelections: number;
   readonly resolution: PendingChoiceResolution;
-  /** Sequence only; wall-clock and authorization material stay outside public battle state. */
+  /** Issued deadline sequence; wall-clock and authorization material stay outside battle state. */
   readonly deadlineCommandSequence: number | undefined;
+  /** Digest of the issued deadline record; no clock value or authorization token is stored here. */
+  readonly deadlineCommitment?: string;
   readonly continuation?: {
     readonly sourceCard: CardInstanceV2;
     readonly sourceDefinition: CardDefinitionV2;
@@ -529,6 +532,8 @@ export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): 
   const publicState: Record<string, unknown> = { ...state };
   delete publicState.seed;
   delete publicState.rngState;
+  const ownerPending = state.pendingCardChoice && { ...state.pendingCardChoice };
+  if (ownerPending) delete (ownerPending as { deadlineCommitment?: string }).deadlineCommitment;
   return {
     ...publicState,
     players: state.players.map((player) => ({
@@ -542,7 +547,7 @@ export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): 
     })),
     pendingCardChoice:
       state.pendingCardChoice?.ownerPlayerId === viewerId
-        ? state.pendingCardChoice
+        ? ownerPending
         : state.pendingCardChoice === undefined
           ? undefined
           : {
@@ -939,7 +944,18 @@ function applyServerCommand(
       ok: true,
       state: {
         ...state,
-        pendingCardChoice: { ...pending, deadlineCommandSequence: input.inputSequence },
+        pendingCardChoice: {
+          ...pending,
+          deadlineCommandSequence: input.inputSequence,
+          deadlineCommitment: calculateDeadlineCommitmentV2(
+            state.matchId,
+            input.inputSequence,
+            command.playerId,
+            command.choiceRequestId,
+            command.deadlineAt,
+            command.timeoutAuthorization,
+          ),
+        },
         lastInputSequence: input.inputSequence,
       },
       events: [],
@@ -953,6 +969,23 @@ function applyServerCommand(
       state,
       'INVALID_SERVER_COMMAND',
       'The timeout does not reference the issued deadline command.',
+    );
+  }
+  if (
+    pending.deadlineCommitment !==
+    calculateDeadlineCommitmentV2(
+      state.matchId,
+      command.deadlineCommandSequence,
+      command.playerId,
+      command.choiceRequestId,
+      command.deadlineAt,
+      command.timeoutAuthorization,
+    )
+  ) {
+    return failure(
+      state,
+      'INVALID_SERVER_COMMAND',
+      'The timeout does not match the issued deadline.',
     );
   }
   if (command.timeoutAt < command.deadlineAt) {
@@ -990,6 +1023,26 @@ function applyServerCommand(
     definitions,
   );
   return result.ok ? { ...result, events: [...emitter.values, ...result.events] } : result;
+}
+
+export function calculateDeadlineCommitmentV2(
+  matchId: MatchId,
+  sequence: number,
+  playerId: PlayerId,
+  choiceRequestId: string,
+  deadlineAt: number,
+  timeoutAuthorization: string,
+): string {
+  return sha256Hex(
+    JSON.stringify([
+      matchId,
+      sequence,
+      playerId,
+      choiceRequestId,
+      deadlineAt,
+      timeoutAuthorization,
+    ]),
+  );
 }
 
 function submitChoice(
