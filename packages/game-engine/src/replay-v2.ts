@@ -438,6 +438,12 @@ function isReplayV2Shape(value: unknown): value is ReplayV2 {
     return false;
   if (!value.actions.every(isInputRecord) || !value.serverCommands.every(isInputRecord))
     return false;
+  if (
+    !value.events.every(isPersistedEventV2) ||
+    !value.initialState.events.every(isPersistedEventV2) ||
+    !value.finalState.events.every(isPersistedEventV2)
+  )
+    return false;
   if (!value.snapshots.every((entry) => isReplaySnapshotV2(entry, battleProtocolVersion)))
     return false;
   const first = value.snapshots[0];
@@ -486,6 +492,50 @@ function isInputRecord(value: unknown): value is BattleInputRecord<GameActionV2 
     isRecord(value.payload) &&
     typeof value.payload.type === 'string'
   );
+}
+
+function isPersistedEventV2(value: unknown): value is GameEventV2 {
+  if (
+    !isRecord(value) ||
+    typeof value.type !== 'string' ||
+    !Number.isSafeInteger(value.sequence) ||
+    (value.sequence as number) < 1
+  )
+    return false;
+  if (value.type === 'CARD_MOVED' || value.type === 'CARD_EXHAUSTED') {
+    if (
+      typeof value.playerId !== 'string' ||
+      typeof value.cardInstanceId !== 'string' ||
+      !isNonNegativeSafeInteger(value.fromIndex) ||
+      !isNonNegativeSafeInteger(value.toIndex) ||
+      typeof value.reason !== 'string' ||
+      (value.visibility !== 'ownerOnly' && value.visibility !== 'allPlayers')
+    )
+      return false;
+    if (value.type === 'CARD_MOVED') {
+      return (
+        (value.from === 'hand' || value.from === 'discard' || value.from === 'drawPile') &&
+        (value.to === 'hand' || value.to === 'drawPile')
+      );
+    }
+    return (
+      (value.from === 'hand' || value.from === 'discard') &&
+      typeof value.sourceCardInstanceId === 'string'
+    );
+  }
+  if (value.type === 'DECK_SHUFFLED') {
+    return (
+      typeof value.playerId === 'string' &&
+      (value.reason === 'DRAW_PILE_EMPTY' || value.reason === 'ALCHEMY_TRANSFORM') &&
+      Array.isArray(value.cardInstanceIds) &&
+      dense(value.cardInstanceIds) &&
+      value.cardInstanceIds.every((id) => typeof id === 'string') &&
+      isNonNegativeSafeInteger(value.rngStateBefore) &&
+      isNonNegativeSafeInteger(value.rngStateAfter) &&
+      value.visibility === 'ownerOnly'
+    );
+  }
+  return true;
 }
 
 function validateDefinitionSnapshot(definitions: readonly CardDefinitionV2[]): void {

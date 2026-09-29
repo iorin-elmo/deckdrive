@@ -262,11 +262,56 @@ export type GameEventV2Type =
   | 'STATUS_CONSUMED'
   | 'MATCH_FINISHED';
 
-export interface GameEventV2 {
-  readonly type: GameEventV2Type;
+interface GameEventBaseV2<Type extends GameEventV2Type> {
+  readonly type: Type;
   readonly sequence: number;
   readonly [key: string]: unknown;
 }
+
+type CardPoolAuditEventType = 'CARD_MOVED' | 'CARD_EXHAUSTED' | 'DECK_SHUFFLED';
+
+export interface CardMovedEventV2 extends GameEventBaseV2<'CARD_MOVED'> {
+  readonly playerId: PlayerId;
+  readonly cardInstanceId: CardInstanceId;
+  readonly from: 'hand' | 'discard' | 'drawPile';
+  readonly fromIndex: number;
+  readonly to: 'hand' | 'drawPile';
+  readonly toIndex: number;
+  readonly reason: string;
+  readonly visibility: Visibility;
+}
+
+export interface CardExhaustedEventV2 extends GameEventBaseV2<'CARD_EXHAUSTED'> {
+  readonly playerId: PlayerId;
+  readonly cardInstanceId: CardInstanceId;
+  readonly sourceCardInstanceId: CardInstanceId;
+  readonly from: 'hand' | 'discard';
+  readonly fromIndex: number;
+  readonly toIndex: number;
+  readonly reason: string;
+  readonly visibility: Visibility;
+}
+
+export interface DeckShuffledEventV2 extends GameEventBaseV2<'DECK_SHUFFLED'> {
+  readonly playerId: PlayerId;
+  readonly reason: 'DRAW_PILE_EMPTY' | 'ALCHEMY_TRANSFORM';
+  readonly cardInstanceIds: readonly CardInstanceId[];
+  readonly rngStateBefore: number;
+  readonly rngStateAfter: number;
+  readonly visibility: 'ownerOnly';
+}
+
+export type GameEventV2 =
+  | CardMovedEventV2
+  | CardExhaustedEventV2
+  | DeckShuffledEventV2
+  | GameEventBaseV2<Exclude<GameEventV2Type, CardPoolAuditEventType>>;
+
+type GameEventInputV2 = GameEventV2 extends infer Event
+  ? Event extends GameEventV2
+    ? Omit<Event, 'sequence'>
+    : never
+  : never;
 
 export type BattleInputValidationCode =
   | 'INVALID_INPUT_SEQUENCE'
@@ -329,7 +374,7 @@ interface MutableResolution {
 
 interface EventEmitter {
   readonly values: GameEventV2[];
-  emit(event: Omit<GameEventV2, 'sequence'>): void;
+  emit(event: GameEventInputV2): void;
 }
 
 export function createInitialBattleStateV2(
@@ -434,7 +479,9 @@ export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): 
     ...publicState,
     players: state.players.map((player) => ({
       ...player,
-      drawPile: player.drawPile.map((card) => projectCard(card, player.id === viewerId)),
+      drawPile: player.drawPile.map((card) =>
+        player.id === viewerId ? card : { visibility: 'ownerOnly' },
+      ),
       hand: player.hand.map((card) => projectCard(card, player.id === viewerId)),
       discard: player.discard.map((card) => projectCard(card, player.id === viewerId)),
       exhaust: player.exhaust.map((card) => projectCard(card, player.id === viewerId)),
@@ -927,7 +974,10 @@ function submitChoice(
       playerId: player.id,
       cardInstanceId: card.id,
       from: 'drawPile',
+      fromIndex: cardIndex,
       to: 'hand',
+      toIndex: player.hand.length,
+      reason: 'CARD_CHOICE',
       visibility: card.visibility,
     });
     if (pending.resolution.type === 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE') {
@@ -1024,7 +1074,11 @@ function transformHandCard(
     type: 'CARD_EXHAUSTED',
     playerId: actor.id,
     cardInstanceId: selected.id,
+    sourceCardInstanceId: sourceCard.id,
     from: 'hand',
+    fromIndex: selectedIndex,
+    toIndex: actor.exhaust.length - 1,
+    reason: 'ALCHEMY_TRANSFORM',
     visibility: selected.visibility,
   });
   refillDrawPileIfEmpty(mutable, actorIndex, emitter);
@@ -1192,7 +1246,11 @@ function synthesize(
       type: 'CARD_EXHAUSTED',
       playerId: player.id,
       cardInstanceId: located.card.id,
+      sourceCardInstanceId: sourceCard.id,
       from: located.zone,
+      fromIndex: currentIndex,
+      toIndex: player.exhaust.length - 1,
+      reason: 'SYNTHESIS',
       visibility: located.card.visibility,
     });
   }
@@ -1329,7 +1387,11 @@ function exhaustGrimoireAndAdvanceWish(
     type: 'CARD_EXHAUSTED',
     playerId: actor.id,
     cardInstanceId: card.id,
+    sourceCardInstanceId: action.cardInstanceId,
     from: 'hand',
+    fromIndex: index,
+    toIndex: actor.exhaust.length - 1,
+    reason: 'MAGE_GRIMOIRE_BURN',
     visibility: card.visibility,
   });
   if (chantChoice !== undefined) {
@@ -1610,13 +1672,30 @@ function refillDrawPileIfEmpty(
 ): void {
   const player = mutable.players[playerIndex];
   if (player === undefined || player.drawPile.length > 0 || player.discard.length === 0) return;
-  const shuffled = shuffle(player.discard, mutable.rngState);
+  for (const [index, card] of player.discard.entries()) {
+    emitter.emit({
+      type: 'CARD_MOVED',
+      playerId: player.id,
+      cardInstanceId: card.id,
+      from: 'discard',
+      fromIndex: index,
+      to: 'drawPile',
+      toIndex: index,
+      reason: 'DRAW_PILE_EMPTY',
+      visibility: 'ownerOnly',
+    });
+  }
+  const rngStateBefore = mutable.rngState;
+  const shuffled = shuffle(player.discard, rngStateBefore);
   mutable.rngState = shuffled.rngState;
   mutable.players[playerIndex] = { ...player, drawPile: shuffled.cards, discard: [] };
   emitter.emit({
     type: 'DECK_SHUFFLED',
     playerId: player.id,
     reason: 'DRAW_PILE_EMPTY',
+    cardInstanceIds: shuffled.cards.map((card) => card.id),
+    rngStateBefore,
+    rngStateAfter: shuffled.rngState,
     visibility: 'ownerOnly',
   });
 }
@@ -1629,13 +1708,17 @@ function shuffleDrawPile(
 ): void {
   const player = mutable.players[playerIndex];
   if (player === undefined || player.drawPile.length === 0) return;
-  const shuffled = shuffle(player.drawPile, mutable.rngState);
+  const rngStateBefore = mutable.rngState;
+  const shuffled = shuffle(player.drawPile, rngStateBefore);
   mutable.rngState = shuffled.rngState;
   mutable.players[playerIndex] = { ...player, drawPile: shuffled.cards };
   emitter.emit({
     type: 'DECK_SHUFFLED',
     playerId: player.id,
     reason,
+    cardInstanceIds: shuffled.cards.map((card) => card.id),
+    rngStateBefore,
+    rngStateAfter: shuffled.rngState,
     visibility: 'ownerOnly',
   });
 }
@@ -2069,14 +2152,16 @@ function projectCard(card: CardInstanceV2, isOwner: boolean): unknown {
 }
 
 function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
+  const redacted = { ...event } as Record<string, unknown>;
+  delete redacted.rngStateBefore;
+  delete redacted.rngStateAfter;
   if (
     event.visibility !== 'ownerOnly' ||
     event.playerId === viewerId ||
     event.ownerPlayerId === viewerId
   ) {
-    return event;
+    return redacted as GameEventV2;
   }
-  const redacted = { ...event } as Record<string, unknown>;
   for (const key of [
     'cardInstanceId',
     'cardInstanceIds',
@@ -2091,8 +2176,6 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
     'index',
     'fromIndex',
     'toIndex',
-    'rngStateBefore',
-    'rngStateAfter',
   ]) {
     delete redacted[key];
   }

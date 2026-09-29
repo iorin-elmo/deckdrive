@@ -55,6 +55,23 @@ describe('Replay regression gate', () => {
       ),
     ).toEqual({ ok: true });
   });
+
+  it('rejects a persisted shuffle event without its RNG audit fields', () => {
+    const malformed = structuredClone(v2Fixture.expectedReplay);
+    const shuffle = malformed.events.find((event) => event.type === 'DECK_SHUFFLED');
+    if (shuffle === undefined) throw new Error('The golden replay must include a shuffle.');
+    delete (shuffle as Record<string, unknown>).rngStateAfter;
+    expect(
+      verifyReplayV2(
+        malformed,
+        () => v2Fixture.definitions,
+        () => true,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'REPLAY_MISMATCH' },
+    });
+  });
 });
 
 const v2Fixture = JSON.parse(

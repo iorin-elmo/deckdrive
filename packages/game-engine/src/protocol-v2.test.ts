@@ -582,7 +582,10 @@ describe('battle protocol 2 special victory routes', () => {
         {
           ...state.players[0]!,
           drawPile: [],
-          discard: [card('discard-a', 'alchemist_001'), card('discard-b', 'alchemist_002')],
+          discard: [
+            { ...card('discard-a', 'alchemist_001'), visibility: 'allPlayers' },
+            { ...card('discard-b', 'alchemist_002'), visibility: 'allPlayers' },
+          ],
         },
         state.players[1]!,
       ],
@@ -593,6 +596,56 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.players[0]!.hand).toHaveLength(2);
     expect(state.players[0]!.discard.map((entry) => entry.id)).toEqual(['draw']);
     expect(state.events).toContainEqual(expect.objectContaining({ type: 'DECK_SHUFFLED' }));
+    expect(
+      state.events.filter(
+        (event) => event.type === 'CARD_MOVED' && event.reason === 'DRAW_PILE_EMPTY',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        cardInstanceId: 'discard-a',
+        from: 'discard',
+        fromIndex: 0,
+        to: 'drawPile',
+        toIndex: 0,
+      }),
+      expect.objectContaining({
+        cardInstanceId: 'discard-b',
+        from: 'discard',
+        fromIndex: 1,
+        to: 'drawPile',
+        toIndex: 1,
+      }),
+      expect.objectContaining({
+        cardInstanceId: 'energy',
+        from: 'discard',
+        fromIndex: 2,
+        to: 'drawPile',
+        toIndex: 2,
+      }),
+    ]);
+    const shuffle = state.events.find((event) => event.type === 'DECK_SHUFFLED');
+    expect(shuffle).toMatchObject({
+      cardInstanceIds: expect.arrayContaining(['discard-a', 'discard-b', 'energy']),
+      rngStateBefore: rngStateBeforeShuffle,
+      rngStateAfter: state.rngState,
+    });
+    const opponentProjection = projectBattleStateV2(state, playerTwo) as {
+      readonly players: readonly { readonly drawPile: readonly unknown[] }[];
+      readonly events: readonly Record<string, unknown>[];
+    };
+    expect(opponentProjection.players[0]!.drawPile).toEqual([{ visibility: 'ownerOnly' }]);
+    expect(
+      opponentProjection.events.find((event) => event.type === 'DECK_SHUFFLED'),
+    ).not.toHaveProperty('cardInstanceIds');
+    expect(
+      opponentProjection.events.find((event) => event.type === 'DECK_SHUFFLED'),
+    ).not.toHaveProperty('rngStateAfter');
+    const ownerProjection = projectBattleStateV2(state, playerOne) as {
+      readonly events: readonly Record<string, unknown>[];
+    };
+    expect(
+      ownerProjection.events.find((event) => event.type === 'DECK_SHUFFLED'),
+    ).not.toHaveProperty('rngStateAfter');
     const expectedRandom = new SeededRandom(0);
     expectedRandom.restore({ state: rngStateBeforeShuffle });
     expectedRandom.next();

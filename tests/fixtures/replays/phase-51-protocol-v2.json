@@ -543,7 +543,11 @@
         "type": "CARD_EXHAUSTED",
         "playerId": "golden-player-one",
         "cardInstanceId": "material",
+        "sourceCardInstanceId": "transform",
         "from": "hand",
+        "fromIndex": 0,
+        "toIndex": 0,
+        "reason": "ALCHEMY_TRANSFORM",
         "visibility": "ownerOnly",
         "sequence": 7
       },
@@ -578,7 +582,10 @@
         "playerId": "golden-player-one",
         "cardInstanceId": "candidate",
         "from": "drawPile",
+        "fromIndex": 0,
         "to": "hand",
+        "toIndex": 2,
+        "reason": "CARD_CHOICE",
         "visibility": "ownerOnly",
         "sequence": 11
       },
@@ -611,18 +618,33 @@
         "sequence": 16
       },
       {
-        "type": "DECK_SHUFFLED",
+        "type": "CARD_MOVED",
         "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "from": "discard",
+        "fromIndex": 0,
+        "to": "drawPile",
+        "toIndex": 0,
         "reason": "DRAW_PILE_EMPTY",
         "visibility": "ownerOnly",
         "sequence": 17
+      },
+      {
+        "type": "DECK_SHUFFLED",
+        "playerId": "golden-player-one",
+        "reason": "DRAW_PILE_EMPTY",
+        "cardInstanceIds": ["transform"],
+        "rngStateBefore": 1026112623,
+        "rngStateAfter": 1026112623,
+        "visibility": "ownerOnly",
+        "sequence": 18
       },
       {
         "type": "CARD_DRAWN",
         "playerId": "golden-player-one",
         "cardInstanceId": "transform",
         "visibility": "allPlayers",
-        "sequence": 18
+        "sequence": 19
       },
       {
         "type": "CARD_PLAYED",
@@ -631,12 +653,12 @@
         "definitionId": "mage_017",
         "definitionVersion": "1.0.0",
         "visibility": "allPlayers",
-        "sequence": 19
+        "sequence": 20
       },
       {
         "type": "EFFECT_STARTED",
         "effectId": "wish:1",
-        "sequence": 20
+        "sequence": 21
       },
       {
         "type": "CHANT_STARTED",
@@ -647,7 +669,7 @@
         "before": null,
         "after": 100,
         "queueIndex": 0,
-        "sequence": 21
+        "sequence": 22
       },
       {
         "type": "CARD_DISCARDED",
@@ -656,27 +678,27 @@
         "definitionId": "mage_017",
         "definitionVersion": "1.0.0",
         "visibility": "allPlayers",
-        "sequence": 22
+        "sequence": 23
       },
       {
         "type": "TURN_ENDED",
         "playerId": "golden-player-one",
-        "sequence": 23
-      },
-      {
-        "type": "TURN_STARTED",
-        "playerId": "golden-player-two",
         "sequence": 24
       },
       {
-        "type": "TURN_ENDED",
+        "type": "TURN_STARTED",
         "playerId": "golden-player-two",
         "sequence": 25
       },
       {
+        "type": "TURN_ENDED",
+        "playerId": "golden-player-two",
+        "sequence": 26
+      },
+      {
         "type": "TURN_STARTED",
         "playerId": "golden-player-one",
-        "sequence": 26
+        "sequence": 27
       },
       {
         "type": "CHANT_ADVANCED",
@@ -687,21 +709,36 @@
         "before": 100,
         "after": 99,
         "queueIndex": 0,
-        "sequence": 27
+        "sequence": 28
+      },
+      {
+        "type": "CARD_MOVED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "from": "discard",
+        "fromIndex": 0,
+        "to": "drawPile",
+        "toIndex": 0,
+        "reason": "DRAW_PILE_EMPTY",
+        "visibility": "ownerOnly",
+        "sequence": 29
       },
       {
         "type": "DECK_SHUFFLED",
         "playerId": "golden-player-one",
         "reason": "DRAW_PILE_EMPTY",
+        "cardInstanceIds": ["wish"],
+        "rngStateBefore": 1026112623,
+        "rngStateAfter": 1026112623,
         "visibility": "ownerOnly",
-        "sequence": 28
+        "sequence": 30
       },
       {
         "type": "CARD_DRAWN",
         "playerId": "golden-player-one",
         "cardInstanceId": "wish",
         "visibility": "allPlayers",
-        "sequence": 29
+        "sequence": 31
       },
       {
         "type": "CARD_PLAYED",
@@ -710,12 +747,12 @@
         "definitionId": "mage_015",
         "definitionVersion": "1.0.0",
         "visibility": "allPlayers",
-        "sequence": 30
+        "sequence": 32
       },
       {
         "type": "EFFECT_STARTED",
         "effectId": "stop:1",
-        "sequence": 31
+        "sequence": 33
       },
       {
         "type": "CHANT_ADVANCED",
@@ -726,7 +763,7 @@
         "before": 99,
         "after": 0,
         "queueIndex": 0,
-        "sequence": 32
+        "sequence": 34
       },
       {
         "type": "CHANT_COMPLETED",
@@ -737,7 +774,7 @@
         "before": 99,
         "after": 0,
         "queueIndex": 0,
-        "sequence": 33
+        "sequence": 35
       },
       {
         "type": "CARD_DISCARDED",
@@ -746,7 +783,7 @@
         "definitionId": "mage_015",
         "definitionVersion": "1.0.0",
         "visibility": "allPlayers",
-        "sequence": 34
+        "sequence": 36
       },
       {
         "type": "MATCH_FINISHED",
@@ -756,7 +793,7 @@
           "reason": "SPECIAL_VICTORY",
           "specialVictoryId": "MAGE_GRAND_WISH"
         },
-        "sequence": 35
+        "sequence": 37
       }
     ],
     "snapshots": [
@@ -1259,7 +1296,7 @@
       },
       {
         "inputSequence": 5,
-        "eventSequence": 18,
+        "eventSequence": 19,
         "state": {
           "matchId": "phase-51-protocol-v2",
           "engineVersion": "2.0.0",
@@ -1351,7 +1388,7 @@
       },
       {
         "inputSequence": 6,
-        "eventSequence": 22,
+        "eventSequence": 23,
         "state": {
           "matchId": "phase-51-protocol-v2",
           "engineVersion": "2.0.0",
@@ -1460,7 +1497,7 @@
       },
       {
         "inputSequence": 7,
-        "eventSequence": 24,
+        "eventSequence": 25,
         "state": {
           "matchId": "phase-51-protocol-v2",
           "engineVersion": "2.0.0",
@@ -1569,7 +1606,7 @@
       },
       {
         "inputSequence": 8,
-        "eventSequence": 29,
+        "eventSequence": 31,
         "state": {
           "matchId": "phase-51-protocol-v2",
           "engineVersion": "2.0.0",
@@ -1677,7 +1714,7 @@
       },
       {
         "inputSequence": 9,
-        "eventSequence": 35,
+        "eventSequence": 37,
         "state": {
           "matchId": "phase-51-protocol-v2",
           "engineVersion": "2.0.0",
@@ -1910,7 +1947,11 @@
           "type": "CARD_EXHAUSTED",
           "playerId": "golden-player-one",
           "cardInstanceId": "material",
+          "sourceCardInstanceId": "transform",
           "from": "hand",
+          "fromIndex": 0,
+          "toIndex": 0,
+          "reason": "ALCHEMY_TRANSFORM",
           "visibility": "ownerOnly",
           "sequence": 7
         },
@@ -1945,7 +1986,10 @@
           "playerId": "golden-player-one",
           "cardInstanceId": "candidate",
           "from": "drawPile",
+          "fromIndex": 0,
           "to": "hand",
+          "toIndex": 2,
+          "reason": "CARD_CHOICE",
           "visibility": "ownerOnly",
           "sequence": 11
         },
@@ -1978,18 +2022,33 @@
           "sequence": 16
         },
         {
-          "type": "DECK_SHUFFLED",
+          "type": "CARD_MOVED",
           "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "from": "discard",
+          "fromIndex": 0,
+          "to": "drawPile",
+          "toIndex": 0,
           "reason": "DRAW_PILE_EMPTY",
           "visibility": "ownerOnly",
           "sequence": 17
+        },
+        {
+          "type": "DECK_SHUFFLED",
+          "playerId": "golden-player-one",
+          "reason": "DRAW_PILE_EMPTY",
+          "cardInstanceIds": ["transform"],
+          "rngStateBefore": 1026112623,
+          "rngStateAfter": 1026112623,
+          "visibility": "ownerOnly",
+          "sequence": 18
         },
         {
           "type": "CARD_DRAWN",
           "playerId": "golden-player-one",
           "cardInstanceId": "transform",
           "visibility": "allPlayers",
-          "sequence": 18
+          "sequence": 19
         },
         {
           "type": "CARD_PLAYED",
@@ -1998,12 +2057,12 @@
           "definitionId": "mage_017",
           "definitionVersion": "1.0.0",
           "visibility": "allPlayers",
-          "sequence": 19
+          "sequence": 20
         },
         {
           "type": "EFFECT_STARTED",
           "effectId": "wish:1",
-          "sequence": 20
+          "sequence": 21
         },
         {
           "type": "CHANT_STARTED",
@@ -2014,7 +2073,7 @@
           "before": null,
           "after": 100,
           "queueIndex": 0,
-          "sequence": 21
+          "sequence": 22
         },
         {
           "type": "CARD_DISCARDED",
@@ -2023,27 +2082,27 @@
           "definitionId": "mage_017",
           "definitionVersion": "1.0.0",
           "visibility": "allPlayers",
-          "sequence": 22
+          "sequence": 23
         },
         {
           "type": "TURN_ENDED",
           "playerId": "golden-player-one",
-          "sequence": 23
-        },
-        {
-          "type": "TURN_STARTED",
-          "playerId": "golden-player-two",
           "sequence": 24
         },
         {
-          "type": "TURN_ENDED",
+          "type": "TURN_STARTED",
           "playerId": "golden-player-two",
           "sequence": 25
         },
         {
+          "type": "TURN_ENDED",
+          "playerId": "golden-player-two",
+          "sequence": 26
+        },
+        {
           "type": "TURN_STARTED",
           "playerId": "golden-player-one",
-          "sequence": 26
+          "sequence": 27
         },
         {
           "type": "CHANT_ADVANCED",
@@ -2054,21 +2113,36 @@
           "before": 100,
           "after": 99,
           "queueIndex": 0,
-          "sequence": 27
+          "sequence": 28
+        },
+        {
+          "type": "CARD_MOVED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "from": "discard",
+          "fromIndex": 0,
+          "to": "drawPile",
+          "toIndex": 0,
+          "reason": "DRAW_PILE_EMPTY",
+          "visibility": "ownerOnly",
+          "sequence": 29
         },
         {
           "type": "DECK_SHUFFLED",
           "playerId": "golden-player-one",
           "reason": "DRAW_PILE_EMPTY",
+          "cardInstanceIds": ["wish"],
+          "rngStateBefore": 1026112623,
+          "rngStateAfter": 1026112623,
           "visibility": "ownerOnly",
-          "sequence": 28
+          "sequence": 30
         },
         {
           "type": "CARD_DRAWN",
           "playerId": "golden-player-one",
           "cardInstanceId": "wish",
           "visibility": "allPlayers",
-          "sequence": 29
+          "sequence": 31
         },
         {
           "type": "CARD_PLAYED",
@@ -2077,12 +2151,12 @@
           "definitionId": "mage_015",
           "definitionVersion": "1.0.0",
           "visibility": "allPlayers",
-          "sequence": 30
+          "sequence": 32
         },
         {
           "type": "EFFECT_STARTED",
           "effectId": "stop:1",
-          "sequence": 31
+          "sequence": 33
         },
         {
           "type": "CHANT_ADVANCED",
@@ -2093,7 +2167,7 @@
           "before": 99,
           "after": 0,
           "queueIndex": 0,
-          "sequence": 32
+          "sequence": 34
         },
         {
           "type": "CHANT_COMPLETED",
@@ -2104,7 +2178,7 @@
           "before": 99,
           "after": 0,
           "queueIndex": 0,
-          "sequence": 33
+          "sequence": 35
         },
         {
           "type": "CARD_DISCARDED",
@@ -2113,7 +2187,7 @@
           "definitionId": "mage_015",
           "definitionVersion": "1.0.0",
           "visibility": "allPlayers",
-          "sequence": 34
+          "sequence": 36
         },
         {
           "type": "MATCH_FINISHED",
@@ -2123,7 +2197,7 @@
             "reason": "SPECIAL_VICTORY",
             "specialVictoryId": "MAGE_GRAND_WISH"
           },
-          "sequence": 35
+          "sequence": 37
         }
       ],
       "terminalResult": {
@@ -2134,6 +2208,6 @@
       }
     },
     "snapshotInterval": 1,
-    "checksum": "sha256:de93844f021058d96c1d8809803ae4c232087d85bc1c9db2e0b1c07ec106412c"
+    "checksum": "sha256:3db03e86beca5537527a8a17ebc501713026bad967972b8c284e5dcc4a0248b1"
   }
 }
