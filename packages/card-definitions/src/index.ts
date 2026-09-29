@@ -66,6 +66,7 @@ export type CardEffect =
       readonly maximumCost?: number;
     }
   | { readonly type: 'TRANSFORM_HAND_CARD' }
+  | { readonly type: 'SEAL_GRIMOIRE' }
   | {
       readonly type: 'CUSTOM';
       readonly resolver: string;
@@ -560,11 +561,15 @@ export const specialVictoryCardDefinitions: readonly CardDefinition[] = [
     rarity: 'R',
     cost: 1,
     type: 'REACTION',
-    description: 'Gain 5 block. This card is a grimoire.',
+    description:
+      'Put a grimoire from your hand on the bottom of your draw pile. Prevent 5 damage from the next hit you take.',
     translations: {
-      ja: { name: '魔導書の封印', description: '5ブロックを得る。魔導書として焚書に使える。' },
+      ja: {
+        name: '魔導書の封印',
+        description: '手札の魔導書1枚を山札の一番下に置く。次に受けるダメージを5減らす。',
+      },
     },
-    effects: [{ type: 'GAIN_BLOCK', amount: 5, target: 'SELF' }],
+    effects: [{ type: 'SEAL_GRIMOIRE' }],
     keywords: ['magic', 'grimoire'],
     artwork: null,
     deckLimit: 3,
@@ -995,6 +1000,7 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
           (Number.isSafeInteger(value.maximumCost) && (value.maximumCost as number) >= 0))
       );
     case 'TRANSFORM_HAND_CARD':
+    case 'SEAL_GRIMOIRE':
       return true;
     case 'CUSTOM':
       return (

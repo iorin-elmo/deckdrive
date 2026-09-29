@@ -2,7 +2,6 @@ import { createContext, useContext, useLayoutEffect, type ReactNode } from 'reac
 import {
   basicCardDefinitions,
   packCardDefinitions,
-  specialVictoryCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 
@@ -556,11 +555,9 @@ export function localizedCardName(
     return localizeCard(definition, locale).name;
   const versionedText = localizedCardTextByVersion[locale][`${cardId}@${cardDataVersion}`];
   if (versionedText !== undefined) return versionedText.name;
-  const bundledDefinition = [
-    ...basicCardDefinitions,
-    ...packCardDefinitions,
-    ...specialVictoryCardDefinitions,
-  ].find((card) => card.id === cardId && card.version === cardDataVersion);
+  const bundledDefinition = [...basicCardDefinitions, ...packCardDefinitions].find(
+    (card) => card.id === cardId && card.version === cardDataVersion,
+  );
   return bundledDefinition === undefined ? cardId : localizeCard(bundledDefinition, locale).name;
 }
 

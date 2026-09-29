@@ -72,3 +72,15 @@ definition revision, input-boundary snapshots, events, and final state. The API
 repository dispatches by format version and persists server commands separately
 from player actions. Format 1 continues to use `recordReplay` / `verifyReplay`,
 action-index snapshots, and its existing schema.
+
+Replay V2 command verification is fail-closed. API tooling obtains an HMAC
+verifier from `BATTLE_COMMAND_SECRET`; V2 persistence cannot be loaded or saved
+without one, while format 1 remains readable without this setting. Deadline and
+timeout timestamps use non-negative UTC epoch milliseconds and are covered by
+the signed payloads and the Replay V2 checksum.
+
+The special-victory definitions remain outside the production seed and offline
+preview catalog until the product match transport is upgraded from protocol 1.
+This prevents protocol-2-only cards from entering decks that the current CPU
+match flow cannot execute. The definitions, engine rules, persistence format,
+and UI state rendering are available for that transport integration.

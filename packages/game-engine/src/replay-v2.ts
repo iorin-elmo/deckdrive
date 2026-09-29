@@ -1,4 +1,3 @@
-import { calculateReplayChecksum } from './replay.js';
 import {
   applyBattleInputV2,
   battleProtocolVersion,
@@ -106,7 +105,9 @@ export function recordReplayV2(
     !Number.isSafeInteger(snapshotInterval) ||
     snapshotInterval < 1 ||
     initialState.battleProtocolVersion !== battleProtocolVersion ||
-    initialState.lastInputSequence !== 0
+    initialState.lastInputSequence !== 0 ||
+    !Array.isArray(inputs) ||
+    !dense(inputs)
   ) {
     return {
       ok: false,
@@ -152,22 +153,11 @@ export function recordReplayV2(
         readonly inputSequence: number;
         readonly choiceRequestId: string;
         readonly playerId: string;
-        readonly deadlineAt: string;
+        readonly deadlineAt: number;
         readonly timeoutAuthorization: string;
       }
     | undefined;
   for (const input of inputs) {
-    const protocolError = validatePendingInputOrder(state, input, pendingDeadline);
-    if (protocolError !== undefined) {
-      return {
-        ok: false,
-        error: {
-          code: 'INPUT_REJECTED',
-          message: protocolError,
-          inputSequence: input.inputSequence,
-        },
-      };
-    }
     const result = applyBattleInputV2(
       state,
       input,
@@ -180,6 +170,19 @@ export function recordReplayV2(
         error: {
           code: 'INPUT_REJECTED',
           message: result.error.message,
+          ...(isRecord(input) && Number.isSafeInteger(input.inputSequence)
+            ? { inputSequence: input.inputSequence as number }
+            : {}),
+        },
+      };
+    }
+    const protocolError = validatePendingInputOrder(state, input, pendingDeadline);
+    if (protocolError !== undefined) {
+      return {
+        ok: false,
+        error: {
+          code: 'INPUT_REJECTED',
+          message: protocolError,
           inputSequence: input.inputSequence,
         },
       };
@@ -242,7 +245,13 @@ export function verifyReplayV2(
 ): ReplayV2VerificationResult {
   if (!isReplayV2Shape(replay)) return mismatch('Replay V2 has a malformed persisted shape.');
   const { checksum, ...content } = replay;
-  if (calculateReplayV2Checksum(content) !== checksum) {
+  let actualChecksum: string;
+  try {
+    actualChecksum = calculateReplayV2Checksum(content);
+  } catch {
+    return mismatch('Replay V2 contains unsupported or sparse JSON values.');
+  }
+  if (actualChecksum !== checksum) {
     return {
       ok: false,
       error: {
@@ -288,16 +297,16 @@ export function verifyReplayV2(
     snapshotInterval: replay.snapshotInterval,
     authorizeServerCommand,
   });
-  if (!recorded.ok || JSON.stringify(recorded.replay) !== JSON.stringify(replay)) {
+  if (!recorded.ok || !structurallyEqual(recorded.replay, replay)) {
     return mismatch('Replay V2 does not reproduce its events, snapshots, and final state.');
   }
   return { ok: true };
 }
 
 export function calculateReplayV2Checksum(replay: Omit<ReplayV2, 'checksum'> | ReplayV2): string {
-  return calculateReplayChecksum(
-    replay as unknown as Parameters<typeof calculateReplayChecksum>[0],
-  );
+  const content = { ...replay } as Record<string, unknown>;
+  delete content.checksum;
+  return `sha256:${sha256Hex(canonicalReplayJson(content))}`;
 }
 
 export function restoreReplaySnapshotV2(
@@ -338,7 +347,7 @@ function validatePendingInputOrder(
         readonly inputSequence: number;
         readonly choiceRequestId: string;
         readonly playerId: string;
-        readonly deadlineAt: string;
+        readonly deadlineAt: number;
         readonly timeoutAuthorization: string;
       }
     | undefined,
@@ -354,12 +363,10 @@ function validatePendingInputOrder(
     ) {
       return 'The input immediately after a pending choice must persist its matching deadline command.';
     }
-    const issuedAt = Date.parse(input.payload.issuedAt);
-    const deadlineAt = Date.parse(input.payload.deadlineAt);
     if (
-      !Number.isFinite(issuedAt) ||
-      !Number.isFinite(deadlineAt) ||
-      deadlineAt - issuedAt !== 60_000 ||
+      !isNonNegativeSafeInteger(input.payload.issuedAt) ||
+      !isNonNegativeSafeInteger(input.payload.deadlineAt) ||
+      input.payload.deadlineAt - input.payload.issuedAt !== 60_000 ||
       input.payload.timeoutAuthorization.length === 0
     ) {
       return 'A choice deadline must be a signed, valid 60-second interval.';
@@ -380,7 +387,8 @@ function validatePendingInputOrder(
     input.payload.deadlineCommandSequence !== deadline.inputSequence ||
     input.payload.deadlineAt !== deadline.deadlineAt ||
     input.payload.timeoutAuthorization !== deadline.timeoutAuthorization ||
-    Date.parse(input.payload.timeoutAt) < Date.parse(deadline.deadlineAt) ||
+    !isNonNegativeSafeInteger(input.payload.timeoutAt) ||
+    input.payload.timeoutAt < deadline.deadlineAt ||
     input.payload.timeoutAttestation.length === 0
   ) {
     return 'The timeout command does not match the persisted deadline authorization.';
@@ -557,7 +565,7 @@ function validateInitialState(
   } catch (error) {
     return errorMessage(error);
   }
-  return JSON.stringify(expected) === JSON.stringify(state)
+  return structurallyEqual(expected, state)
     ? undefined
     : 'Replay V2 initial state must be the canonical engine-created state.';
 }
@@ -594,6 +602,37 @@ function canonicalJsonV2(value: unknown): string {
   return JSON.stringify(canonicalize(value));
 }
 
+function canonicalReplayJson(value: unknown): string {
+  return JSON.stringify(canonicalizeReplay(value));
+}
+
+function canonicalizeReplay(value: unknown): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError('Replay JSON rejects non-finite numbers.');
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (!dense(value)) throw new TypeError('Replay JSON rejects sparse arrays.');
+    return value.map((entry) => {
+      if (entry === undefined) throw new TypeError('Replay JSON rejects undefined array entries.');
+      return canonicalizeReplay(entry);
+    });
+  }
+  if (isRecord(value)) {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort(compareCodePoints)) {
+      if (value[key] !== undefined) result[key] = canonicalizeReplay(value[key]);
+    }
+    return result;
+  }
+  throw new TypeError('Replay JSON rejects unsupported values.');
+}
+
+function structurallyEqual(left: unknown, right: unknown): boolean {
+  return canonicalReplayJson(left) === canonicalReplayJson(right);
+}
+
 function canonicalize(value: unknown): unknown {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') {
@@ -628,7 +667,14 @@ function compareCodePoints(left: string, right: string): number {
 }
 
 function dense(values: readonly unknown[]): boolean {
-  return values.every((_, index) => index in values);
+  for (let index = 0; index < values.length; index += 1) {
+    if (!(index in values)) return false;
+  }
+  return true;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function mismatch(message: string): ReplayV2VerificationResult {

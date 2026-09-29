@@ -4,7 +4,6 @@ import {
   basicCardDefinitions,
   maximumCardCopies,
   packCardDefinitions,
-  specialVictoryCardDefinitions,
 } from '@deck-drive/card-definitions';
 
 import { ApiError, DeckDriveApi, previewApi } from './api.js';
@@ -219,11 +218,7 @@ describe('DeckDriveApi', () => {
 
     expect(deck).toMatchObject({ id: 'preview-starter-deck' });
     expect(collection).toMatchObject({ cardDataVersion: '1.0.0' });
-    const previewDefinitions = [
-      ...basicCardDefinitions,
-      ...packCardDefinitions,
-      ...specialVictoryCardDefinitions,
-    ];
+    const previewDefinitions = [...basicCardDefinitions, ...packCardDefinitions];
     expect(collection.cards).toHaveLength(previewDefinitions.length);
     expect(packs).toEqual(
       expect.arrayContaining([

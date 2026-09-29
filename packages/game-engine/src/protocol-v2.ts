@@ -147,8 +147,8 @@ export interface CardChoiceDeadlineIssuedCommand {
   readonly type: 'CARD_CHOICE_DEADLINE_ISSUED';
   readonly playerId: PlayerId;
   readonly choiceRequestId: string;
-  readonly issuedAt: string;
-  readonly deadlineAt: string;
+  readonly issuedAt: number;
+  readonly deadlineAt: number;
   readonly timeoutAuthorization: string;
 }
 
@@ -157,8 +157,8 @@ export interface CardChoiceTimeoutCommand {
   readonly playerId: PlayerId;
   readonly choiceRequestId: string;
   readonly deadlineCommandSequence: number;
-  readonly deadlineAt: string;
-  readonly timeoutAt: string;
+  readonly deadlineAt: number;
+  readonly timeoutAt: number;
   readonly timeoutAuthorization: string;
   readonly timeoutAttestation: string;
 }
@@ -209,7 +209,8 @@ export type CardEffectV2 =
       readonly from: 'DRAW_PILE';
       readonly maximumCost?: number;
     }
-  | { readonly type: 'TRANSFORM_HAND_CARD' };
+  | { readonly type: 'TRANSFORM_HAND_CARD' }
+  | { readonly type: 'SEAL_GRIMOIRE' };
 
 export interface CardDefinitionV2 {
   readonly id: CardDefinitionId;
@@ -255,6 +256,9 @@ export type GameEventV2Type =
   | 'CARD_CHOICE_SUBMITTED'
   | 'CARD_CHOICE_TIMED_OUT'
   | 'CARD_MOVED'
+  | 'DAMAGE_PREVENTED'
+  | 'STATUS_APPLIED'
+  | 'STATUS_CONSUMED'
   | 'MATCH_FINISHED';
 
 export interface GameEventV2 {
@@ -422,8 +426,11 @@ export function applyPercentageFloor(value: number, percent: number): number {
 
 /** Produces the player-facing state without exposing another player's owner-only card IDs. */
 export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): unknown {
+  const publicState: Record<string, unknown> = { ...state };
+  delete publicState.seed;
+  delete publicState.rngState;
   return {
-    ...state,
+    ...publicState,
     players: state.players.map((player) => ({
       ...player,
       drawPile: player.drawPile.map((card) => projectCard(card, player.id === viewerId)),
@@ -450,8 +457,11 @@ export function applyBattleInputV2(
   definitions: CardDefinitionSourceV2,
   authorizeServerCommand?: ServerCommandAuthorizer,
 ): BattleInputResult {
+  if (!isBattleInputShape(input)) {
+    return failure(state, 'MALFORMED_INPUT', 'The battle input is malformed.');
+  }
   if (
-    !isPositiveSafeInteger(input?.inputSequence) ||
+    !isPositiveSafeInteger(input.inputSequence) ||
     input.inputSequence !== state.lastInputSequence + 1
   ) {
     return failure(
@@ -465,9 +475,6 @@ export function applyBattleInputV2(
   }
   if (input.kind === 'SERVER_COMMAND') {
     return applyServerCommand(state, input, definitions, authorizeServerCommand);
-  }
-  if (input.kind !== 'CLIENT_ACTION' || !isRecord(input.payload)) {
-    return failure(state, 'MALFORMED_INPUT', 'The battle input is malformed.');
   }
   return applyClientAction(state, input.inputSequence, input.payload, definitions);
 }
@@ -532,12 +539,20 @@ function playCard(
   const emitter = eventEmitter(state.events);
   const mutable = mutableFrom(state);
   const actor = mutable.players[playerIndex]!;
+  const publicCard: CardInstanceV2 = { ...card, visibility: 'allPlayers' };
   mutable.players[playerIndex] = {
     ...actor,
     energy: actor.energy - cost,
     hand: removeAt(actor.hand, cardIndex),
   };
-  emitter.emit({ type: 'CARD_PLAYED', playerId: action.playerId, cardInstanceId: card.id });
+  emitter.emit({
+    type: 'CARD_PLAYED',
+    playerId: action.playerId,
+    cardInstanceId: publicCard.id,
+    definitionId: publicCard.definitionId,
+    definitionVersion: publicCard.definitionVersion,
+    visibility: publicCard.visibility,
+  });
 
   for (const [effectIndex, effect] of definition.effects.entries()) {
     if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') break;
@@ -547,7 +562,7 @@ function playCard(
       mutable,
       playerIndex,
       action,
-      card,
+      publicCard,
       definition,
       effect,
       definitions,
@@ -558,9 +573,16 @@ function playCard(
   const actorAfterEffects = mutable.players[playerIndex]!;
   mutable.players[playerIndex] = {
     ...actorAfterEffects,
-    discard: [...actorAfterEffects.discard, card],
+    discard: [...actorAfterEffects.discard, publicCard],
   };
-  emitter.emit({ type: 'CARD_DISCARDED', playerId: action.playerId, cardInstanceId: card.id });
+  emitter.emit({
+    type: 'CARD_DISCARDED',
+    playerId: action.playerId,
+    cardInstanceId: publicCard.id,
+    definitionId: publicCard.definitionId,
+    definitionVersion: publicCard.definitionVersion,
+    visibility: publicCard.visibility,
+  });
   return finishResolution(state, inputSequence, mutable, emitter);
 }
 
@@ -722,6 +744,9 @@ function applyEffect(
         emitter,
       );
       return;
+    case 'SEAL_GRIMOIRE':
+      sealGrimoire(mutable, actorIndex, action, sourceCard, emitter);
+      return;
   }
 }
 
@@ -777,6 +802,13 @@ function applyServerCommand(
     );
   }
   if (command.type === 'CARD_CHOICE_DEADLINE_ISSUED') {
+    if (command.deadlineAt - command.issuedAt !== 60_000) {
+      return failure(
+        state,
+        'INVALID_SERVER_COMMAND',
+        'The choice deadline must be exactly 60 seconds after issuance.',
+      );
+    }
     if (pending.deadlineCommandSequence !== undefined) {
       return failure(
         state,
@@ -803,6 +835,9 @@ function applyServerCommand(
       'INVALID_SERVER_COMMAND',
       'The timeout does not reference the issued deadline command.',
     );
+  }
+  if (command.timeoutAt < command.deadlineAt) {
+    return failure(state, 'INVALID_SERVER_COMMAND', 'The timeout precedes its deadline.');
   }
   const emitter = eventEmitter(state.events);
   emitter.emit({
@@ -1037,6 +1072,87 @@ function transformHandCard(
   });
 }
 
+function sealGrimoire(
+  mutable: MutableResolution,
+  actorIndex: number,
+  action: PlayCardActionV2,
+  sourceCard: CardInstanceV2,
+  emitter: EventEmitter,
+): void {
+  const selectedId = choiceOf(action, 'CARD_INSTANCES')?.cardInstanceIds[0];
+  if (selectedId === undefined) return;
+  const actor = mutable.players[actorIndex]!;
+  const selectedIndex = actor.hand.findIndex((card) => card.id === selectedId);
+  const selected = actor.hand[selectedIndex]!;
+  const existing = actor.statuses.find((status) => status.id === 'MAGE_GRIMOIRE_SEAL');
+  const statuses = [
+    ...actor.statuses.filter((status) => status.id !== 'MAGE_GRIMOIRE_SEAL'),
+    { id: 'MAGE_GRIMOIRE_SEAL', stacks: (existing?.stacks ?? 0) + 5 },
+  ];
+  mutable.players[actorIndex] = {
+    ...actor,
+    hand: removeAt(actor.hand, selectedIndex),
+    drawPile: [...actor.drawPile, selected],
+    statuses,
+  };
+  emitter.emit({
+    type: 'CARD_MOVED',
+    playerId: actor.id,
+    cardInstanceId: selected.id,
+    definitionId: selected.definitionId,
+    definitionVersion: selected.definitionVersion,
+    from: 'hand',
+    fromIndex: selectedIndex,
+    to: 'drawPile',
+    toIndex: actor.drawPile.length,
+    sourceCardInstanceId: sourceCard.id,
+    reason: 'MAGE_GRIMOIRE_SEAL',
+    visibility: selected.visibility,
+  });
+  emitter.emit({
+    type: 'STATUS_APPLIED',
+    playerId: actor.id,
+    statusId: 'MAGE_GRIMOIRE_SEAL',
+    before: existing?.stacks ?? 0,
+    after: (existing?.stacks ?? 0) + 5,
+    sourceCardInstanceId: sourceCard.id,
+  });
+}
+
+type NormalSynthesisRecipeId = 'ALCHEMY_RED_CATALYST' | 'ALCHEMY_BLUE_CATALYST';
+
+function normalSynthesisRecipeCandidates(
+  cards: readonly CardInstanceV2[],
+  definitions: CardDefinitionSourceV2,
+): readonly NormalSynthesisRecipeId[] {
+  if (cards.length !== 2) return [];
+  const tags = cards.map(
+    (card) =>
+      resolveDefinition(definitions, card.definitionId, card.definitionVersion)?.keywords ?? [],
+  );
+  const recipes: readonly {
+    readonly id: NormalSynthesisRecipeId;
+    readonly requirements: readonly [string, string];
+  }[] = [
+    { id: 'ALCHEMY_RED_CATALYST', requirements: ['reagent:red', 'catalyst'] },
+    { id: 'ALCHEMY_BLUE_CATALYST', requirements: ['reagent:blue', 'catalyst'] },
+  ];
+  return recipes
+    .filter(({ requirements }) => {
+      const hasActualMatch = tags.some((cardTags) =>
+        requirements.some((requirement) => cardTags.includes(requirement)),
+      );
+      if (!hasActualMatch) return false;
+      const matches = (cardTags: readonly string[], requirement: string) =>
+        cardTags.includes(requirement) || cardTags.includes('solvent');
+      return (
+        (matches(tags[0]!, requirements[0]) && matches(tags[1]!, requirements[1])) ||
+        (matches(tags[0]!, requirements[1]) && matches(tags[1]!, requirements[0]))
+      );
+    })
+    .map((recipe) => recipe.id);
+}
+
 function synthesize(
   state: BattleStateV2,
   mutable: MutableResolution,
@@ -1089,20 +1205,14 @@ function synthesize(
   let recipeId: string | null = null;
   let outputDefinitionId: string | undefined;
   if (mode === 'NORMAL') {
-    const flattened = keywords.flat();
-    if (
-      flattened.includes('reagent:red') &&
-      (flattened.includes('catalyst') || flattened.includes('solvent'))
-    ) {
+    const candidates = normalSynthesisRecipeCandidates(exhaustedCards, definitions);
+    const selectedRecipe = choiceOf(action, 'RECIPE')?.recipeId;
+    recipeId = candidates.length === 1 ? candidates[0]! : (selectedRecipe ?? null);
+    if (recipeId === 'ALCHEMY_RED_CATALYST') {
       synthesisResult = 'SUCCESS';
-      recipeId = 'ALCHEMY_RED_CATALYST';
       outputDefinitionId = 'alchemist_005';
-    } else if (
-      flattened.includes('reagent:blue') &&
-      (flattened.includes('catalyst') || flattened.includes('solvent'))
-    ) {
+    } else if (recipeId === 'ALCHEMY_BLUE_CATALYST') {
       synthesisResult = 'SUCCESS';
-      recipeId = 'ALCHEMY_BLUE_CATALYST';
       outputDefinitionId = 'alchemist_006';
     } else {
       synthesisResult = 'FAILURE';
@@ -1155,6 +1265,7 @@ function synthesize(
     for (const tags of keywords) {
       if (tags.includes('reagent:red'))
         applyDamage(mutable, actorIndex, action, 4, 'ENEMY', emitter);
+      if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') return;
       if (tags.includes('reagent:blue')) {
         const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
         mutable.players[actorIndex] = { ...current, block: current.block + 4 };
@@ -1173,6 +1284,7 @@ function synthesize(
     for (let index = 0; index < exhaustedCards.length; index += 1) {
       if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') break;
       applyDamage(mutable, actorIndex, action, 4, 'ENEMY', emitter);
+      if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') return;
       const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
       mutable.players[actorIndex] = { ...current, block: current.block + 4 };
       emitter.emit({ type: 'BLOCK_GAINED', targetId: current.id, amount: 4 });
@@ -1403,9 +1515,37 @@ function applyDamage(
       ? actorIndex
       : mutable.players.findIndex((player) => player.id !== actor.id && player.hp > 0);
   const defender = mutable.players[targetIndex]!;
-  const blocked = Math.min(defender.block, amount);
-  const hpDamage = Math.min(defender.hp, amount - blocked);
-  emitter.emit({ type: 'DAMAGE_DEALT', sourceId: action.playerId, targetId: defender.id, amount });
+  const seal = defender.statuses.find((status) => status.id === 'MAGE_GRIMOIRE_SEAL');
+  const prevented = Math.min(amount, seal?.stacks ?? 0);
+  const effectiveAmount = amount - prevented;
+  const statuses =
+    seal === undefined
+      ? defender.statuses
+      : defender.statuses.filter((status) => status.id !== 'MAGE_GRIMOIRE_SEAL');
+  if (seal !== undefined) {
+    emitter.emit({
+      type: 'DAMAGE_PREVENTED',
+      targetId: defender.id,
+      statusId: seal.id,
+      amount: prevented,
+    });
+    emitter.emit({
+      type: 'STATUS_CONSUMED',
+      playerId: defender.id,
+      statusId: seal.id,
+      before: seal.stacks,
+      after: 0,
+    });
+  }
+  const blocked = Math.min(defender.block, effectiveAmount);
+  const hpDamage = Math.min(defender.hp, effectiveAmount - blocked);
+  emitter.emit({
+    type: 'DAMAGE_DEALT',
+    sourceId: action.playerId,
+    targetId: defender.id,
+    amount: effectiveAmount,
+    attemptedAmount: amount,
+  });
   if (blocked > 0) emitter.emit({ type: 'BLOCK_REDUCED', targetId: defender.id, amount: blocked });
   if (hpDamage > 0)
     emitter.emit({ type: 'ENTITY_DAMAGED', targetId: defender.id, amount: hpDamage });
@@ -1413,7 +1553,9 @@ function applyDamage(
     ...defender,
     block: defender.block - blocked,
     hp: defender.hp - hpDamage,
+    statuses,
   };
+  if (mutable.players.some((player) => player.hp <= 0)) return;
   if (hpDamage > 0) {
     mutable.chantQueue = mutable.chantQueue.map((entry, queueIndex) => {
       if (entry.ownerPlayerId !== defender.id || entry.damageDelay <= 0) return entry;
@@ -1563,6 +1705,7 @@ function validatePlayChoices(
   if (cards.includes(action.cardInstanceId))
     return { code: 'INVALID_CHOICE', message: 'The played card cannot select itself.' };
   const player = state.players[playerIndex]!;
+  let normalRecipeChoiceRequired = false;
   for (const effect of definition.effects) {
     if (effect.type === 'ADVANCE_CHANT') {
       const choice = choiceOf(action, 'CHANT_ENTRY');
@@ -1631,6 +1774,22 @@ function validatePlayChoices(
             message: 'Every selected material must be in an allowed owned zone.',
           };
       }
+      if (effect.mode === 'NORMAL') {
+        const selectedCards = cards.map((id) => player.hand.find((card) => card.id === id)!);
+        const candidates = normalSynthesisRecipeCandidates(selectedCards, definitions);
+        const recipeChoice = choiceOf(action, 'RECIPE');
+        normalRecipeChoiceRequired = candidates.length > 1;
+        if (
+          normalRecipeChoiceRequired &&
+          (recipeChoice === undefined ||
+            !candidates.some((candidate) => candidate === recipeChoice.recipeId))
+        ) {
+          return {
+            code: 'INVALID_CHOICE',
+            message: 'A valid recipe must be selected when multiple recipes match.',
+          };
+        }
+      }
       if (
         (effect.mode === 'SAGE_RECIPE' || effect.mode === 'COMPLETE_REACTION') &&
         cards.some((id) => {
@@ -1667,6 +1826,16 @@ function validatePlayChoices(
         };
       }
     }
+    if (effect.type === 'SEAL_GRIMOIRE') {
+      if (cards.length !== 1)
+        return { code: 'INVALID_CHOICE', message: 'Exactly one grimoire must be selected.' };
+      const selected = player.hand.find((card) => card.id === cards[0]);
+      if (selected === undefined || !hasKeyword(selected, 'grimoire', definitions))
+        return {
+          code: 'INVALID_CHOICE',
+          message: 'The selected card is not an owned grimoire in hand.',
+        };
+    }
     if (effect.type === 'SET_ALCHEMY_STAGE' && player.alchemyStage !== effect.requiredStage)
       return {
         code: 'INVALID_ALCHEMY_STAGE',
@@ -1688,6 +1857,7 @@ function validatePlayChoices(
       requiredKinds.add('CARD_INSTANCES');
     if (effect.type === 'EXHAUST_GRIMOIRE_ADVANCE_WISH') requiredKinds.add('CARD_INSTANCES');
     if (effect.type === 'TRANSFORM_HAND_CARD') requiredKinds.add('CARD_INSTANCES');
+    if (effect.type === 'SEAL_GRIMOIRE') requiredKinds.add('CARD_INSTANCES');
     if (
       effect.type === 'EXHAUST_GRIMOIRE_ADVANCE_WISH' &&
       state.chantQueue.some(
@@ -1701,6 +1871,7 @@ function validatePlayChoices(
     )
       requiredKinds.add('CHANT_ENTRY');
   }
+  if (normalRecipeChoiceRequired) requiredKinds.add('RECIPE');
   if (choices.some((choice) => !requiredKinds.has(choice.kind)))
     return { code: 'INVALID_CHOICE', message: 'The action contains an unnecessary choice.' };
   return undefined;
@@ -1825,6 +1996,7 @@ function isValidEffect(effect: unknown): effect is CardEffectV2 {
         (effect.maximumCost === undefined || isNonNegativeInteger(effect.maximumCost))
       );
     case 'TRANSFORM_HAND_CARD':
+    case 'SEAL_GRIMOIRE':
       return true;
     default:
       return false;
@@ -1904,6 +2076,8 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
   for (const key of [
     'cardInstanceId',
     'cardInstanceIds',
+    'definitionId',
+    'definitionVersion',
     'candidateIds',
     'materialCardInstanceIds',
     'selectedIds',
@@ -1974,11 +2148,112 @@ function nextUint32(state: number): number {
   return value >>> 0;
 }
 
+function isBattleInputShape(value: unknown): value is BattleInput {
+  if (!isRecord(value) || !Number.isSafeInteger(value.inputSequence)) return false;
+  if (value.kind === 'CLIENT_ACTION') return isGameActionV2(value.payload);
+  if (value.kind === 'SERVER_COMMAND') return isServerCommand(value.payload);
+  return false;
+}
+
+function isGameActionV2(value: unknown): value is GameActionV2 {
+  if (!isRecord(value) || typeof value.playerId !== 'string' || value.playerId.length === 0)
+    return false;
+  if (value.type === 'END_TURN') return true;
+  if (value.type === 'PLAY_CARD') {
+    return (
+      typeof value.cardInstanceId === 'string' &&
+      value.cardInstanceId.length > 0 &&
+      (value.targetId === undefined || typeof value.targetId === 'string') &&
+      (value.choices === undefined ||
+        (Array.isArray(value.choices) &&
+          isDense(value.choices) &&
+          value.choices.every(isPlayCardChoice)))
+    );
+  }
+  if (value.type === 'SUBMIT_CARD_CHOICE') {
+    return (
+      typeof value.choiceRequestId === 'string' &&
+      value.choiceRequestId.length > 0 &&
+      isSubmittedCardChoice(value.choice)
+    );
+  }
+  return false;
+}
+
+function isPlayCardChoice(value: unknown): value is PlayCardChoice {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'CARD_INSTANCES') {
+    return (
+      Array.isArray(value.cardInstanceIds) &&
+      isDense(value.cardInstanceIds) &&
+      value.cardInstanceIds.every((id) => typeof id === 'string' && id.length > 0)
+    );
+  }
+  if (value.kind === 'RECIPE')
+    return typeof value.recipeId === 'string' && value.recipeId.length > 0;
+  if (value.kind === 'CHANT_ENTRY')
+    return typeof value.chantEntryId === 'string' && value.chantEntryId.length > 0;
+  return false;
+}
+
+function isSubmittedCardChoice(value: unknown): value is SubmittedCardChoice {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'CARD')
+    return typeof value.cardInstanceId === 'string' && value.cardInstanceId.length > 0;
+  if (value.kind === 'CARDS') {
+    return (
+      Array.isArray(value.cardInstanceIds) &&
+      isDense(value.cardInstanceIds) &&
+      value.cardInstanceIds.every((id) => typeof id === 'string' && id.length > 0)
+    );
+  }
+  if (value.kind === 'RECIPE')
+    return typeof value.recipeId === 'string' && value.recipeId.length > 0;
+  return false;
+}
+
+function isServerCommand(value: unknown): value is ServerCommand {
+  if (
+    !isRecord(value) ||
+    typeof value.playerId !== 'string' ||
+    value.playerId.length === 0 ||
+    typeof value.choiceRequestId !== 'string' ||
+    value.choiceRequestId.length === 0 ||
+    !isNonNegativeSafeInteger(value.deadlineAt) ||
+    typeof value.timeoutAuthorization !== 'string' ||
+    value.timeoutAuthorization.length === 0
+  )
+    return false;
+  if (value.type === 'CARD_CHOICE_DEADLINE_ISSUED') {
+    return isNonNegativeSafeInteger(value.issuedAt);
+  }
+  if (value.type === 'CARD_CHOICE_TIMEOUT') {
+    return (
+      isPositiveSafeInteger(value.deadlineCommandSequence) &&
+      isNonNegativeSafeInteger(value.timeoutAt) &&
+      typeof value.timeoutAttestation === 'string' &&
+      value.timeoutAttestation.length > 0
+    );
+  }
+  return false;
+}
+
+function isDense(values: readonly unknown[]): boolean {
+  for (let index = 0; index < values.length; index += 1) {
+    if (!(index in values)) return false;
+  }
+  return true;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 

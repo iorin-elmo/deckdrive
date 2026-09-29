@@ -42,7 +42,7 @@ const definitions: readonly CardDefinitionV2[] = [
     ['magic', 'wish'],
   ),
   definition('mage_018', 1, [{ type: 'EXHAUST_GRIMOIRE_ADVANCE_WISH', amount: 10 }]),
-  definition('mage_019', 1, [{ type: 'GAIN_BLOCK', amount: 5, target: 'SELF' }], ['grimoire']),
+  definition('mage_019', 1, [{ type: 'SEAL_GRIMOIRE' }], ['grimoire']),
   definition('mage_015', 3, [{ type: 'RESOLVE_ALL_CHANTS', blockPerChant: 3 }]),
   definition(
     'alchemist_001',
@@ -69,6 +69,7 @@ const definitions: readonly CardDefinitionV2[] = [
     ['material', 'reagent:white'],
   ),
   definition('alchemist_005', 1, [{ type: 'DAMAGE', amount: 7, target: 'ENEMY' }]),
+  definition('alchemist_006', 1, [{ type: 'GAIN_BLOCK', amount: 8, target: 'SELF' }]),
   definition('alchemist_008', 0, [{ type: 'SYNTHESIZE', mode: 'NORMAL' }]),
   definition('alchemist_015', 2, [{ type: 'SYNTHESIZE', mode: 'SAGE_RECIPE' }]),
   definition('alchemist_016', 2, [{ type: 'SET_ALCHEMY_STAGE', requiredStage: 1, stage: 3 }]),
@@ -80,6 +81,14 @@ const definitions: readonly CardDefinitionV2[] = [
     },
   ]),
   definition('alchemist_007', 1, [{ type: 'TRANSFORM_HAND_CARD' }]),
+  definition('alchemist_011', 2, [{ type: 'SYNTHESIZE', mode: 'COMPLETE_REACTION' }]),
+  definition(
+    'alchemist_014',
+    1,
+    [{ type: 'DRAW', amount: 1, target: 'SELF' }],
+    ['material', 'solvent'],
+  ),
+  definition('alchemist_013', 3, [{ type: 'SYNTHESIZE', mode: 'ALL_MATERIALS' }]),
   definition('test_search', 1, [
     { type: 'REQUEST_CARD_CHOICE', from: 'DRAW_PILE', maximumCost: 1 },
   ]),
@@ -280,6 +289,115 @@ describe('battle protocol 2 special victory routes', () => {
     );
   });
 
+  it('requires an authoritative recipe choice when solvent matches multiple recipes', () => {
+    const initial = battle([
+      card('catalyst', 'alchemist_003'),
+      card('solvent', 'alchemist_014'),
+      card('synthesis', 'alchemist_008'),
+    ]);
+    const withoutRecipe = applyBattleInputV2(
+      initial,
+      client(1, {
+        ...play('synthesis'),
+        choices: [
+          {
+            kind: 'CARD_INSTANCES',
+            cardInstanceIds: ['catalyst', 'solvent'] as CardInstanceId[],
+          },
+        ],
+      }),
+      definitions,
+    );
+    expect(withoutRecipe).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_CHOICE' },
+    });
+
+    const state = apply(
+      initial,
+      client(1, {
+        ...play('synthesis'),
+        choices: [
+          {
+            kind: 'CARD_INSTANCES',
+            cardInstanceIds: ['catalyst', 'solvent'] as CardInstanceId[],
+          },
+          { kind: 'RECIPE', recipeId: 'ALCHEMY_BLUE_CATALYST' },
+        ],
+      }),
+    );
+    expect(state.players[0]!.hand).toContainEqual(
+      expect.objectContaining({
+        definitionId: 'alchemist_006',
+        definitionVersion: '1.0.0',
+        costModifier: -1,
+      }),
+    );
+  });
+
+  it('moves a grimoire to the draw-pile bottom and consumes its next-hit defense', () => {
+    let state = battle(
+      [card('seal', 'mage_019'), card('book', 'mage_019')],
+      [card('attack', 'test_attack')],
+    );
+    state = apply(
+      state,
+      client(1, {
+        ...play('seal'),
+        choices: [{ kind: 'CARD_INSTANCES', cardInstanceIds: ['book' as CardInstanceId] }],
+      }),
+    );
+    expect(state.players[0]!.drawPile.at(-1)?.id).toBe('book');
+    expect(state.players[0]!.statuses).toContainEqual({ id: 'MAGE_GRIMOIRE_SEAL', stacks: 5 });
+    state = apply(state, client(2, { type: 'END_TURN', playerId: playerOne }));
+    state = apply(
+      state,
+      client(3, {
+        type: 'PLAY_CARD',
+        playerId: playerTwo,
+        cardInstanceId: 'attack' as CardInstanceId,
+      }),
+    );
+    expect(state.players[0]).toMatchObject({ hp: 30, statuses: [] });
+    expect(state.events).toContainEqual(
+      expect.objectContaining({ type: 'DAMAGE_PREVENTED', amount: 1 }),
+    );
+  });
+
+  it('stops special synthesis immediately after a lethal damage hit', () => {
+    for (const synthesisId of ['complete-reaction', 'grand-synthesis']) {
+      const definitionId = synthesisId === 'complete-reaction' ? 'alchemist_011' : 'alchemist_013';
+      let state = battle([
+        card('red', 'alchemist_001'),
+        card('blue', 'alchemist_002'),
+        card('white', 'alchemist_004'),
+        card(synthesisId, definitionId),
+      ]);
+      state = {
+        ...withEnergy(state, playerOne, 10),
+        players: [state.players[0]!, { ...state.players[1]!, hp: 4 }],
+      };
+      const choices =
+        definitionId === 'alchemist_011'
+          ? [
+              {
+                kind: 'CARD_INSTANCES' as const,
+                cardInstanceIds: ['red', 'blue', 'white'] as CardInstanceId[],
+              },
+            ]
+          : undefined;
+      state = apply(
+        state,
+        client(1, choices === undefined ? play(synthesisId) : { ...play(synthesisId), choices }),
+      );
+      expect(calculateResultV2(state)).toMatchObject({ reason: 'HP_DEPLETION' });
+      expect(state.players[0]!.block).toBe(0);
+      expect(
+        state.events.filter((event) => event.type === 'HEALED' || event.type === 'BLOCK_GAINED'),
+      ).toEqual([]);
+    }
+  });
+
   it('exhausts a hand card, searches by its actual cost, and shuffles after transformation', () => {
     let state = battle(
       [
@@ -309,8 +427,8 @@ describe('battle protocol 2 special victory routes', () => {
         type: 'CARD_CHOICE_DEADLINE_ISSUED',
         playerId: playerOne,
         choiceRequestId: 'choice:1',
-        issuedAt: '2026-09-29T00:00:00.000Z',
-        deadlineAt: '2026-09-29T00:01:00.000Z',
+        issuedAt: 1_790_640_000_000,
+        deadlineAt: 1_790_640_060_000,
         timeoutAuthorization: 'signed-deadline',
       },
     });
@@ -381,19 +499,28 @@ describe('battle protocol 2 special victory routes', () => {
 
   it('ends by normal HP victory and cancels unfinished chants', () => {
     let state = withEnergy(
-      battle([card('wish', 'mage_017'), card('lethal', 'test_lethal')]),
+      battle([card('wish', 'mage_017')], [card('lethal', 'test_lethal')]),
       playerOne,
       10,
     );
     state = apply(state, client(1, play('wish')));
-    state = apply(state, client(2, play('lethal')));
+    state = apply(state, client(2, { type: 'END_TURN', playerId: playerOne }));
+    state = apply(
+      state,
+      client(3, {
+        type: 'PLAY_CARD',
+        playerId: playerTwo,
+        cardInstanceId: 'lethal' as CardInstanceId,
+      }),
+    );
     expect(calculateResultV2(state)).toEqual({
       status: 'WIN',
-      winnerId: playerOne,
+      winnerId: playerTwo,
       reason: 'HP_DEPLETION',
     });
     expect(state.chantQueue).toEqual([]);
     expect(state.events).toContainEqual(expect.objectContaining({ type: 'CHANT_CANCELLED' }));
+    expect(state.events).not.toContainEqual(expect.objectContaining({ type: 'CHANT_DELAYED' }));
   });
 
   it('rejects the Alchemist completion card before stage 3', () => {
@@ -431,8 +558,72 @@ describe('battle protocol 2 special victory routes', () => {
     const state = battle([card('private-card', 'mage_019')]);
     const projected = projectBattleStateV2(state, playerTwo) as {
       readonly players: readonly { readonly hand: readonly unknown[] }[];
+      readonly seed?: string;
+      readonly rngState?: number;
     };
     expect(projected.players[0]!.hand).toEqual([{ visibility: 'ownerOnly' }]);
+    expect(projected).not.toHaveProperty('seed');
+    expect(projected).not.toHaveProperty('rngState');
+  });
+
+  it('publishes a played card definition and keeps it public in discard', () => {
+    const state = apply(battle([card('attack', 'test_attack')]), client(1, play('attack')));
+    expect(state.players[0]!.discard).toContainEqual(
+      expect.objectContaining({
+        id: 'attack',
+        definitionId: 'test_attack',
+        definitionVersion: '1.0.0',
+        visibility: 'allPlayers',
+      }),
+    );
+    expect(state.events).toContainEqual(
+      expect.objectContaining({
+        type: 'CARD_PLAYED',
+        cardInstanceId: 'attack',
+        definitionId: 'test_attack',
+        definitionVersion: '1.0.0',
+        visibility: 'allPlayers',
+      }),
+    );
+  });
+
+  it('returns structured failures for malformed and sparse protocol payloads', () => {
+    const state = battle([card('attack', 'test_attack')]);
+    const malformedChoices = {
+      inputSequence: 1,
+      kind: 'CLIENT_ACTION',
+      payload: { ...play('attack'), choices: {} },
+    } as unknown as BattleInput;
+    expect(applyBattleInputV2(state, malformedChoices, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'MALFORMED_INPUT' },
+    });
+
+    const sparseAction = {
+      ...play('attack'),
+      choices: new Array(1),
+    } as unknown as PlayCardActionV2;
+    expect(applyBattleInputV2(state, client(1, sparseAction), definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'MALFORMED_INPUT' },
+    });
+
+    const malformedCommand = {
+      inputSequence: 1,
+      kind: 'SERVER_COMMAND',
+      payload: {
+        type: 'CARD_CHOICE_DEADLINE_ISSUED',
+        playerId: playerOne,
+        choiceRequestId: 'choice:1',
+        issuedAt: 'now',
+        deadlineAt: 'later',
+        timeoutAuthorization: 'signed',
+      },
+    } as unknown as BattleInput;
+    expect(applyBattleInputV2(state, malformedCommand, definitions)).toMatchObject({
+      ok: false,
+      error: { code: 'MALFORMED_INPUT' },
+    });
   });
 });
 
@@ -458,8 +649,8 @@ describe('Replay format 2 and pending choices', () => {
           type: 'CARD_CHOICE_DEADLINE_ISSUED',
           playerId: playerOne,
           choiceRequestId: 'choice:1',
-          issuedAt: '2026-09-29T00:00:00.000Z',
-          deadlineAt: '2026-09-29T00:01:00.000Z',
+          issuedAt: 1_790_640_000_000,
+          deadlineAt: 1_790_640_060_000,
           timeoutAuthorization: 'signed-deadline',
         },
       },
@@ -501,6 +692,34 @@ describe('Replay format 2 and pending choices', () => {
       ok: false,
       error: { code: 'REPLAY_MISMATCH' },
     });
+
+    const commandTampered: ReplayV2 = {
+      ...recorded.replay,
+      serverCommands: recorded.replay.serverCommands.map((record) => ({
+        ...record,
+        payload: { ...record.payload, timeoutAuthorization: 'changed-authorization' },
+      })),
+    };
+    expect(
+      verifyReplayV2(
+        commandTampered,
+        () => definitions,
+        () => true,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'CHECKSUM_MISMATCH' } });
+
+    const { events: initialEvents, ...initialStateRest } = recorded.replay.initialState;
+    const reordered: ReplayV2 = {
+      ...recorded.replay,
+      initialState: { events: initialEvents, ...initialStateRest },
+    };
+    expect(
+      verifyReplayV2(
+        reordered,
+        () => definitions,
+        () => true,
+      ),
+    ).toEqual({ ok: true });
   });
 
   it('ends the turn after an authorized pending choice timeout', () => {
@@ -513,8 +732,8 @@ describe('Replay format 2 and pending choices', () => {
         type: 'CARD_CHOICE_DEADLINE_ISSUED',
         playerId: playerOne,
         choiceRequestId: 'choice:1',
-        issuedAt: '2026-09-29T00:00:00.000Z',
-        deadlineAt: '2026-09-29T00:01:00.000Z',
+        issuedAt: 1_790_640_000_000,
+        deadlineAt: 1_790_640_060_000,
         timeoutAuthorization: 'signed-deadline',
       },
     });
@@ -526,8 +745,8 @@ describe('Replay format 2 and pending choices', () => {
         playerId: playerOne,
         choiceRequestId: 'choice:1',
         deadlineCommandSequence: 2,
-        deadlineAt: '2026-09-29T00:01:00.000Z',
-        timeoutAt: '2026-09-29T00:01:00.000Z',
+        deadlineAt: 1_790_640_060_000,
+        timeoutAt: 1_790_640_060_000,
         timeoutAuthorization: 'signed-deadline',
         timeoutAttestation: 'signed-timeout',
       },

@@ -1,0 +1,2137 @@
+{
+  "definitions": [
+    {
+      "id": "alchemist_007",
+      "version": "1.0.0",
+      "cost": 1,
+      "effects": [
+        {
+          "type": "TRANSFORM_HAND_CARD"
+        }
+      ],
+      "keywords": ["alchemy"],
+      "deckLimit": 3
+    },
+    {
+      "id": "alchemist_004",
+      "version": "1.0.0",
+      "cost": 1,
+      "effects": [
+        {
+          "type": "HEAL",
+          "amount": 2,
+          "target": "SELF"
+        }
+      ],
+      "keywords": ["material", "reagent:white"],
+      "deckLimit": 3
+    },
+    {
+      "id": "alchemist_001",
+      "version": "1.0.0",
+      "cost": 0,
+      "effects": [
+        {
+          "type": "DAMAGE",
+          "amount": 2,
+          "target": "ENEMY"
+        }
+      ],
+      "keywords": ["material", "reagent:red"],
+      "deckLimit": 3
+    },
+    {
+      "id": "mage_017",
+      "version": "1.0.0",
+      "cost": 3,
+      "effects": [
+        {
+          "type": "START_CHANT",
+          "countdown": 100,
+          "damageDelay": 5,
+          "completionEffects": [
+            {
+              "type": "SPECIAL_VICTORY",
+              "specialVictoryId": "MAGE_GRAND_WISH"
+            }
+          ]
+        }
+      ],
+      "keywords": ["magic", "wish"],
+      "deckLimit": 3
+    },
+    {
+      "id": "mage_015",
+      "version": "1.0.0",
+      "cost": 3,
+      "effects": [
+        {
+          "type": "RESOLVE_ALL_CHANTS",
+          "blockPerChant": 3
+        }
+      ],
+      "keywords": ["magic"],
+      "deckLimit": 3
+    }
+  ],
+  "initial": {
+    "matchId": "phase-51-protocol-v2",
+    "engineVersion": "2.0.0",
+    "rulesVersion": "2.0.0",
+    "cardDataVersion": "1.0.0",
+    "battleProtocolVersion": 2,
+    "seed": "phase-51-protocol-v2-seed",
+    "rngState": 1026112623,
+    "turn": 1,
+    "activePlayerId": "golden-player-one",
+    "phase": "PLAYER_TURN",
+    "turnDrawCount": 1,
+    "initialDrawCount": 4,
+    "players": [
+      {
+        "id": "golden-player-one",
+        "hp": 30,
+        "maxHp": 30,
+        "energy": 3,
+        "maxEnergy": 3,
+        "block": 0,
+        "drawPile": [
+          {
+            "id": "candidate",
+            "definitionId": "alchemist_001",
+            "definitionVersion": "1.0.0",
+            "costModifier": 0,
+            "visibility": "ownerOnly"
+          }
+        ],
+        "hand": [
+          {
+            "id": "transform",
+            "definitionId": "alchemist_007",
+            "definitionVersion": "1.0.0",
+            "costModifier": 0,
+            "visibility": "ownerOnly"
+          },
+          {
+            "id": "material",
+            "definitionId": "alchemist_004",
+            "definitionVersion": "1.0.0",
+            "costModifier": 0,
+            "visibility": "ownerOnly"
+          },
+          {
+            "id": "wish",
+            "definitionId": "mage_017",
+            "definitionVersion": "1.0.0",
+            "costModifier": 0,
+            "visibility": "ownerOnly"
+          },
+          {
+            "id": "stop",
+            "definitionId": "mage_015",
+            "definitionVersion": "1.0.0",
+            "costModifier": 0,
+            "visibility": "ownerOnly"
+          }
+        ],
+        "discard": [],
+        "exhaust": [],
+        "statuses": [],
+        "synthesisCount": 0,
+        "alchemyStage": 0
+      },
+      {
+        "id": "golden-player-two",
+        "hp": 30,
+        "maxHp": 30,
+        "energy": 3,
+        "maxEnergy": 3,
+        "block": 0,
+        "drawPile": [],
+        "hand": [],
+        "discard": [],
+        "exhaust": [],
+        "statuses": [],
+        "synthesisCount": 0,
+        "alchemyStage": 0
+      }
+    ],
+    "chantQueue": [],
+    "chantEntrySequence": 0,
+    "generatedCardSequence": 0,
+    "nextChoiceRequestSequence": 1,
+    "lastInputSequence": 0,
+    "events": [
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "visibility": "ownerOnly",
+        "sequence": 1
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "material",
+        "visibility": "ownerOnly",
+        "sequence": 2
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "visibility": "ownerOnly",
+        "sequence": 3
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "stop",
+        "visibility": "ownerOnly",
+        "sequence": 4
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "inputSequence": 1,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "PLAY_CARD",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "choices": [
+          {
+            "kind": "CARD_INSTANCES",
+            "cardInstanceIds": ["material"]
+          }
+        ]
+      }
+    },
+    {
+      "inputSequence": 2,
+      "kind": "SERVER_COMMAND",
+      "payload": {
+        "type": "CARD_CHOICE_DEADLINE_ISSUED",
+        "playerId": "golden-player-one",
+        "choiceRequestId": "choice:1",
+        "issuedAt": 1790640000000,
+        "deadlineAt": 1790640060000,
+        "timeoutAuthorization": "golden-deadline-signature"
+      }
+    },
+    {
+      "inputSequence": 3,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "SUBMIT_CARD_CHOICE",
+        "playerId": "golden-player-one",
+        "choiceRequestId": "choice:1",
+        "choice": {
+          "kind": "CARD",
+          "cardInstanceId": "candidate"
+        }
+      }
+    },
+    {
+      "inputSequence": 4,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "END_TURN",
+        "playerId": "golden-player-one"
+      }
+    },
+    {
+      "inputSequence": 5,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "END_TURN",
+        "playerId": "golden-player-two"
+      }
+    },
+    {
+      "inputSequence": 6,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "PLAY_CARD",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish"
+      }
+    },
+    {
+      "inputSequence": 7,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "END_TURN",
+        "playerId": "golden-player-one"
+      }
+    },
+    {
+      "inputSequence": 8,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "END_TURN",
+        "playerId": "golden-player-two"
+      }
+    },
+    {
+      "inputSequence": 9,
+      "kind": "CLIENT_ACTION",
+      "payload": {
+        "type": "PLAY_CARD",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "stop"
+      }
+    }
+  ],
+  "expectedReplay": {
+    "formatVersion": 2,
+    "battleProtocolVersion": 2,
+    "draftDefinitionRevision": "sha256:dcfaa3558d33656b571286e8d77d606b75474f99a212c09e3372e822aa200b08",
+    "matchId": "phase-51-protocol-v2",
+    "engineVersion": "2.0.0",
+    "rulesVersion": "2.0.0",
+    "cardDataVersion": "1.0.0",
+    "seed": "phase-51-protocol-v2-seed",
+    "initialState": {
+      "matchId": "phase-51-protocol-v2",
+      "engineVersion": "2.0.0",
+      "rulesVersion": "2.0.0",
+      "cardDataVersion": "1.0.0",
+      "battleProtocolVersion": 2,
+      "seed": "phase-51-protocol-v2-seed",
+      "rngState": 1026112623,
+      "turn": 1,
+      "activePlayerId": "golden-player-one",
+      "phase": "PLAYER_TURN",
+      "turnDrawCount": 1,
+      "initialDrawCount": 4,
+      "players": [
+        {
+          "id": "golden-player-one",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [
+            {
+              "id": "candidate",
+              "definitionId": "alchemist_001",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            }
+          ],
+          "hand": [
+            {
+              "id": "transform",
+              "definitionId": "alchemist_007",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            },
+            {
+              "id": "material",
+              "definitionId": "alchemist_004",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            },
+            {
+              "id": "wish",
+              "definitionId": "mage_017",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            },
+            {
+              "id": "stop",
+              "definitionId": "mage_015",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            }
+          ],
+          "discard": [],
+          "exhaust": [],
+          "statuses": [],
+          "synthesisCount": 0,
+          "alchemyStage": 0
+        },
+        {
+          "id": "golden-player-two",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "exhaust": [],
+          "statuses": [],
+          "synthesisCount": 0,
+          "alchemyStage": 0
+        }
+      ],
+      "chantQueue": [],
+      "chantEntrySequence": 0,
+      "generatedCardSequence": 0,
+      "nextChoiceRequestSequence": 1,
+      "lastInputSequence": 0,
+      "events": [
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "visibility": "ownerOnly",
+          "sequence": 1
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "material",
+          "visibility": "ownerOnly",
+          "sequence": 2
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "visibility": "ownerOnly",
+          "sequence": 3
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "stop",
+          "visibility": "ownerOnly",
+          "sequence": 4
+        }
+      ]
+    },
+    "actions": [
+      {
+        "inputSequence": 1,
+        "payload": {
+          "type": "PLAY_CARD",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "choices": [
+            {
+              "kind": "CARD_INSTANCES",
+              "cardInstanceIds": ["material"]
+            }
+          ]
+        }
+      },
+      {
+        "inputSequence": 3,
+        "payload": {
+          "type": "SUBMIT_CARD_CHOICE",
+          "playerId": "golden-player-one",
+          "choiceRequestId": "choice:1",
+          "choice": {
+            "kind": "CARD",
+            "cardInstanceId": "candidate"
+          }
+        }
+      },
+      {
+        "inputSequence": 4,
+        "payload": {
+          "type": "END_TURN",
+          "playerId": "golden-player-one"
+        }
+      },
+      {
+        "inputSequence": 5,
+        "payload": {
+          "type": "END_TURN",
+          "playerId": "golden-player-two"
+        }
+      },
+      {
+        "inputSequence": 6,
+        "payload": {
+          "type": "PLAY_CARD",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish"
+        }
+      },
+      {
+        "inputSequence": 7,
+        "payload": {
+          "type": "END_TURN",
+          "playerId": "golden-player-one"
+        }
+      },
+      {
+        "inputSequence": 8,
+        "payload": {
+          "type": "END_TURN",
+          "playerId": "golden-player-two"
+        }
+      },
+      {
+        "inputSequence": 9,
+        "payload": {
+          "type": "PLAY_CARD",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "stop"
+        }
+      }
+    ],
+    "serverCommands": [
+      {
+        "inputSequence": 2,
+        "payload": {
+          "type": "CARD_CHOICE_DEADLINE_ISSUED",
+          "playerId": "golden-player-one",
+          "choiceRequestId": "choice:1",
+          "issuedAt": 1790640000000,
+          "deadlineAt": 1790640060000,
+          "timeoutAuthorization": "golden-deadline-signature"
+        }
+      }
+    ],
+    "events": [
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "visibility": "ownerOnly",
+        "sequence": 1
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "material",
+        "visibility": "ownerOnly",
+        "sequence": 2
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "visibility": "ownerOnly",
+        "sequence": 3
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "stop",
+        "visibility": "ownerOnly",
+        "sequence": 4
+      },
+      {
+        "type": "CARD_PLAYED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "definitionId": "alchemist_007",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 5
+      },
+      {
+        "type": "EFFECT_STARTED",
+        "effectId": "transform:1",
+        "sequence": 6
+      },
+      {
+        "type": "CARD_EXHAUSTED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "material",
+        "from": "hand",
+        "visibility": "ownerOnly",
+        "sequence": 7
+      },
+      {
+        "type": "DECK_CARD_REVEALED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "candidate",
+        "position": 0,
+        "visibility": "ownerOnly",
+        "sequence": 8
+      },
+      {
+        "type": "CARD_CHOICE_REQUESTED",
+        "choiceRequestId": "choice:1",
+        "playerId": "golden-player-one",
+        "choiceKind": "CARD",
+        "candidateIds": ["candidate"],
+        "visibility": "ownerOnly",
+        "sequence": 9
+      },
+      {
+        "type": "CARD_DISCARDED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "definitionId": "alchemist_007",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 10
+      },
+      {
+        "type": "CARD_MOVED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "candidate",
+        "from": "drawPile",
+        "to": "hand",
+        "visibility": "ownerOnly",
+        "sequence": 11
+      },
+      {
+        "type": "CARD_CHOICE_SUBMITTED",
+        "choiceRequestId": "choice:1",
+        "playerId": "golden-player-one",
+        "selectedIds": ["candidate"],
+        "sequence": 12
+      },
+      {
+        "type": "TURN_ENDED",
+        "playerId": "golden-player-one",
+        "sequence": 13
+      },
+      {
+        "type": "TURN_STARTED",
+        "playerId": "golden-player-two",
+        "sequence": 14
+      },
+      {
+        "type": "TURN_ENDED",
+        "playerId": "golden-player-two",
+        "sequence": 15
+      },
+      {
+        "type": "TURN_STARTED",
+        "playerId": "golden-player-one",
+        "sequence": 16
+      },
+      {
+        "type": "DECK_SHUFFLED",
+        "playerId": "golden-player-one",
+        "reason": "DRAW_PILE_EMPTY",
+        "visibility": "ownerOnly",
+        "sequence": 17
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "transform",
+        "visibility": "allPlayers",
+        "sequence": 18
+      },
+      {
+        "type": "CARD_PLAYED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "definitionId": "mage_017",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 19
+      },
+      {
+        "type": "EFFECT_STARTED",
+        "effectId": "wish:1",
+        "sequence": 20
+      },
+      {
+        "type": "CHANT_STARTED",
+        "chantEntryId": "chant:1",
+        "ownerPlayerId": "golden-player-one",
+        "sourceDefinitionId": "mage_017",
+        "sourceDefinitionVersion": "1.0.0",
+        "before": null,
+        "after": 100,
+        "queueIndex": 0,
+        "sequence": 21
+      },
+      {
+        "type": "CARD_DISCARDED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "definitionId": "mage_017",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 22
+      },
+      {
+        "type": "TURN_ENDED",
+        "playerId": "golden-player-one",
+        "sequence": 23
+      },
+      {
+        "type": "TURN_STARTED",
+        "playerId": "golden-player-two",
+        "sequence": 24
+      },
+      {
+        "type": "TURN_ENDED",
+        "playerId": "golden-player-two",
+        "sequence": 25
+      },
+      {
+        "type": "TURN_STARTED",
+        "playerId": "golden-player-one",
+        "sequence": 26
+      },
+      {
+        "type": "CHANT_ADVANCED",
+        "chantEntryId": "chant:1",
+        "ownerPlayerId": "golden-player-one",
+        "sourceDefinitionId": "mage_017",
+        "sourceDefinitionVersion": "1.0.0",
+        "before": 100,
+        "after": 99,
+        "queueIndex": 0,
+        "sequence": 27
+      },
+      {
+        "type": "DECK_SHUFFLED",
+        "playerId": "golden-player-one",
+        "reason": "DRAW_PILE_EMPTY",
+        "visibility": "ownerOnly",
+        "sequence": 28
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "wish",
+        "visibility": "allPlayers",
+        "sequence": 29
+      },
+      {
+        "type": "CARD_PLAYED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "stop",
+        "definitionId": "mage_015",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 30
+      },
+      {
+        "type": "EFFECT_STARTED",
+        "effectId": "stop:1",
+        "sequence": 31
+      },
+      {
+        "type": "CHANT_ADVANCED",
+        "chantEntryId": "chant:1",
+        "ownerPlayerId": "golden-player-one",
+        "sourceDefinitionId": "mage_017",
+        "sourceDefinitionVersion": "1.0.0",
+        "before": 99,
+        "after": 0,
+        "queueIndex": 0,
+        "sequence": 32
+      },
+      {
+        "type": "CHANT_COMPLETED",
+        "chantEntryId": "chant:1",
+        "ownerPlayerId": "golden-player-one",
+        "sourceDefinitionId": "mage_017",
+        "sourceDefinitionVersion": "1.0.0",
+        "before": 99,
+        "after": 0,
+        "queueIndex": 0,
+        "sequence": 33
+      },
+      {
+        "type": "CARD_DISCARDED",
+        "playerId": "golden-player-one",
+        "cardInstanceId": "stop",
+        "definitionId": "mage_015",
+        "definitionVersion": "1.0.0",
+        "visibility": "allPlayers",
+        "sequence": 34
+      },
+      {
+        "type": "MATCH_FINISHED",
+        "result": {
+          "status": "WIN",
+          "winnerId": "golden-player-one",
+          "reason": "SPECIAL_VICTORY",
+          "specialVictoryId": "MAGE_GRAND_WISH"
+        },
+        "sequence": 35
+      }
+    ],
+    "snapshots": [
+      {
+        "inputSequence": 0,
+        "eventSequence": 4,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 1,
+          "activePlayerId": "golden-player-one",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "hand": [
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 1,
+          "lastInputSequence": 0
+        }
+      },
+      {
+        "inputSequence": 1,
+        "eventSequence": 10,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 1,
+          "activePlayerId": "golden-player-one",
+          "phase": "PENDING_CARD_CHOICE",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "hand": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "pendingCardChoice": {
+            "choiceRequestId": "choice:1",
+            "ownerPlayerId": "golden-player-one",
+            "sourceInputSequence": 1,
+            "sourceCardInstanceId": "transform",
+            "sourceDefinitionId": "alchemist_007",
+            "sourceDefinitionVersion": "1.0.0",
+            "choiceKind": "CARD",
+            "candidateIds": ["candidate"],
+            "minSelections": 1,
+            "maxSelections": 1,
+            "resolution": {
+              "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
+            }
+          },
+          "lastInputSequence": 1
+        }
+      },
+      {
+        "inputSequence": 2,
+        "eventSequence": 10,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 1,
+          "activePlayerId": "golden-player-one",
+          "phase": "PENDING_CARD_CHOICE",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "hand": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "pendingCardChoice": {
+            "choiceRequestId": "choice:1",
+            "ownerPlayerId": "golden-player-one",
+            "sourceInputSequence": 1,
+            "sourceCardInstanceId": "transform",
+            "sourceDefinitionId": "alchemist_007",
+            "sourceDefinitionVersion": "1.0.0",
+            "choiceKind": "CARD",
+            "candidateIds": ["candidate"],
+            "minSelections": 1,
+            "maxSelections": 1,
+            "resolution": {
+              "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
+            },
+            "deadlineCommandSequence": 2
+          },
+          "lastInputSequence": 2
+        }
+      },
+      {
+        "inputSequence": 3,
+        "eventSequence": 12,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 1,
+          "activePlayerId": "golden-player-one",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 3
+        }
+      },
+      {
+        "inputSequence": 4,
+        "eventSequence": 14,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 1,
+          "activePlayerId": "golden-player-two",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 4
+        }
+      },
+      {
+        "inputSequence": 5,
+        "eventSequence": 18,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 2,
+          "activePlayerId": "golden-player-one",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "discard": [],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 0,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 5
+        }
+      },
+      {
+        "inputSequence": 6,
+        "eventSequence": 22,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 2,
+          "activePlayerId": "golden-player-one",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 0,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [
+            {
+              "chantEntryId": "chant:1",
+              "ownerPlayerId": "golden-player-one",
+              "sourceDefinitionId": "mage_017",
+              "sourceDefinitionVersion": "1.0.0",
+              "remaining": 100,
+              "completionEffects": [
+                {
+                  "type": "SPECIAL_VICTORY",
+                  "specialVictoryId": "MAGE_GRAND_WISH"
+                }
+              ],
+              "damageDelay": 5,
+              "sequence": 1
+            }
+          ],
+          "chantEntrySequence": 1,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 6
+        }
+      },
+      {
+        "inputSequence": 7,
+        "eventSequence": 24,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 2,
+          "activePlayerId": "golden-player-two",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 0,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [
+            {
+              "chantEntryId": "chant:1",
+              "ownerPlayerId": "golden-player-one",
+              "sourceDefinitionId": "mage_017",
+              "sourceDefinitionVersion": "1.0.0",
+              "remaining": 100,
+              "completionEffects": [
+                {
+                  "type": "SPECIAL_VICTORY",
+                  "specialVictoryId": "MAGE_GRAND_WISH"
+                }
+              ],
+              "damageDelay": 5,
+              "sequence": 1
+            }
+          ],
+          "chantEntrySequence": 1,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 7
+        }
+      },
+      {
+        "inputSequence": 8,
+        "eventSequence": 29,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 3,
+          "activePlayerId": "golden-player-one",
+          "phase": "PLAYER_TURN",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                },
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "discard": [],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [
+            {
+              "chantEntryId": "chant:1",
+              "ownerPlayerId": "golden-player-one",
+              "sourceDefinitionId": "mage_017",
+              "sourceDefinitionVersion": "1.0.0",
+              "remaining": 99,
+              "completionEffects": [
+                {
+                  "type": "SPECIAL_VICTORY",
+                  "specialVictoryId": "MAGE_GRAND_WISH"
+                }
+              ],
+              "damageDelay": 5,
+              "sequence": 1
+            }
+          ],
+          "chantEntrySequence": 1,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 8
+        }
+      },
+      {
+        "inputSequence": 9,
+        "eventSequence": 35,
+        "state": {
+          "matchId": "phase-51-protocol-v2",
+          "engineVersion": "2.0.0",
+          "rulesVersion": "2.0.0",
+          "cardDataVersion": "1.0.0",
+          "battleProtocolVersion": 2,
+          "seed": "phase-51-protocol-v2-seed",
+          "rngState": 1026112623,
+          "turn": 3,
+          "activePlayerId": "golden-player-one",
+          "phase": "MATCH_END",
+          "turnDrawCount": 1,
+          "initialDrawCount": 4,
+          "players": [
+            {
+              "id": "golden-player-one",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 0,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                {
+                  "id": "candidate",
+                  "definitionId": "alchemist_001",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                },
+                {
+                  "id": "transform",
+                  "definitionId": "alchemist_007",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                },
+                {
+                  "id": "wish",
+                  "definitionId": "mage_017",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "discard": [
+                {
+                  "id": "stop",
+                  "definitionId": "mage_015",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "allPlayers"
+                }
+              ],
+              "exhaust": [
+                {
+                  "id": "material",
+                  "definitionId": "alchemist_004",
+                  "definitionVersion": "1.0.0",
+                  "costModifier": 0,
+                  "visibility": "ownerOnly"
+                }
+              ],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            },
+            {
+              "id": "golden-player-two",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "exhaust": [],
+              "statuses": [],
+              "synthesisCount": 0,
+              "alchemyStage": 0
+            }
+          ],
+          "chantQueue": [],
+          "chantEntrySequence": 1,
+          "generatedCardSequence": 0,
+          "nextChoiceRequestSequence": 2,
+          "terminalResult": {
+            "status": "WIN",
+            "winnerId": "golden-player-one",
+            "reason": "SPECIAL_VICTORY",
+            "specialVictoryId": "MAGE_GRAND_WISH"
+          },
+          "lastInputSequence": 9
+        }
+      }
+    ],
+    "finalState": {
+      "matchId": "phase-51-protocol-v2",
+      "engineVersion": "2.0.0",
+      "rulesVersion": "2.0.0",
+      "cardDataVersion": "1.0.0",
+      "battleProtocolVersion": 2,
+      "seed": "phase-51-protocol-v2-seed",
+      "rngState": 1026112623,
+      "turn": 3,
+      "activePlayerId": "golden-player-one",
+      "phase": "MATCH_END",
+      "turnDrawCount": 1,
+      "initialDrawCount": 4,
+      "players": [
+        {
+          "id": "golden-player-one",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 0,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [
+            {
+              "id": "candidate",
+              "definitionId": "alchemist_001",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            },
+            {
+              "id": "transform",
+              "definitionId": "alchemist_007",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "allPlayers"
+            },
+            {
+              "id": "wish",
+              "definitionId": "mage_017",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "allPlayers"
+            }
+          ],
+          "discard": [
+            {
+              "id": "stop",
+              "definitionId": "mage_015",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "allPlayers"
+            }
+          ],
+          "exhaust": [
+            {
+              "id": "material",
+              "definitionId": "alchemist_004",
+              "definitionVersion": "1.0.0",
+              "costModifier": 0,
+              "visibility": "ownerOnly"
+            }
+          ],
+          "statuses": [],
+          "synthesisCount": 0,
+          "alchemyStage": 0
+        },
+        {
+          "id": "golden-player-two",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "exhaust": [],
+          "statuses": [],
+          "synthesisCount": 0,
+          "alchemyStage": 0
+        }
+      ],
+      "chantQueue": [],
+      "chantEntrySequence": 1,
+      "generatedCardSequence": 0,
+      "nextChoiceRequestSequence": 2,
+      "terminalResult": {
+        "status": "WIN",
+        "winnerId": "golden-player-one",
+        "reason": "SPECIAL_VICTORY",
+        "specialVictoryId": "MAGE_GRAND_WISH"
+      },
+      "lastInputSequence": 9,
+      "events": [
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "visibility": "ownerOnly",
+          "sequence": 1
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "material",
+          "visibility": "ownerOnly",
+          "sequence": 2
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "visibility": "ownerOnly",
+          "sequence": 3
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "stop",
+          "visibility": "ownerOnly",
+          "sequence": 4
+        },
+        {
+          "type": "CARD_PLAYED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "definitionId": "alchemist_007",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 5
+        },
+        {
+          "type": "EFFECT_STARTED",
+          "effectId": "transform:1",
+          "sequence": 6
+        },
+        {
+          "type": "CARD_EXHAUSTED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "material",
+          "from": "hand",
+          "visibility": "ownerOnly",
+          "sequence": 7
+        },
+        {
+          "type": "DECK_CARD_REVEALED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "candidate",
+          "position": 0,
+          "visibility": "ownerOnly",
+          "sequence": 8
+        },
+        {
+          "type": "CARD_CHOICE_REQUESTED",
+          "choiceRequestId": "choice:1",
+          "playerId": "golden-player-one",
+          "choiceKind": "CARD",
+          "candidateIds": ["candidate"],
+          "visibility": "ownerOnly",
+          "sequence": 9
+        },
+        {
+          "type": "CARD_DISCARDED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "definitionId": "alchemist_007",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 10
+        },
+        {
+          "type": "CARD_MOVED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "candidate",
+          "from": "drawPile",
+          "to": "hand",
+          "visibility": "ownerOnly",
+          "sequence": 11
+        },
+        {
+          "type": "CARD_CHOICE_SUBMITTED",
+          "choiceRequestId": "choice:1",
+          "playerId": "golden-player-one",
+          "selectedIds": ["candidate"],
+          "sequence": 12
+        },
+        {
+          "type": "TURN_ENDED",
+          "playerId": "golden-player-one",
+          "sequence": 13
+        },
+        {
+          "type": "TURN_STARTED",
+          "playerId": "golden-player-two",
+          "sequence": 14
+        },
+        {
+          "type": "TURN_ENDED",
+          "playerId": "golden-player-two",
+          "sequence": 15
+        },
+        {
+          "type": "TURN_STARTED",
+          "playerId": "golden-player-one",
+          "sequence": 16
+        },
+        {
+          "type": "DECK_SHUFFLED",
+          "playerId": "golden-player-one",
+          "reason": "DRAW_PILE_EMPTY",
+          "visibility": "ownerOnly",
+          "sequence": 17
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "transform",
+          "visibility": "allPlayers",
+          "sequence": 18
+        },
+        {
+          "type": "CARD_PLAYED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "definitionId": "mage_017",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 19
+        },
+        {
+          "type": "EFFECT_STARTED",
+          "effectId": "wish:1",
+          "sequence": 20
+        },
+        {
+          "type": "CHANT_STARTED",
+          "chantEntryId": "chant:1",
+          "ownerPlayerId": "golden-player-one",
+          "sourceDefinitionId": "mage_017",
+          "sourceDefinitionVersion": "1.0.0",
+          "before": null,
+          "after": 100,
+          "queueIndex": 0,
+          "sequence": 21
+        },
+        {
+          "type": "CARD_DISCARDED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "definitionId": "mage_017",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 22
+        },
+        {
+          "type": "TURN_ENDED",
+          "playerId": "golden-player-one",
+          "sequence": 23
+        },
+        {
+          "type": "TURN_STARTED",
+          "playerId": "golden-player-two",
+          "sequence": 24
+        },
+        {
+          "type": "TURN_ENDED",
+          "playerId": "golden-player-two",
+          "sequence": 25
+        },
+        {
+          "type": "TURN_STARTED",
+          "playerId": "golden-player-one",
+          "sequence": 26
+        },
+        {
+          "type": "CHANT_ADVANCED",
+          "chantEntryId": "chant:1",
+          "ownerPlayerId": "golden-player-one",
+          "sourceDefinitionId": "mage_017",
+          "sourceDefinitionVersion": "1.0.0",
+          "before": 100,
+          "after": 99,
+          "queueIndex": 0,
+          "sequence": 27
+        },
+        {
+          "type": "DECK_SHUFFLED",
+          "playerId": "golden-player-one",
+          "reason": "DRAW_PILE_EMPTY",
+          "visibility": "ownerOnly",
+          "sequence": 28
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "wish",
+          "visibility": "allPlayers",
+          "sequence": 29
+        },
+        {
+          "type": "CARD_PLAYED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "stop",
+          "definitionId": "mage_015",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 30
+        },
+        {
+          "type": "EFFECT_STARTED",
+          "effectId": "stop:1",
+          "sequence": 31
+        },
+        {
+          "type": "CHANT_ADVANCED",
+          "chantEntryId": "chant:1",
+          "ownerPlayerId": "golden-player-one",
+          "sourceDefinitionId": "mage_017",
+          "sourceDefinitionVersion": "1.0.0",
+          "before": 99,
+          "after": 0,
+          "queueIndex": 0,
+          "sequence": 32
+        },
+        {
+          "type": "CHANT_COMPLETED",
+          "chantEntryId": "chant:1",
+          "ownerPlayerId": "golden-player-one",
+          "sourceDefinitionId": "mage_017",
+          "sourceDefinitionVersion": "1.0.0",
+          "before": 99,
+          "after": 0,
+          "queueIndex": 0,
+          "sequence": 33
+        },
+        {
+          "type": "CARD_DISCARDED",
+          "playerId": "golden-player-one",
+          "cardInstanceId": "stop",
+          "definitionId": "mage_015",
+          "definitionVersion": "1.0.0",
+          "visibility": "allPlayers",
+          "sequence": 34
+        },
+        {
+          "type": "MATCH_FINISHED",
+          "result": {
+            "status": "WIN",
+            "winnerId": "golden-player-one",
+            "reason": "SPECIAL_VICTORY",
+            "specialVictoryId": "MAGE_GRAND_WISH"
+          },
+          "sequence": 35
+        }
+      ]
+    },
+    "snapshotInterval": 1,
+    "checksum": "sha256:f0a8e241398ccfd73e653f4a5d2552eb5b89138072c242ac214d0e859587a758"
+  }
+}

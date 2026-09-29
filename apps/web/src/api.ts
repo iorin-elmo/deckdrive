@@ -2,7 +2,6 @@ import {
   basicCardDefinitions,
   maximumCardCopies,
   packCardDefinitions,
-  specialVictoryCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 import { openPack, type PackCard } from '@deck-drive/pack-engine';
@@ -387,15 +386,13 @@ function csrfToken(): string | undefined {
   }
 }
 
-const previewCards: readonly CardSummary[] = [
-  ...basicCardDefinitions,
-  ...packCardDefinitions,
-  ...specialVictoryCardDefinitions,
-].map((definition) => ({
-  cardId: definition.id,
-  version: definition.version,
-  definition,
-}));
+const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
+  (definition) => ({
+    cardId: definition.id,
+    version: definition.version,
+    definition,
+  }),
+);
 
 const previewDeckSize = 30;
 

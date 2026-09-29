@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { PrismaPg } from '@prisma/adapter-pg';
-import { packCardDefinitions, specialVictoryCardDefinitions } from '@deck-drive/card-definitions';
+import { packCardDefinitions } from '@deck-drive/card-definitions';
 
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { cosmeticCatalog } from '../src/cosmetics/catalog.js';
@@ -132,11 +132,6 @@ async function main(): Promise<void> {
       const seedCards = [
         ...fixture.cards,
         ...packCardDefinitions.map((definition) => ({
-          id: definition.id,
-          version: definition.version,
-          definition: definition as unknown as Prisma.InputJsonValue,
-        })),
-        ...specialVictoryCardDefinitions.map((definition) => ({
           id: definition.id,
           version: definition.version,
           definition: definition as unknown as Prisma.InputJsonValue,

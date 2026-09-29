@@ -39,7 +39,7 @@ export class UnsupportedReplayFormatError extends ReplayPersistenceError {
 export class MatchReplayRepository {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly authorizeServerCommand: ServerCommandAuthorizer = () => false,
+    private readonly authorizeServerCommand?: ServerCommandAuthorizer,
   ) {}
 
   async save(replay: Replay | ReplayV2): Promise<void> {
@@ -230,17 +230,29 @@ export class MatchReplayRepository {
     const verification =
       replay.formatVersion === replayFormatVersion
         ? verifyReplay(replay, definitions as readonly CardDefinition[])
-        : verifyReplayV2(
-            replay,
-            (revision) =>
-              calculateDraftDefinitionRevision(definitions) === revision ? definitions : undefined,
-            this.authorizeServerCommand,
-          );
+        : this.verifyReplayV2(replay, definitions);
     if (!verification.ok) {
       throw new ReplayPersistenceError(
         `Cannot persist or reconstruct an invalid replay: ${verification.error.message}`,
       );
     }
+  }
+
+  private verifyReplayV2(
+    replay: ReplayV2,
+    definitions: readonly CardDefinitionV2[],
+  ): ReturnType<typeof verifyReplayV2> {
+    if (this.authorizeServerCommand === undefined) {
+      throw new ReplayPersistenceError(
+        'A battle server-command verifier is required for Replay V2.',
+      );
+    }
+    return verifyReplayV2(
+      replay,
+      (revision) =>
+        calculateDraftDefinitionRevision(definitions) === revision ? definitions : undefined,
+      this.authorizeServerCommand,
+    );
   }
 
   private async loadCardDefinitions(
@@ -334,6 +346,7 @@ function isCardEffect(value: unknown): boolean {
         (value.maximumCost === undefined || isNonNegativeInteger(value.maximumCost))
       );
     case 'TRANSFORM_HAND_CARD':
+    case 'SEAL_GRIMOIRE':
       return true;
     case 'CUSTOM':
       return (

@@ -184,8 +184,8 @@ describe('MatchReplayRepository', () => {
           type: 'CARD_CHOICE_DEADLINE_ISSUED',
           playerId: firstPlayer,
           choiceRequestId: 'choice:1',
-          issuedAt: '2026-09-29T00:00:00.000Z',
-          deadlineAt: '2026-09-29T00:01:00.000Z',
+          issuedAt: 1_790_640_000_000,
+          deadlineAt: 1_790_640_060_000,
           timeoutAuthorization: 'signed',
         },
       },
@@ -227,6 +227,9 @@ describe('MatchReplayRepository', () => {
       $transaction: vi.fn((callback) => callback(transaction)),
     } as unknown as PrismaClient;
 
+    await expect(new MatchReplayRepository(prisma).save(recorded.replay)).rejects.toThrow(
+      'server-command verifier is required',
+    );
     await new MatchReplayRepository(prisma, () => true).save(recorded.replay);
 
     expect(createMatch).toHaveBeenCalledWith({
