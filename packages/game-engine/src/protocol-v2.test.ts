@@ -882,6 +882,76 @@ describe('Replay format 2 and pending choices', () => {
     ).not.toHaveProperty('choiceRequestId');
   });
 
+  it('records and verifies a replay that resumes after a card choice timeout', () => {
+    const initial = battle(
+      [card('search', 'test_search'), card('candidate', 'alchemist_001')],
+      [],
+      1,
+    );
+    const inputs: BattleInput[] = [
+      client(1, play('search')),
+      {
+        inputSequence: 2,
+        kind: 'SERVER_COMMAND',
+        payload: {
+          type: 'CARD_CHOICE_DEADLINE_ISSUED',
+          playerId: playerOne,
+          choiceRequestId: 'choice:1',
+          issuedAt: 1_790_640_000_000,
+          deadlineAt: 1_790_640_060_000,
+          timeoutAuthorization: 'signed-deadline',
+        },
+      },
+      {
+        inputSequence: 3,
+        kind: 'SERVER_COMMAND',
+        payload: {
+          type: 'CARD_CHOICE_TIMEOUT',
+          playerId: playerOne,
+          choiceRequestId: 'choice:1',
+          deadlineCommandSequence: 2,
+          deadlineAt: 1_790_640_060_000,
+          timeoutAt: 1_790_640_060_000,
+          timeoutAuthorization: 'signed-deadline',
+          timeoutAttestation: 'signed-timeout',
+        },
+      },
+    ];
+    const recorded = recordReplayV2(initial, inputs, definitions, {
+      draftDefinitionRevision: calculateDraftDefinitionRevision(definitions),
+      battleProtocolVersion: 2,
+      snapshotInterval: 1,
+      authorizeServerCommand: () => true,
+    });
+    if (!recorded.ok) throw new Error(recorded.error.message);
+    const replay = recorded.replay;
+    expect(replay.actions.map((record) => record.inputSequence)).toEqual([1]);
+    expect(replay.serverCommands.map((record) => record.inputSequence)).toEqual([2, 3]);
+    expect(replay.serverCommands[1]?.payload).toMatchObject({
+      type: 'CARD_CHOICE_TIMEOUT',
+      deadlineCommandSequence: 2,
+    });
+    expect(replay.snapshots.map((snapshot) => snapshot.inputSequence)).toEqual([0, 1, 2, 3]);
+    expect(replay.snapshots[2]?.state.phase).toBe('PENDING_CARD_CHOICE');
+    expect(replay.snapshots[3]?.state).toMatchObject({
+      phase: 'PLAYER_TURN',
+      activePlayerId: playerTwo,
+      pendingCardChoice: undefined,
+    });
+    const { events: finalEvents, ...finalStateWithoutEvents } = replay.finalState;
+    expect(finalStateWithoutEvents).toEqual(replay.snapshots[3]?.state);
+    expect(finalEvents).toEqual(replay.events);
+    expect(replay.events.map((event) => event.type)).toContain('CARD_CHOICE_TIMED_OUT');
+    expect(replay.checksum).toBe(calculateReplayV2Checksum(replay));
+    expect(
+      verifyReplayV2(
+        replay,
+        () => definitions,
+        () => true,
+      ),
+    ).toEqual({ ok: true });
+  });
+
   it('rejects a replay that leaves a pending choice without its deadline command', () => {
     const initial = battle(
       [card('search', 'test_search'), card('candidate', 'alchemist_001')],
