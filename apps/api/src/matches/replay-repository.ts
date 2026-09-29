@@ -362,7 +362,7 @@ function isCardEffect(value: unknown): boolean {
         (value.damageDelay === undefined || isNonNegativeInteger(value.damageDelay)) &&
         Array.isArray(value.completionEffects) &&
         value.completionEffects.length > 0 &&
-        value.completionEffects.every(isCardEffect)
+        value.completionEffects.every(isChantCompletionEffect)
       );
     case 'ADVANCE_CHANT':
       return (
@@ -406,6 +406,17 @@ function isCardEffect(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isChantCompletionEffect(value: unknown): boolean {
+  return (
+    isCardEffect(value) &&
+    isRecord(value) &&
+    (value.type === 'DAMAGE' ||
+      (value.type === 'SPECIAL_VICTORY' &&
+        value.specialVictoryId === 'MAGE_GRAND_WISH' &&
+        value.requiredAlchemyStage === undefined))
+  );
 }
 
 function isPositiveInteger(value: unknown): value is number {

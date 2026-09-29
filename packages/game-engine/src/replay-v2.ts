@@ -468,13 +468,33 @@ function isBattleStateV2(value: unknown): value is BattleStateV2 {
       (entry) =>
         isRecord(entry) &&
         entry.visibility === 'allPlayers' &&
-        typeof entry.ownerPlayerId === 'string',
+        typeof entry.ownerPlayerId === 'string' &&
+        Array.isArray(entry.completionEffects) &&
+        entry.completionEffects.length > 0 &&
+        dense(entry.completionEffects) &&
+        entry.completionEffects.every(isPersistedChantCompletionEffect),
     ) &&
     Array.isArray(value.events) &&
     (value.phase === 'PLAYER_TURN' ||
       value.phase === 'PENDING_CARD_CHOICE' ||
       value.phase === 'MATCH_END') &&
     (value.phase === 'PENDING_CARD_CHOICE') === (value.pendingCardChoice !== undefined)
+  );
+}
+
+function isPersistedChantCompletionEffect(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.type === 'DAMAGE') {
+    return (
+      Number.isSafeInteger(value.amount) &&
+      (value.amount as number) > 0 &&
+      (value.target === 'SELF' || value.target === 'ENEMY')
+    );
+  }
+  return (
+    value.type === 'SPECIAL_VICTORY' &&
+    value.specialVictoryId === 'MAGE_GRAND_WISH' &&
+    value.requiredAlchemyStage === undefined
   );
 }
 

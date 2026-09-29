@@ -968,7 +968,7 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
         Array.isArray(value.completionEffects) &&
         value.completionEffects.length > 0 &&
         isDense(value.completionEffects) &&
-        value.completionEffects.every(isValidCardEffect)
+        value.completionEffects.every(isValidChantCompletionEffect)
       );
     case 'ADVANCE_CHANT':
       return (
@@ -1013,6 +1013,17 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
     default:
       return false;
   }
+}
+
+function isValidChantCompletionEffect(value: unknown): boolean {
+  return (
+    isValidCardEffect(value) &&
+    isRecord(value) &&
+    (value.type === 'DAMAGE' ||
+      (value.type === 'SPECIAL_VICTORY' &&
+        value.specialVictoryId === 'MAGE_GRAND_WISH' &&
+        value.requiredAlchemyStage === undefined))
+  );
 }
 
 export function validateCardDefinitions(cards: unknown): CardDefinitionValidationResult {
