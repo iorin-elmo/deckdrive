@@ -65,6 +65,12 @@ export interface PendingCardChoice {
   readonly resolution: PendingChoiceResolution;
   /** Sequence only; wall-clock and authorization material stay outside public battle state. */
   readonly deadlineCommandSequence: number | undefined;
+  readonly continuation?: {
+    readonly sourceCard: CardInstanceV2;
+    readonly sourceDefinition: CardDefinitionV2;
+    readonly action: PlayCardActionV2;
+    readonly nextEffectIndex: number;
+  };
 }
 
 export type PendingChoiceResolution =
@@ -540,7 +546,7 @@ function applyClientAction(
     if (action.type !== 'SUBMIT_CARD_CHOICE') {
       return failure(state, 'INVALID_PHASE', 'Only the pending card choice may be submitted.');
     }
-    return submitChoice(state, inputSequence, action);
+    return submitChoice(state, inputSequence, action, definitions);
   }
   if (action.type === 'SUBMIT_CARD_CHOICE') {
     return failure(state, 'INVALID_PHASE', 'No card choice is pending.');
@@ -616,6 +622,18 @@ function playCard(
       definitions,
       emitter,
     );
+    if (mutable.pendingCardChoice !== undefined) {
+      mutable.pendingCardChoice = {
+        ...mutable.pendingCardChoice,
+        continuation: {
+          sourceCard: publicCard,
+          sourceDefinition: definition,
+          action,
+          nextEffectIndex: effectIndex + 1,
+        },
+      };
+      break;
+    }
   }
 
   const actorAfterEffects = mutable.players[playerIndex]!;
@@ -682,7 +700,12 @@ function applyEffect(
           definitions,
           emitter,
         );
-        if (completed && effect.drawOnComplete === true) drawCards(mutable, actorIndex, 1, emitter);
+        if (
+          completed &&
+          effect.drawOnComplete === true &&
+          resultFromMutable(baseState, mutable).status === 'IN_PROGRESS'
+        )
+          drawCards(mutable, actorIndex, 1, emitter);
       }
       return;
     }
@@ -904,18 +927,13 @@ function applyServerCommand(
       emitter,
     );
   }
-  const resumed: BattleStateV2 = {
-    ...state,
-    players: mutable.players,
-    rngState: mutable.rngState,
-    phase: 'PLAYER_TURN',
-    pendingCardChoice: undefined,
-    events: [...state.events, ...emitter.values],
-  };
+  resumeChoiceEffects(state, mutable, pending, definitions, emitter);
+  const resumed = finishResolution(state, input.inputSequence, mutable, emitter);
+  if (!resumed.ok || resumed.state.phase !== 'PLAYER_TURN') return resumed;
   const result = endTurn(
-    resumed,
+    resumed.state,
     input.inputSequence,
-    resumed.players.findIndex((p) => p.id === pending.ownerPlayerId),
+    resumed.state.players.findIndex((p) => p.id === pending.ownerPlayerId),
     definitions,
   );
   return result.ok ? { ...result, events: [...emitter.values, ...result.events] } : result;
@@ -925,6 +943,7 @@ function submitChoice(
   state: BattleStateV2,
   inputSequence: number,
   action: SubmitCardChoiceAction,
+  definitions: CardDefinitionSourceV2,
 ): BattleInputResult {
   const pending = state.pendingCardChoice;
   if (
@@ -992,7 +1011,43 @@ function submitChoice(
     visibility: 'ownerOnly',
   });
   mutable.pendingCardChoice = undefined;
+  resumeChoiceEffects(state, mutable, pending, definitions, emitter);
   return finishResolution(state, inputSequence, mutable, emitter);
+}
+
+function resumeChoiceEffects(
+  state: BattleStateV2,
+  mutable: MutableResolution,
+  pending: PendingCardChoice,
+  definitions: CardDefinitionSourceV2,
+  emitter: EventEmitter,
+): void {
+  const continuation = pending.continuation;
+  if (continuation === undefined) return;
+  const { sourceCard, sourceDefinition, action } = continuation;
+  const actorIndex = mutable.players.findIndex((player) => player.id === pending.ownerPlayerId);
+  for (let index = continuation.nextEffectIndex; index < sourceDefinition.effects.length; index++) {
+    if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') break;
+    emitter.emit({ type: 'EFFECT_STARTED', effectId: `${sourceCard.id}:${String(index + 1)}` });
+    applyEffect(
+      state,
+      mutable,
+      actorIndex,
+      action,
+      sourceCard,
+      sourceDefinition,
+      sourceDefinition.effects[index]!,
+      definitions,
+      emitter,
+    );
+    if (mutable.pendingCardChoice !== undefined) {
+      mutable.pendingCardChoice = {
+        ...mutable.pendingCardChoice,
+        continuation: { ...continuation, nextEffectIndex: index + 1 },
+      };
+      break;
+    }
+  }
 }
 
 function requestDrawPileChoice(
@@ -2172,6 +2227,7 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
     'materialCardInstanceIds',
     'selectedIds',
     'sourceCardInstanceId',
+    'recipeId',
     'position',
     'index',
     'fromIndex',

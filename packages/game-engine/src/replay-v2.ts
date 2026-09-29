@@ -670,7 +670,7 @@ function canonicalizeReplay(value: unknown): unknown {
     });
   }
   if (isRecord(value)) {
-    const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const key of Object.keys(value).sort(compareCodePoints)) {
       if (value[key] !== undefined) result[key] = canonicalizeReplay(value[key]);
     }
@@ -694,7 +694,7 @@ function canonicalize(value: unknown): unknown {
     return value.map(canonicalize);
   }
   if (isRecord(value)) {
-    const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const key of Object.keys(value).sort(compareCodePoints)) {
       if (value[key] === undefined) {
         throw new TypeError(`Canonical JSON rejects undefined property: ${key}.`);
