@@ -458,6 +458,7 @@ function isBattleStateV2(value: unknown): value is BattleStateV2 {
     typeof value.matchId === 'string' &&
     typeof value.seed === 'string' &&
     Number.isSafeInteger(value.lastInputSequence) &&
+    isNonNegativeSafeInteger(value.pendingEffectSequence) &&
     Number.isSafeInteger(value.rngState) &&
     Array.isArray(value.players) &&
     value.players.length === 2 &&
@@ -511,6 +512,14 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
   if (value.type.startsWith('CHANT_')) {
     return value.visibility === 'allPlayers' && typeof value.ownerPlayerId === 'string';
   }
+  if (value.type.startsWith('PENDING_EFFECT_')) {
+    return (
+      isPendingDefenseEffectV2(value) &&
+      (value.type === 'PENDING_EFFECT_CREATED'
+        ? value.remainingTriggers === 1
+        : value.remainingTriggers === 0)
+    );
+  }
   if (value.type === 'CARD_MOVED' || value.type === 'CARD_EXHAUSTED') {
     if (
       typeof value.playerId !== 'string' ||
@@ -543,6 +552,8 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
     }
     return (
       (value.from === 'hand' || value.from === 'discard') &&
+      value.fromZone === value.from &&
+      value.toZone === 'exhaust' &&
       typeof value.sourceCardInstanceId === 'string'
     );
   }
@@ -569,7 +580,7 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
       typeof value.playerId === 'string' &&
       value.ownerPlayerId === value.playerId &&
       value.pile === 'drawPile' &&
-      (value.reason === 'DRAW_PILE_EMPTY' || value.reason === 'ALCHEMY_TRANSFORM') &&
+      (value.reason === 'DRAW_PILE_EMPTY_RECYCLE' || value.reason === 'ALCHEMY_TRANSFORM') &&
       Array.isArray(value.cardInstanceIds) &&
       dense(value.cardInstanceIds) &&
       value.cardInstanceIds.every((id) => typeof id === 'string') &&
@@ -687,6 +698,13 @@ function isInitialPlayerShape(value: unknown): value is BattleStateV2['players']
     Array.isArray(value.discard) &&
     Array.isArray(value.exhaust) &&
     Array.isArray(value.statuses) &&
+    Array.isArray(value.pendingEffects) &&
+    value.pendingEffects.every(
+      (effect) =>
+        isPendingDefenseEffectV2(effect) &&
+        effect.ownerPlayerId === value.id &&
+        effect.remainingTriggers === 1,
+    ) &&
     [...value.drawPile, ...value.hand, ...value.discard, ...value.exhaust].every(
       (card) =>
         isRecord(card) &&
@@ -696,6 +714,25 @@ function isInitialPlayerShape(value: unknown): value is BattleStateV2['players']
         Number.isSafeInteger(card.costModifier) &&
         (card.visibility === 'ownerOnly' || card.visibility === 'allPlayers'),
     )
+  );
+}
+
+function isPendingDefenseEffectV2(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    typeof value.pendingEffectId === 'string' &&
+    typeof value.ownerPlayerId === 'string' &&
+    value.targetPlayerId === value.ownerPlayerId &&
+    typeof value.sourceCardInstanceId === 'string' &&
+    typeof value.sourceDefinitionId === 'string' &&
+    typeof value.sourceDefinitionVersion === 'string' &&
+    value.effectType === 'MAGE_GRIMOIRE_SEAL' &&
+    value.trigger === 'NEXT_DAMAGE_HIT' &&
+    value.expiresOn === 'MATCH_END' &&
+    isNonNegativeSafeInteger(value.createdSequence) &&
+    value.amount === 5 &&
+    (value.remainingTriggers === 0 || value.remainingTriggers === 1) &&
+    value.visibility === 'allPlayers'
   );
 }
 

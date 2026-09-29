@@ -50,6 +50,22 @@ export interface ChantEntry {
   readonly sequence: number;
 }
 
+export interface PendingDefenseEffectV2 {
+  readonly pendingEffectId: string;
+  readonly ownerPlayerId: PlayerId;
+  readonly targetPlayerId: PlayerId;
+  readonly sourceCardInstanceId: CardInstanceId;
+  readonly sourceDefinitionId: CardDefinitionId;
+  readonly sourceDefinitionVersion: string;
+  readonly effectType: 'MAGE_GRIMOIRE_SEAL';
+  readonly trigger: 'NEXT_DAMAGE_HIT';
+  readonly expiresOn: 'MATCH_END';
+  readonly createdSequence: number;
+  readonly amount: 5;
+  readonly remainingTriggers: 1;
+  readonly visibility: 'allPlayers';
+}
+
 export type PendingChoiceKind = 'CARD' | 'CARDS' | 'RECIPE';
 
 export interface PendingCardChoice {
@@ -91,6 +107,7 @@ export interface BattlePlayerStateV2 {
   readonly discard: readonly CardInstanceV2[];
   readonly exhaust: readonly CardInstanceV2[];
   readonly statuses: readonly Status[];
+  readonly pendingEffects: readonly PendingDefenseEffectV2[];
   readonly synthesisCount: number;
   readonly alchemyStage: 0 | 1 | 2 | 3;
 }
@@ -113,6 +130,7 @@ export interface BattleStateV2 {
   readonly chantEntrySequence: number;
   readonly generatedCardSequence: number;
   readonly nextChoiceRequestSequence: number;
+  readonly pendingEffectSequence: number;
   readonly pendingCardChoice: PendingCardChoice | undefined;
   readonly terminalResult: TerminalBattleResultV2 | undefined;
   readonly lastInputSequence: number;
@@ -267,6 +285,9 @@ export type GameEventV2Type =
   | 'DAMAGE_PREVENTED'
   | 'STATUS_APPLIED'
   | 'STATUS_CONSUMED'
+  | 'PENDING_EFFECT_CREATED'
+  | 'PENDING_EFFECT_CONSUMED'
+  | 'PENDING_EFFECT_EXPIRED'
   | 'MATCH_FINISHED';
 
 interface GameEventBaseV2<Type extends GameEventV2Type> {
@@ -307,7 +328,9 @@ export interface CardExhaustedEventV2 extends GameEventBaseV2<'CARD_EXHAUSTED'> 
   readonly sourceDefinitionId: CardDefinitionId | null;
   readonly sourceDefinitionVersion: string | null;
   readonly from: 'hand' | 'discard';
+  readonly fromZone: 'hand' | 'discard';
   readonly fromIndex: number;
+  readonly toZone: 'exhaust';
   readonly toIndex: number;
   readonly reason: string;
   readonly visibility: Visibility;
@@ -317,7 +340,7 @@ export interface DeckShuffledEventV2 extends GameEventBaseV2<'DECK_SHUFFLED'> {
   readonly playerId: PlayerId;
   readonly ownerPlayerId: PlayerId;
   readonly pile: 'drawPile';
-  readonly reason: 'DRAW_PILE_EMPTY' | 'ALCHEMY_TRANSFORM';
+  readonly reason: 'DRAW_PILE_EMPTY_RECYCLE' | 'ALCHEMY_TRANSFORM';
   readonly cardInstanceIds: readonly CardInstanceId[];
   readonly cardInstanceIdsBefore: readonly CardInstanceId[];
   readonly sourceCardInstanceId: CardInstanceId | null;
@@ -394,6 +417,7 @@ interface MutableResolution {
   chantEntrySequence: number;
   generatedCardSequence: number;
   nextChoiceRequestSequence: number;
+  pendingEffectSequence: number;
   pendingCardChoice: PendingCardChoice | undefined;
   terminalResult: TerminalBattleResultV2 | undefined;
   rngState: number;
@@ -441,6 +465,7 @@ export function createInitialBattleStateV2(
       discard: [],
       exhaust: [],
       statuses: [],
+      pendingEffects: [],
       synthesisCount: 0,
       alchemyStage: 0,
     })),
@@ -448,6 +473,7 @@ export function createInitialBattleStateV2(
     chantEntrySequence: 0,
     generatedCardSequence: 0,
     nextChoiceRequestSequence: 1,
+    pendingEffectSequence: 0,
     pendingCardChoice: undefined,
     terminalResult: undefined,
     rngState: seedToUint32(options.seed),
@@ -473,6 +499,7 @@ export function createInitialBattleStateV2(
     chantEntrySequence: 0,
     generatedCardSequence: 0,
     nextChoiceRequestSequence: 1,
+    pendingEffectSequence: 0,
     pendingCardChoice: undefined,
     terminalResult: undefined,
     lastInputSequence: 0,
@@ -1175,7 +1202,9 @@ function transformHandCard(
     sourceDefinitionId: sourceCard.definitionId,
     sourceDefinitionVersion: sourceCard.definitionVersion,
     from: 'hand',
+    fromZone: 'hand',
     fromIndex: selectedIndex,
+    toZone: 'exhaust',
     toIndex: actor.exhaust.length - 1,
     reason: 'ALCHEMY_TRANSFORM',
     visibility: selected.visibility,
@@ -1250,16 +1279,26 @@ function sealGrimoire(
   const actor = mutable.players[actorIndex]!;
   const selectedIndex = actor.hand.findIndex((card) => card.id === selectedId);
   const selected = actor.hand[selectedIndex]!;
-  const existing = actor.statuses.find((status) => status.id === 'MAGE_GRIMOIRE_SEAL');
-  const statuses = [
-    ...actor.statuses.filter((status) => status.id !== 'MAGE_GRIMOIRE_SEAL'),
-    { id: 'MAGE_GRIMOIRE_SEAL', stacks: (existing?.stacks ?? 0) + 5 },
-  ];
+  const pendingEffect: PendingDefenseEffectV2 = {
+    pendingEffectId: `pending:${String(++mutable.pendingEffectSequence)}`,
+    ownerPlayerId: actor.id,
+    targetPlayerId: actor.id,
+    sourceCardInstanceId: sourceCard.id,
+    sourceDefinitionId: sourceCard.definitionId,
+    sourceDefinitionVersion: sourceCard.definitionVersion,
+    effectType: 'MAGE_GRIMOIRE_SEAL',
+    trigger: 'NEXT_DAMAGE_HIT',
+    expiresOn: 'MATCH_END',
+    createdSequence: mutable.pendingEffectSequence,
+    amount: 5,
+    remainingTriggers: 1,
+    visibility: 'allPlayers',
+  };
   mutable.players[actorIndex] = {
     ...actor,
     hand: removeAt(actor.hand, selectedIndex),
     drawPile: [...actor.drawPile, selected],
-    statuses,
+    pendingEffects: [...actor.pendingEffects, pendingEffect],
   };
   emitter.emit({
     type: 'CARD_MOVED',
@@ -1282,12 +1321,8 @@ function sealGrimoire(
     visibility: selected.visibility,
   });
   emitter.emit({
-    type: 'STATUS_APPLIED',
-    playerId: actor.id,
-    statusId: 'MAGE_GRIMOIRE_SEAL',
-    before: existing?.stacks ?? 0,
-    after: (existing?.stacks ?? 0) + 5,
-    sourceCardInstanceId: sourceCard.id,
+    type: 'PENDING_EFFECT_CREATED',
+    ...pendingEffect,
   });
 }
 
@@ -1368,7 +1403,9 @@ function synthesize(
       sourceDefinitionId: sourceCard.definitionId,
       sourceDefinitionVersion: sourceCard.definitionVersion,
       from: located.zone,
+      fromZone: located.zone,
       fromIndex: currentIndex,
+      toZone: 'exhaust',
       toIndex: player.exhaust.length - 1,
       reason: 'SYNTHESIS',
       visibility: located.card.visibility,
@@ -1518,7 +1555,9 @@ function exhaustGrimoireAndAdvanceWish(
       state.players[actorIndex]!.hand.find((item) => item.id === action.cardInstanceId)
         ?.definitionVersion ?? null,
     from: 'hand',
+    fromZone: 'hand',
     fromIndex: index,
+    toZone: 'exhaust',
     toIndex: actor.exhaust.length - 1,
     reason: 'MAGE_GRIMOIRE_BURN',
     visibility: card.visibility,
@@ -1713,27 +1752,23 @@ function applyDamage(
       ? actorIndex
       : mutable.players.findIndex((player) => player.id !== actor.id && player.hp > 0);
   const defender = mutable.players[targetIndex]!;
-  const seal = defender.statuses.find((status) => status.id === 'MAGE_GRIMOIRE_SEAL');
-  const prevented = Math.min(amount, seal?.stacks ?? 0);
+  const seals = defender.pendingEffects.filter(
+    (effect) => effect.effectType === 'MAGE_GRIMOIRE_SEAL',
+  );
+  const prevented = Math.min(
+    amount,
+    seals.reduce((total, effect) => total + effect.amount, 0),
+  );
   const effectiveAmount = amount - prevented;
-  const statuses =
-    seal === undefined
-      ? defender.statuses
-      : defender.statuses.filter((status) => status.id !== 'MAGE_GRIMOIRE_SEAL');
-  if (seal !== undefined) {
+  if (seals.length > 0) {
     emitter.emit({
       type: 'DAMAGE_PREVENTED',
       targetId: defender.id,
-      statusId: seal.id,
+      pendingEffectIds: seals.map((effect) => effect.pendingEffectId),
       amount: prevented,
     });
-    emitter.emit({
-      type: 'STATUS_CONSUMED',
-      playerId: defender.id,
-      statusId: seal.id,
-      before: seal.stacks,
-      after: 0,
-    });
+    for (const seal of seals)
+      emitter.emit({ type: 'PENDING_EFFECT_CONSUMED', ...seal, remainingTriggers: 0 });
   }
   const blocked = Math.min(defender.block, effectiveAmount);
   const hpDamage = Math.min(defender.hp, effectiveAmount - blocked);
@@ -1751,7 +1786,9 @@ function applyDamage(
     ...defender,
     block: defender.block - blocked,
     hp: defender.hp - hpDamage,
-    statuses,
+    pendingEffects: defender.pendingEffects.filter(
+      (effect) => effect.effectType !== 'MAGE_GRIMOIRE_SEAL',
+    ),
   };
   if (mutable.players.some((player) => player.hp <= 0)) return;
   if (hpDamage > 0) {
@@ -1824,8 +1861,8 @@ function refillDrawPileIfEmpty(
       sourceDefinitionId: null,
       sourceDefinitionVersion: null,
       positionVisibility: 'ownerOnly',
-      reason: 'DRAW_PILE_EMPTY',
-      visibility: 'ownerOnly',
+      reason: 'DRAW_PILE_EMPTY_RECYCLE',
+      visibility: card.visibility,
     });
   }
   const rngStateBefore = mutable.rngState;
@@ -1837,7 +1874,7 @@ function refillDrawPileIfEmpty(
     playerId: player.id,
     ownerPlayerId: player.id,
     pile: 'drawPile',
-    reason: 'DRAW_PILE_EMPTY',
+    reason: 'DRAW_PILE_EMPTY_RECYCLE',
     cardInstanceIds: shuffled.cards.map((card) => card.id),
     cardInstanceIdsBefore: player.discard.map((card) => card.id),
     sourceCardInstanceId: null,
@@ -1898,6 +1935,7 @@ function finishResolution(
     chantEntrySequence: mutable.chantEntrySequence,
     generatedCardSequence: mutable.generatedCardSequence,
     nextChoiceRequestSequence: mutable.nextChoiceRequestSequence,
+    pendingEffectSequence: mutable.pendingEffectSequence,
     pendingCardChoice: mutable.pendingCardChoice,
     terminalResult: mutable.terminalResult,
     rngState: mutable.rngState,
@@ -1909,6 +1947,11 @@ function finishResolution(
   };
   const result = calculateResultV2(next);
   if (result.status !== 'IN_PROGRESS') {
+    for (const player of next.players) {
+      for (const effect of player.pendingEffects) {
+        emitter.emit({ type: 'PENDING_EFFECT_EXPIRED', ...effect, remainingTriggers: 0 });
+      }
+    }
     for (const [queueIndex, entry] of next.chantQueue.entries()) {
       emitter.emit({
         type: 'CHANT_CANCELLED',
@@ -1925,6 +1968,7 @@ function finishResolution(
     emitter.emit({ type: 'MATCH_FINISHED', result });
     next = {
       ...next,
+      players: next.players.map((player) => ({ ...player, pendingEffects: [] })),
       phase: 'MATCH_END',
       chantQueue: [],
       pendingCardChoice: undefined,
@@ -2141,6 +2185,7 @@ function mutableFrom(state: BattleStateV2): MutableResolution {
       discard: [...player.discard],
       exhaust: [...player.exhaust],
       statuses: [...player.statuses],
+      pendingEffects: [...player.pendingEffects],
     })),
     chantQueue: state.chantQueue.map((entry) => ({
       ...entry,
@@ -2149,6 +2194,7 @@ function mutableFrom(state: BattleStateV2): MutableResolution {
     chantEntrySequence: state.chantEntrySequence,
     generatedCardSequence: state.generatedCardSequence,
     nextChoiceRequestSequence: state.nextChoiceRequestSequence,
+    pendingEffectSequence: state.pendingEffectSequence,
     pendingCardChoice: state.pendingCardChoice,
     terminalResult: state.terminalResult,
     rngState: state.rngState,

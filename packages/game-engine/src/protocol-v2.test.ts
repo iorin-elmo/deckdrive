@@ -379,7 +379,13 @@ describe('battle protocol 2 special victory routes', () => {
       }),
     );
     expect(state.players[0]!.drawPile.at(-1)?.id).toBe('book');
-    expect(state.players[0]!.statuses).toContainEqual({ id: 'MAGE_GRIMOIRE_SEAL', stacks: 5 });
+    expect(state.players[0]!.pendingEffects).toContainEqual(
+      expect.objectContaining({
+        pendingEffectId: 'pending:1',
+        sourceCardInstanceId: 'seal',
+        remainingTriggers: 1,
+      }),
+    );
     state = apply(state, client(2, { type: 'END_TURN', playerId: playerOne }));
     state = apply(
       state,
@@ -389,9 +395,16 @@ describe('battle protocol 2 special victory routes', () => {
         cardInstanceId: 'attack' as CardInstanceId,
       }),
     );
-    expect(state.players[0]).toMatchObject({ hp: 30, statuses: [] });
+    expect(state.players[0]).toMatchObject({ hp: 30, pendingEffects: [] });
     expect(state.events).toContainEqual(
       expect.objectContaining({ type: 'DAMAGE_PREVENTED', amount: 1 }),
+    );
+    expect(state.events).toContainEqual(
+      expect.objectContaining({
+        type: 'PENDING_EFFECT_CONSUMED',
+        pendingEffectId: 'pending:1',
+        sourceCardInstanceId: 'seal',
+      }),
     );
   });
 
@@ -509,7 +522,7 @@ describe('battle protocol 2 special victory routes', () => {
     );
     expect(state.pendingCardChoice?.candidateIds).toEqual(['candidate']);
     expect(state.events).toContainEqual(
-      expect.objectContaining({ type: 'DECK_SHUFFLED', reason: 'DRAW_PILE_EMPTY' }),
+      expect.objectContaining({ type: 'DECK_SHUFFLED', reason: 'DRAW_PILE_EMPTY_RECYCLE' }),
     );
   });
 
@@ -598,7 +611,7 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.events).toContainEqual(expect.objectContaining({ type: 'DECK_SHUFFLED' }));
     expect(
       state.events.filter(
-        (event) => event.type === 'CARD_MOVED' && event.reason === 'DRAW_PILE_EMPTY',
+        (event) => event.type === 'CARD_MOVED' && event.reason === 'DRAW_PILE_EMPTY_RECYCLE',
       ),
     ).toEqual([
       expect.objectContaining({
@@ -607,6 +620,7 @@ describe('battle protocol 2 special victory routes', () => {
         fromIndex: 0,
         to: 'drawPile',
         toIndex: 0,
+        visibility: 'allPlayers',
       }),
       expect.objectContaining({
         cardInstanceId: 'discard-b',
@@ -614,6 +628,7 @@ describe('battle protocol 2 special victory routes', () => {
         fromIndex: 1,
         to: 'drawPile',
         toIndex: 1,
+        visibility: 'allPlayers',
       }),
       expect.objectContaining({
         cardInstanceId: 'energy',
@@ -625,6 +640,7 @@ describe('battle protocol 2 special victory routes', () => {
     ]);
     const shuffle = state.events.find((event) => event.type === 'DECK_SHUFFLED');
     expect(shuffle).toMatchObject({
+      reason: 'DRAW_PILE_EMPTY_RECYCLE',
       cardInstanceIds: expect.arrayContaining(['discard-a', 'discard-b', 'energy']),
       rngStateBefore: rngStateBeforeShuffle,
       rngStateAfter: state.rngState,
