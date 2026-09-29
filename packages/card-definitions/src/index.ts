@@ -585,7 +585,7 @@ export const specialVictoryCardDefinitions: readonly CardDefinition[] = [
     description: 'Deal 2 damage. Red synthesis material.',
     translations: { ja: { name: '赤の試薬', description: '2ダメージ。赤の合成素材。' } },
     effects: [{ type: 'DAMAGE', amount: 2, target: 'ENEMY' }],
-    keywords: ['material', 'reagent:red'],
+    keywords: ['material', 'reagent', 'reagent:red'],
     artwork: null,
     deckLimit: 3,
   },
@@ -600,7 +600,7 @@ export const specialVictoryCardDefinitions: readonly CardDefinition[] = [
     description: 'Gain 3 block. Blue synthesis material.',
     translations: { ja: { name: '青の試薬', description: '3ブロック。青の合成素材。' } },
     effects: [{ type: 'GAIN_BLOCK', amount: 3, target: 'SELF' }],
-    keywords: ['material', 'reagent:blue'],
+    keywords: ['material', 'reagent', 'reagent:blue'],
     artwork: null,
     deckLimit: 3,
   },
@@ -630,7 +630,7 @@ export const specialVictoryCardDefinitions: readonly CardDefinition[] = [
     description: 'Heal 2. White synthesis material.',
     translations: { ja: { name: '白の試薬', description: '2回復。白の合成素材。' } },
     effects: [{ type: 'HEAL', amount: 2, target: 'SELF' }],
-    keywords: ['material', 'reagent:white'],
+    keywords: ['material', 'reagent', 'reagent:white'],
     artwork: null,
     deckLimit: 3,
   },
@@ -917,6 +917,9 @@ export function validateCardDefinition(card: unknown): CardDefinitionValidationR
       errors.push({ code: 'MISSING_EFFECT', message: 'Card must define at least one effect.' });
     }
 
+    if (!isDense(card.effects)) {
+      errors.push({ code: 'INVALID_EFFECT', message: 'Card effects must not be sparse.' });
+    }
     for (const effect of card.effects) {
       if (!isValidCardEffect(effect)) {
         errors.push({ code: 'INVALID_EFFECT', message: 'Card effect is not supported.' });
@@ -964,6 +967,7 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
           (Number.isSafeInteger(value.damageDelay) && (value.damageDelay as number) >= 0)) &&
         Array.isArray(value.completionEffects) &&
         value.completionEffects.length > 0 &&
+        isDense(value.completionEffects) &&
         value.completionEffects.every(isValidCardEffect)
       );
     case 'ADVANCE_CHANT':
@@ -1044,6 +1048,13 @@ export function validateCardDefinitions(cards: unknown): CardDefinitionValidatio
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isDense(values: readonly unknown[]): boolean {
+  for (let index = 0; index < values.length; index += 1) {
+    if (!(index in values)) return false;
+  }
+  return true;
 }
 
 function invalidDefinitionResult(

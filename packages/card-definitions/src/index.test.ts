@@ -68,6 +68,26 @@ describe('card-definition public contracts', () => {
     expect(specialVictoryCardDefinitions.every((card) => card.version === '1.0.0')).toBe(true);
     expect(specialVictoryCardDefinitions.some((card) => card.id === 'mage_017')).toBe(true);
     expect(specialVictoryCardDefinitions.some((card) => card.id === 'alchemist_017')).toBe(true);
+    for (const [id, color] of [
+      ['alchemist_001', 'red'],
+      ['alchemist_002', 'blue'],
+      ['alchemist_004', 'white'],
+    ]) {
+      expect(specialVictoryCardDefinitions.find((card) => card.id === id)?.keywords).toEqual(
+        expect.arrayContaining(['material', 'reagent', `reagent:${color}`]),
+      );
+    }
+  });
+
+  it('rejects sparse completion effects before card serialization', () => {
+    const sparseChant = {
+      ...specialVictoryCardDefinitions.find((card) => card.id === 'mage_017')!,
+      effects: [{ type: 'START_CHANT', countdown: 1, completionEffects: new Array(1) }],
+    };
+    expect(validateCardDefinition(sparseChant)).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
   });
 
   it('keeps the development database fixture aligned with the canonical catalog', async () => {
