@@ -2,6 +2,7 @@ import {
   basicCardDefinitions,
   maximumCardCopies,
   packCardDefinitions,
+  specialVictoryCardDefinitions,
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 import { openPack, type PackCard } from '@deck-drive/pack-engine';
@@ -78,6 +79,8 @@ export interface BattlePlayer {
   readonly block: number;
   readonly hand: readonly { readonly id: string; readonly definitionId: string }[];
   readonly statuses: readonly { readonly id: string; readonly stacks: number }[];
+  readonly synthesisCount?: number;
+  readonly alchemyStage?: 0 | 1 | 2 | 3;
 }
 
 export interface BattleState {
@@ -86,6 +89,12 @@ export interface BattleState {
   readonly turn: number;
   readonly phase: string;
   readonly players: readonly BattlePlayer[];
+  readonly chantQueue?: readonly {
+    readonly chantEntryId: string;
+    readonly ownerPlayerId: string;
+    readonly sourceDefinitionId: string;
+    readonly remaining: number;
+  }[];
 }
 
 export interface CpuMatch {
@@ -378,13 +387,15 @@ function csrfToken(): string | undefined {
   }
 }
 
-const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
-  (definition) => ({
-    cardId: definition.id,
-    version: definition.version,
-    definition,
-  }),
-);
+const previewCards: readonly CardSummary[] = [
+  ...basicCardDefinitions,
+  ...packCardDefinitions,
+  ...specialVictoryCardDefinitions,
+].map((definition) => ({
+  cardId: definition.id,
+  version: definition.version,
+  definition,
+}));
 
 const previewDeckSize = 30;
 

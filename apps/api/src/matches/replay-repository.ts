@@ -1,5 +1,17 @@
-import { replayFormatVersion, verifyReplay } from '@deck-drive/game-engine';
-import type { CardDefinition, Replay } from '@deck-drive/game-engine';
+import {
+  calculateDraftDefinitionRevision,
+  replayFormatVersion,
+  replayFormatVersionV2,
+  verifyReplay,
+  verifyReplayV2,
+} from '@deck-drive/game-engine';
+import type {
+  CardDefinition,
+  CardDefinitionV2,
+  Replay,
+  ReplayV2,
+  ServerCommandAuthorizer,
+} from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 
 export class ReplayNotFoundError extends Error {
@@ -23,22 +35,20 @@ export class UnsupportedReplayFormatError extends ReplayPersistenceError {
   }
 }
 
-/** Keeps database access outside the deterministic game engine. */
+/** Keeps database access and trusted command authorization outside the deterministic game engine. */
 export class MatchReplayRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly authorizeServerCommand: ServerCommandAuthorizer = () => false,
+  ) {}
 
-  async save(replay: Replay): Promise<void> {
+  async save(replay: Replay | ReplayV2): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
       const definitions = await this.loadCardDefinitions(
         replay.cardDataVersion,
         transaction.cardVersion,
       );
-      const verification = verifyReplay(replay, definitions);
-      if (!verification.ok) {
-        throw new ReplayPersistenceError(
-          `Cannot persist an invalid replay: ${verification.error.message}`,
-        );
-      }
+      this.assertValidReplay(replay, definitions);
 
       await transaction.match.create({
         data: {
@@ -48,6 +58,10 @@ export class MatchReplayRepository {
           rulesVersion: replay.rulesVersion,
           cardDataVersion: replay.cardDataVersion,
           formatVersion: replay.formatVersion,
+          battleProtocolVersion:
+            replay.formatVersion === replayFormatVersionV2 ? replay.battleProtocolVersion : null,
+          draftDefinitionRevision:
+            replay.formatVersion === replayFormatVersionV2 ? replay.draftDefinitionRevision : null,
           snapshotInterval: replay.snapshotInterval,
           seed: replay.seed,
           initialState: asInputJson(replay.initialState),
@@ -57,14 +71,33 @@ export class MatchReplayRepository {
         },
       });
 
-      for (const [index, action] of replay.actions.entries()) {
+      const actions =
+        replay.formatVersion === replayFormatVersion
+          ? replay.actions.map((payload, index) => ({ sequence: index + 1, payload }))
+          : replay.actions.map((record) => ({
+              sequence: record.inputSequence,
+              payload: record.payload,
+            }));
+      for (const action of actions) {
         await transaction.matchAction.create({
           data: {
             matchId: replay.matchId,
-            sequence: index + 1,
-            action: asInputJson(action),
+            sequence: action.sequence,
+            action: asInputJson(action.payload),
           },
         });
+      }
+
+      if (replay.formatVersion === replayFormatVersionV2) {
+        for (const command of replay.serverCommands) {
+          await transaction.matchServerCommand.create({
+            data: {
+              matchId: replay.matchId,
+              sequence: command.inputSequence,
+              command: asInputJson(command.payload),
+            },
+          });
+        }
       }
 
       for (const event of replay.events) {
@@ -77,30 +110,49 @@ export class MatchReplayRepository {
         });
       }
 
-      for (const snapshot of replay.snapshots) {
-        await transaction.matchSnapshot.create({
-          data: {
-            matchId: replay.matchId,
-            actionIndex: snapshot.actionIndex,
-            eventSequence: snapshot.eventSequence,
-            state: asInputJson(snapshot.state),
-          },
-        });
+      if (replay.formatVersion === replayFormatVersion) {
+        for (const snapshot of replay.snapshots) {
+          await transaction.matchSnapshot.create({
+            data: {
+              matchId: replay.matchId,
+              actionIndex: snapshot.actionIndex,
+              inputSequence: null,
+              eventSequence: snapshot.eventSequence,
+              state: asInputJson(snapshot.state),
+            },
+          });
+        }
+      } else {
+        for (const snapshot of replay.snapshots) {
+          await transaction.matchSnapshot.create({
+            data: {
+              matchId: replay.matchId,
+              actionIndex: null,
+              inputSequence: snapshot.inputSequence,
+              eventSequence: snapshot.eventSequence,
+              state: asInputJson(snapshot.state),
+            },
+          });
+        }
       }
     });
   }
 
-  async load(matchId: string): Promise<Replay> {
+  async load(matchId: string): Promise<Replay | ReplayV2> {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       include: {
         actions: { orderBy: { sequence: 'asc' } },
+        serverCommands: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
-        snapshots: { orderBy: { actionIndex: 'asc' } },
+        snapshots: true,
       },
     });
     if (match === null) throw new ReplayNotFoundError(matchId);
-    if (match.formatVersion !== replayFormatVersion) {
+    if (
+      match.formatVersion !== replayFormatVersion &&
+      match.formatVersion !== replayFormatVersionV2
+    ) {
       throw new UnsupportedReplayFormatError(match.formatVersion);
     }
     if (match.finalState === null || match.checksum === null) {
@@ -111,39 +163,90 @@ export class MatchReplayRepository {
       match.cardDataVersion,
       this.prisma.cardVersion,
     );
-    const replay = {
-      formatVersion: match.formatVersion,
+    const common = {
       matchId: match.id,
       engineVersion: match.engineVersion,
       rulesVersion: match.rulesVersion,
       cardDataVersion: match.cardDataVersion,
       seed: match.seed,
       initialState: match.initialState,
-      actions: match.actions.map((action) => action.action),
       events: match.events.map((event) => event.event),
-      snapshots: match.snapshots.map((snapshot) => ({
-        actionIndex: snapshot.actionIndex,
-        eventSequence: snapshot.eventSequence,
-        state: snapshot.state,
-      })),
       finalState: match.finalState,
       snapshotInterval: match.snapshotInterval,
       checksum: match.checksum,
-    } as unknown as Replay;
+    };
 
-    const verification = verifyReplay(replay, definitions);
+    let replay: Replay | ReplayV2;
+    if (match.formatVersion === replayFormatVersion) {
+      replay = {
+        ...common,
+        formatVersion: replayFormatVersion,
+        actions: match.actions.map((action) => action.action),
+        snapshots: match.snapshots
+          .filter((snapshot) => snapshot.actionIndex !== null)
+          .sort((left, right) => left.actionIndex! - right.actionIndex!)
+          .map((snapshot) => ({
+            actionIndex: snapshot.actionIndex!,
+            eventSequence: snapshot.eventSequence,
+            state: snapshot.state,
+          })),
+      } as unknown as Replay;
+    } else {
+      if (match.battleProtocolVersion !== 2 || match.draftDefinitionRevision === null) {
+        throw new ReplayPersistenceError(`Persisted replay ${matchId} is missing V2 metadata.`);
+      }
+      replay = {
+        ...common,
+        formatVersion: replayFormatVersionV2,
+        battleProtocolVersion: 2,
+        draftDefinitionRevision: match.draftDefinitionRevision,
+        actions: match.actions.map((action) => ({
+          inputSequence: action.sequence,
+          payload: action.action,
+        })),
+        serverCommands: match.serverCommands.map((command) => ({
+          inputSequence: command.sequence,
+          payload: command.command,
+        })),
+        snapshots: match.snapshots
+          .filter((snapshot) => snapshot.inputSequence !== null)
+          .sort((left, right) => left.inputSequence! - right.inputSequence!)
+          .map((snapshot) => ({
+            inputSequence: snapshot.inputSequence!,
+            eventSequence: snapshot.eventSequence,
+            state: snapshot.state,
+          })),
+      } as unknown as ReplayV2;
+    }
+
+    this.assertValidReplay(replay, definitions);
+    return replay;
+  }
+
+  private assertValidReplay(
+    replay: Replay | ReplayV2,
+    definitions: readonly CardDefinitionV2[],
+  ): void {
+    const verification =
+      replay.formatVersion === replayFormatVersion
+        ? verifyReplay(replay, definitions as readonly CardDefinition[])
+        : verifyReplayV2(
+            replay,
+            (revision) =>
+              calculateDraftDefinitionRevision(definitions) === revision ? definitions : undefined,
+            this.authorizeServerCommand,
+          );
     if (!verification.ok) {
       throw new ReplayPersistenceError(
-        `Persisted replay ${matchId} cannot be reconstructed: ${verification.error.message}`,
+        `Cannot persist or reconstruct an invalid replay: ${verification.error.message}`,
       );
     }
-    return replay;
   }
 
   private async loadCardDefinitions(
     cardDataVersion: string,
     cardVersion: Pick<PrismaClient['cardVersion'], 'findMany'>,
-  ): Promise<readonly CardDefinition[]> {
+  ): Promise<readonly CardDefinitionV2[]> {
     const versions = await cardVersion.findMany({
       where: { version: cardDataVersion },
       orderBy: { cardId: 'asc' },
@@ -167,11 +270,13 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-function isCardDefinition(value: unknown): value is CardDefinition {
+function isCardDefinition(value: unknown): value is CardDefinitionV2 {
   if (!isRecord(value) || !Array.isArray(value.effects)) return false;
   return (
     typeof value.id === 'string' &&
     value.id.length > 0 &&
+    typeof value.version === 'string' &&
+    value.version.length > 0 &&
     isNonNegativeInteger(value.cost) &&
     value.effects.length > 0 &&
     value.effects.every(isCardEffect)
@@ -188,7 +293,48 @@ function isCardEffect(value: unknown): boolean {
     case 'HEAL':
     case 'GAIN_BLOCK':
     case 'DRAW':
+    case 'GAIN_ENERGY':
       return isPositiveInteger(value.amount) && value.target === 'SELF';
+    case 'START_CHANT':
+      return (
+        isPositiveInteger(value.countdown) &&
+        (value.damageDelay === undefined || isNonNegativeInteger(value.damageDelay)) &&
+        Array.isArray(value.completionEffects) &&
+        value.completionEffects.length > 0 &&
+        value.completionEffects.every(isCardEffect)
+      );
+    case 'ADVANCE_CHANT':
+      return (
+        isPositiveInteger(value.amount) &&
+        (value.drawOnComplete === undefined || typeof value.drawOnComplete === 'boolean')
+      );
+    case 'EXHAUST_GRIMOIRE_ADVANCE_WISH':
+      return isPositiveInteger(value.amount);
+    case 'RESOLVE_ALL_CHANTS':
+      return isNonNegativeInteger(value.blockPerChant);
+    case 'GAIN_BLOCK_PER_CHANT':
+      return isPositiveInteger(value.amount);
+    case 'SYNTHESIZE':
+      return ['NORMAL', 'SAGE_RECIPE', 'COMPLETE_REACTION', 'ALL_MATERIALS'].includes(
+        String(value.mode),
+      );
+    case 'DRAW_SYNTHESIS_COUNT':
+      return isPositiveInteger(value.maximum);
+    case 'SET_ALCHEMY_STAGE':
+      return value.requiredStage === 1 && value.stage === 3;
+    case 'SPECIAL_VICTORY':
+      return (
+        (value.specialVictoryId === 'MAGE_GRAND_WISH' ||
+          value.specialVictoryId === 'ALCHEMY_SAGE_STONE') &&
+        (value.requiredAlchemyStage === undefined || value.requiredAlchemyStage === 3)
+      );
+    case 'REQUEST_CARD_CHOICE':
+      return (
+        value.from === 'DRAW_PILE' &&
+        (value.maximumCost === undefined || isNonNegativeInteger(value.maximumCost))
+      );
+    case 'TRANSFORM_HAND_CARD':
+      return true;
     case 'CUSTOM':
       return (
         typeof value.resolver === 'string' &&
@@ -201,11 +347,11 @@ function isCardEffect(value: unknown): boolean {
 }
 
 function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

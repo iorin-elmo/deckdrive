@@ -41,3 +41,34 @@ For this Engine change, these applicable §110 checks are complete:
 Replay regression remains pending for R00/R02, when the replay format and
 fixtures exist. It is a required Game Engine check and is not satisfied by this
 Phase 1 change.
+
+## Battle protocol 2
+
+Issue #51 adds protocol 2 without changing the frozen protocol 1 contracts.
+Callers create `BattleStateV2` with `createInitialBattleStateV2` and submit only
+server-sequenced `BattleInput` values to `applyBattleInputV2`. Client actions and
+trusted server commands share one contiguous `inputSequence`; clients cannot
+choose that value or call the server-command transport.
+
+Protocol 2 owns these additional deterministic state values:
+
+- versioned card instances, an exhaust zone, and deterministic discard reshuffling;
+- energy that card effects may raise above `maxEnergy`;
+- a public ordered `chantQueue` whose entries are countdown state, not cards;
+- per-player `synthesisCount` and `alchemyStage`;
+- generated-card, chant-entry, choice-request, event, and input sequences;
+- pending card-choice state without wall-clock timestamps;
+- an explicit terminal reason and special-victory identifier.
+
+HP termination is checked before special victory. `MAGE_GRAND_WISH` resolves
+from the chant queue, while `ALCHEMY_SAGE_STONE` requires stage 3. A legal
+synthesis with no recipe consumes its selected materials, increments
+`synthesisCount`, and grants 2 block. Percentage helpers and odd divisions use
+`Math.floor` semantics through `applyPercentageFloor`.
+
+`recordReplayV2` and `verifyReplayV2` bind the complete input sequence to
+`formatVersion: 2`, `battleProtocolVersion: 2`, an immutable SHA-256 card
+definition revision, input-boundary snapshots, events, and final state. The API
+repository dispatches by format version and persists server commands separately
+from player actions. Format 1 continues to use `recordReplay` / `verifyReplay`,
+action-index snapshots, and its existing schema.

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   basicCardDefinitions,
   maximumCardCopies,
+  specialVictoryCardDefinitions,
   validateCardDefinition,
   validateCardDefinitions,
 } from './index.js';
@@ -62,6 +63,13 @@ describe('card-definition public contracts', () => {
     expect(basicCardDefinitions.every((card) => card.deckLimit === maximumCardCopies)).toBe(true);
   });
 
+  it('provides valid version 1.0.0 cards for both special-victory routes', () => {
+    expect(validateCardDefinitions(specialVictoryCardDefinitions)).toEqual({ ok: true });
+    expect(specialVictoryCardDefinitions.every((card) => card.version === '1.0.0')).toBe(true);
+    expect(specialVictoryCardDefinitions.some((card) => card.id === 'mage_017')).toBe(true);
+    expect(specialVictoryCardDefinitions.some((card) => card.id === 'alchemist_017')).toBe(true);
+  });
+
   it('keeps the development database fixture aligned with the canonical catalog', async () => {
     const fixtureUrl = new URL(
       '../../../tests/fixtures/database/development-seed.json',
@@ -106,6 +114,12 @@ describe('card-definition public contracts', () => {
       ok: false,
       errors: expect.arrayContaining([expect.objectContaining({ code: 'DUPLICATE_ID' })]),
     });
+    expect(
+      validateCardDefinitions([
+        basicCardDefinitions[0]!,
+        { ...basicCardDefinitions[0]!, version: '2.0.0' },
+      ]),
+    ).toEqual({ ok: true });
   });
 
   it('rejects non-semver versions, invalid rarities, and malformed effects', () => {

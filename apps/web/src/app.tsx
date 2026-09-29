@@ -1529,6 +1529,29 @@ function BattleBoard({
           <p className="eyebrow">{t('battleField')}</p>
           <div className="battle-ring" aria-hidden="true" />
           <p className="mt-4 text-center text-sm text-stone-300">{t('battleFieldDescription')}</p>
+          {(state.chantQueue?.length ?? 0) > 0 ? (
+            <div className="mt-5" aria-label={t('chantQueue')}>
+              <p className="text-center text-xs font-bold uppercase tracking-widest text-violet-200">
+                {t('chantQueue')}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {state.chantQueue?.map((entry) => (
+                  <li
+                    className="rounded-lg border border-violet-300/25 bg-violet-950/45 px-3 py-2 text-xs"
+                    key={entry.chantEntryId}
+                  >
+                    <span className="font-semibold text-violet-100">
+                      {entry.sourceDefinitionId}
+                    </span>{' '}
+                    <span className="text-stone-300">
+                      {t('chantRemaining').replace('{count}', String(entry.remaining))}
+                    </span>
+                    <span className="block text-stone-500">{entry.ownerPlayerId}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
         <Combatant label={t('you')} player={player} tone="player" />
       </section>
@@ -1620,6 +1643,13 @@ function Combatant({
           {player.statuses
             .map((status) => `${localizeValue(status.id, locale)} x${String(status.stacks)}`)
             .join(', ')}
+        </p>
+      ) : null}
+      {player.alchemyStage !== undefined || player.synthesisCount !== undefined ? (
+        <p className="mt-4 text-xs text-amber-100">
+          {t('alchemyProgress')
+            .replace('{stage}', String(player.alchemyStage ?? 0))
+            .replace('{count}', String(player.synthesisCount ?? 0))}
         </p>
       ) : null}
     </article>

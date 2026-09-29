@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
-import { createInitialBattleState } from '@deck-drive/game-engine';
-import type { CardDefinition, CardInstance, MatchId, PlayerId } from '@deck-drive/game-engine';
+import { createInitialBattleState, projectBattleStateV2 } from '@deck-drive/game-engine';
+import type {
+  BattleStateV2,
+  CardDefinition,
+  CardInstance,
+  MatchId,
+  PlayerId,
+} from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import {
   DevelopmentAuthenticationDisabledError,
@@ -621,7 +627,17 @@ export class ApiApplication {
     });
     return match === null
       ? { status: 404, body: { error: 'MATCH_NOT_FOUND' } }
-      : { status: 200, body: match };
+      : {
+          status: 200,
+          body: {
+            ...match,
+            initialState: projectStoredBattleState(match.initialState, playerId),
+            finalState:
+              match.finalState === null
+                ? null
+                : projectStoredBattleState(match.finalState, playerId),
+          },
+        };
   }
 
   private async validateOwnedDeck(
@@ -749,6 +765,18 @@ export class ApiApplication {
       return { status: 404, body: { error: 'NOT_FOUND' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };
   }
+}
+
+function projectStoredBattleState(value: Prisma.JsonValue, viewerId: string): unknown {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    value.battleProtocolVersion === 2
+  ) {
+    return projectBattleStateV2(value as unknown as BattleStateV2, viewerId as PlayerId);
+  }
+  return value;
 }
 
 class UnauthorizedError extends Error {}
