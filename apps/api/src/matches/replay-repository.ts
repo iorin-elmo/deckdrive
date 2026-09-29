@@ -1,5 +1,6 @@
 import {
   calculateDraftDefinitionRevision,
+  isValidCardDefinitionV2,
   replayFormatVersion,
   replayFormatVersionV2,
   verifyReplay,
@@ -42,13 +43,15 @@ export class MatchReplayRepository {
     private readonly authorizeServerCommand?: ServerCommandAuthorizer,
   ) {}
 
-  async save(replay: Replay | ReplayV2): Promise<void> {
+  async save(
+    replay: Replay | ReplayV2,
+    definitionSnapshot?: readonly CardDefinitionV2[],
+  ): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
-      const definitions = await this.loadCardDefinitions(
-        replay.cardDataVersion,
-        transaction.cardVersion,
-        replay.formatVersion === replayFormatVersionV2,
-      );
+      const definitions =
+        replay.formatVersion === replayFormatVersionV2
+          ? await this.resolveDefinitionsForSave(replay, transaction, definitionSnapshot)
+          : await this.loadCardDefinitions(replay.cardDataVersion, transaction.cardVersion, false);
       this.assertValidReplay(replay, definitions);
 
       if (replay.formatVersion === replayFormatVersionV2) {
@@ -148,6 +151,27 @@ export class MatchReplayRepository {
         }
       }
     });
+  }
+
+  private async resolveDefinitionsForSave(
+    replay: ReplayV2,
+    transaction: Pick<PrismaClient, 'cardVersion' | 'replayDefinitionSnapshot'>,
+    supplied?: readonly CardDefinitionV2[],
+  ): Promise<readonly CardDefinitionV2[]> {
+    const stored = await transaction.replayDefinitionSnapshot.findUnique({
+      where: { revision: replay.draftDefinitionRevision },
+    });
+    if (stored !== null)
+      return this.validateDefinitionSnapshot(replay.draftDefinitionRevision, stored.definitions);
+    if (supplied !== undefined) {
+      return this.validateDefinitionSnapshot(replay.draftDefinitionRevision, supplied);
+    }
+    const current = await this.loadCardDefinitions(
+      replay.cardDataVersion,
+      transaction.cardVersion,
+      true,
+    );
+    return this.validateDefinitionSnapshot(replay.draftDefinitionRevision, current);
   }
 
   async load(matchId: string): Promise<Replay | ReplayV2> {
@@ -289,10 +313,9 @@ export class MatchReplayRepository {
       );
     }
     return versions.map(({ definition }) => {
-      if (!isCardDefinition(definition, requireVersion)) {
-        throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
-      }
-      return definition;
+      if (requireVersion && isCardDefinitionV2(definition)) return definition;
+      if (!requireVersion && isCardDefinition(definition, false)) return definition;
+      throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
     });
   }
 
@@ -301,20 +324,36 @@ export class MatchReplayRepository {
     snapshot: Pick<PrismaClient['replayDefinitionSnapshot'], 'findUnique'>,
   ): Promise<readonly CardDefinitionV2[]> {
     const stored = await snapshot.findUnique({ where: { revision } });
-    if (stored === null || !Array.isArray(stored.definitions)) {
+    if (stored === null) {
       throw new ReplayPersistenceError(
         `No immutable card definition snapshot exists for revision ${revision}.`,
       );
     }
-    const definitions = stored.definitions.map((definition) => {
+    return this.validateDefinitionSnapshot(revision, stored.definitions);
+  }
+
+  private validateDefinitionSnapshot(
+    revision: string,
+    candidate: unknown,
+  ): readonly CardDefinitionV2[] {
+    if (!Array.isArray(candidate) || !isDense(candidate)) {
+      throw new ReplayPersistenceError('Stored card definition snapshot is not a dense array.');
+    }
+    const definitions = candidate.map((definition) => {
       if (!isCardDefinitionV2(definition)) {
         throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
       }
       return definition;
     });
-    if (calculateDraftDefinitionRevision(definitions) !== revision) {
+    let calculated: string;
+    try {
+      calculated = calculateDraftDefinitionRevision(definitions);
+    } catch {
+      throw new ReplayPersistenceError('Stored card definition snapshot cannot be canonicalized.');
+    }
+    if (calculated !== revision) {
       throw new ReplayPersistenceError(
-        `Stored card definition snapshot does not match revision ${revision}.`,
+        `The immutable card definition snapshot does not match revision ${revision}.`,
       );
     }
     return definitions;
@@ -329,7 +368,7 @@ function isCardDefinition(
   value: unknown,
   requireVersion: boolean,
 ): value is CardDefinition | CardDefinitionV2 {
-  if (!isRecord(value) || !Array.isArray(value.effects)) return false;
+  if (!isRecord(value) || !Array.isArray(value.effects) || !isDense(value.effects)) return false;
   return (
     typeof value.id === 'string' &&
     value.id.length > 0 &&
@@ -341,7 +380,7 @@ function isCardDefinition(
 }
 
 function isCardDefinitionV2(value: unknown): value is CardDefinitionV2 {
-  return isRecord(value) && isCardDefinition(value, true);
+  return isValidCardDefinitionV2(value);
 }
 
 function isCardEffect(value: unknown): boolean {
@@ -362,6 +401,7 @@ function isCardEffect(value: unknown): boolean {
         (value.damageDelay === undefined || isNonNegativeInteger(value.damageDelay)) &&
         Array.isArray(value.completionEffects) &&
         value.completionEffects.length > 0 &&
+        isDense(value.completionEffects) &&
         value.completionEffects.every(isChantCompletionEffect)
       );
     case 'ADVANCE_CHANT':
@@ -429,4 +469,11 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isDense(values: readonly unknown[]): boolean {
+  for (let index = 0; index < values.length; index++) {
+    if (!(index in values)) return false;
+  }
+  return true;
 }

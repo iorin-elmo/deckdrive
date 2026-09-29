@@ -635,7 +635,7 @@ function playCard(
       'The exact card definition version is unavailable.',
     );
   }
-  if (!isValidDefinition(definition)) {
+  if (!isValidCardDefinitionV2(definition)) {
     return failure(state, 'INVALID_CARD_DEFINITION', 'The card definition is malformed.');
   }
   const choiceError = validatePlayChoices(state, playerIndex, action, definition, definitions);
@@ -2275,16 +2275,26 @@ function resolveAnyCurrentDefinition(
   return undefined;
 }
 
-function isValidDefinition(value: CardDefinitionV2): boolean {
+export function isValidCardDefinitionV2(value: unknown): value is CardDefinitionV2 {
   return (
+    isRecord(value) &&
     typeof value.id === 'string' &&
     value.id.length > 0 &&
     typeof value.version === 'string' &&
     value.version.length > 0 &&
     isNonNegativeInteger(value.cost) &&
+    (value.class === undefined || typeof value.class === 'string') &&
+    (value.keywords === undefined ||
+      (Array.isArray(value.keywords) &&
+        isDense(value.keywords) &&
+        value.keywords.every((keyword) => typeof keyword === 'string'))) &&
+    (value.deckLimit === undefined ||
+      value.deckLimit === null ||
+      isNonNegativeInteger(value.deckLimit)) &&
     Array.isArray(value.effects) &&
     value.effects.length > 0 &&
-    value.effects.every((effect, index) => index in value.effects && isValidEffect(effect))
+    isDense(value.effects) &&
+    value.effects.every(isValidEffect)
   );
 }
 

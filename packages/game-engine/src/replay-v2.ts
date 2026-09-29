@@ -2,6 +2,7 @@ import {
   applyBattleInputV2,
   battleProtocolVersion,
   createInitialBattleStateV2,
+  isValidCardDefinitionV2,
 } from './protocol-v2.js';
 import type {
   BattleInput,
@@ -633,11 +634,7 @@ function validateDefinitionSnapshot(definitions: readonly CardDefinitionV2[]): v
     throw new TypeError('Definition snapshot must be a dense array.');
   const keys = new Set<string>();
   for (const definition of definitions) {
-    if (
-      !isRecord(definition) ||
-      typeof definition.id !== 'string' ||
-      typeof definition.version !== 'string'
-    )
+    if (!isValidCardDefinitionV2(definition))
       throw new TypeError('Definition snapshot contains a malformed definition.');
     const key = `${definition.id}\u0000${definition.version}`;
     if (keys.has(key))

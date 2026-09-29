@@ -253,7 +253,10 @@ describe('MatchReplayRepository', () => {
       matchServerCommand: { create: createCommand },
       matchEvent: { create: createEvent },
       matchSnapshot: { create: createSnapshot },
-      replayDefinitionSnapshot: { upsert: upsertDefinitionSnapshot },
+      replayDefinitionSnapshot: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: upsertDefinitionSnapshot,
+      },
     };
     const prisma = {
       $transaction: vi.fn((callback) => callback(transaction)),

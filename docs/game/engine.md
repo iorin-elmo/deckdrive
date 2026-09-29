@@ -72,6 +72,9 @@ definition revision, input-boundary snapshots, events, and final state. The API
 repository dispatches by format version and persists server commands separately
 from player actions. It stores the exact protocol-2 definition set as an immutable
 revision-keyed snapshot, so later draft additions cannot invalidate old replays.
+When saving V2, the repository uses an existing immutable revision first. For a
+new revision, the recorder can pass its exact definition snapshot to `save`;
+the current catalog is used only when its calculated revision still matches.
 Format 1 continues to use `recordReplay` / `verifyReplay`,
 action-index snapshots, and its existing schema.
 
