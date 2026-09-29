@@ -993,9 +993,9 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
       return value.requiredStage === 1 && value.stage === 3;
     case 'SPECIAL_VICTORY':
       return (
-        (value.specialVictoryId === 'MAGE_GRAND_WISH' ||
-          value.specialVictoryId === 'ALCHEMY_SAGE_STONE') &&
-        (value.requiredAlchemyStage === undefined || value.requiredAlchemyStage === 3)
+        (value.specialVictoryId === 'MAGE_GRAND_WISH' &&
+          value.requiredAlchemyStage === undefined) ||
+        (value.specialVictoryId === 'ALCHEMY_SAGE_STONE' && value.requiredAlchemyStage === 3)
       );
     case 'REQUEST_CARD_CHOICE':
       return (

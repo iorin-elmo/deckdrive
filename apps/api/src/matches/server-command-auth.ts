@@ -9,20 +9,30 @@ import { matchesSignature, sign } from '../auth/crypto.js';
 const minimumSecretLength = 32;
 
 export function createServerCommandAuthorizer(secret: string): ServerCommandAuthorizer {
-  assertCommandSecret(secret);
+  return createServerCommandAuthorizerWithSecrets([secret]);
+}
+
+function createServerCommandAuthorizerWithSecrets(
+  secrets: readonly string[],
+): ServerCommandAuthorizer {
+  for (const secret of secrets) assertCommandSecret(secret);
   return (state, input) => {
     const command = input.payload;
     if (command.type === 'CARD_CHOICE_DEADLINE_ISSUED') {
-      return matchesSignature(
-        deadlineAuthorizationPayload(state, input.inputSequence, command),
-        command.timeoutAuthorization,
-        secret,
+      return secrets.some((secret) =>
+        matchesSignature(
+          deadlineAuthorizationPayload(state, input.inputSequence, command),
+          command.timeoutAuthorization,
+          secret,
+        ),
       );
     }
-    return matchesSignature(
-      timeoutAttestationPayload(state, input.inputSequence, command),
-      command.timeoutAttestation,
-      secret,
+    return secrets.some((secret) =>
+      matchesSignature(
+        timeoutAttestationPayload(state, input.inputSequence, command),
+        command.timeoutAttestation,
+        secret,
+      ),
     );
   };
 }
@@ -33,7 +43,12 @@ export function serverCommandAuthorizerFromEnvironment(
   const secret = environment.BATTLE_COMMAND_SECRET?.trim();
   return secret === undefined || secret.length === 0
     ? undefined
-    : createServerCommandAuthorizer(secret);
+    : createServerCommandAuthorizerWithSecrets([
+        secret,
+        ...(environment.BATTLE_COMMAND_PREVIOUS_SECRETS?.split(',')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0) ?? []),
+      ]);
 }
 
 export function signDeadlineAuthorization(

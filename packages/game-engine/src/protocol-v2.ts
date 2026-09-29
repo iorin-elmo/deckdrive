@@ -41,6 +41,7 @@ export interface CardInstanceV2 {
 export interface ChantEntry {
   readonly chantEntryId: string;
   readonly ownerPlayerId: PlayerId;
+  readonly visibility: 'allPlayers';
   readonly sourceDefinitionId: CardDefinitionId;
   readonly sourceDefinitionVersion: string;
   readonly remaining: number;
@@ -1595,6 +1596,7 @@ function startChant(
   const entry: ChantEntry = {
     chantEntryId: `chant:${String(sequence)}`,
     ownerPlayerId: playerId,
+    visibility: 'allPlayers',
     sourceDefinitionId: sourceCard.definitionId,
     sourceDefinitionVersion: sourceCard.definitionVersion,
     remaining: effect.countdown,
@@ -1608,6 +1610,7 @@ function startChant(
     type: 'CHANT_STARTED',
     chantEntryId: entry.chantEntryId,
     ownerPlayerId: playerId,
+    visibility: entry.visibility,
     sourceDefinitionId: entry.sourceDefinitionId,
     sourceDefinitionVersion: entry.sourceDefinitionVersion,
     before: null,
@@ -1633,6 +1636,7 @@ function advanceChant(
     type: 'CHANT_ADVANCED',
     chantEntryId,
     ownerPlayerId: entry.ownerPlayerId,
+    visibility: entry.visibility,
     sourceDefinitionId: entry.sourceDefinitionId,
     sourceDefinitionVersion: entry.sourceDefinitionVersion,
     before: entry.remaining,
@@ -1648,6 +1652,7 @@ function advanceChant(
     type: 'CHANT_COMPLETED',
     chantEntryId,
     ownerPlayerId: entry.ownerPlayerId,
+    visibility: entry.visibility,
     sourceDefinitionId: entry.sourceDefinitionId,
     sourceDefinitionVersion: entry.sourceDefinitionVersion,
     before: entry.remaining,
@@ -1757,6 +1762,7 @@ function applyDamage(
         type: 'CHANT_DELAYED',
         chantEntryId: entry.chantEntryId,
         ownerPlayerId: entry.ownerPlayerId,
+        visibility: entry.visibility,
         sourceDefinitionId: entry.sourceDefinitionId,
         sourceDefinitionVersion: entry.sourceDefinitionVersion,
         before: entry.remaining,
@@ -1908,6 +1914,7 @@ function finishResolution(
         type: 'CHANT_CANCELLED',
         chantEntryId: entry.chantEntryId,
         ownerPlayerId: entry.ownerPlayerId,
+        visibility: entry.visibility,
         sourceDefinitionId: entry.sourceDefinitionId,
         sourceDefinitionVersion: entry.sourceDefinitionVersion,
         before: entry.remaining,
@@ -2227,9 +2234,9 @@ function isValidEffect(effect: unknown): effect is CardEffectV2 {
       return effect.requiredStage === 1 && effect.stage === 3;
     case 'SPECIAL_VICTORY':
       return (
-        (effect.specialVictoryId === 'MAGE_GRAND_WISH' ||
-          effect.specialVictoryId === 'ALCHEMY_SAGE_STONE') &&
-        (effect.requiredAlchemyStage === undefined || effect.requiredAlchemyStage === 3)
+        (effect.specialVictoryId === 'MAGE_GRAND_WISH' &&
+          effect.requiredAlchemyStage === undefined) ||
+        (effect.specialVictoryId === 'ALCHEMY_SAGE_STONE' && effect.requiredAlchemyStage === 3)
       );
     case 'REQUEST_CARD_CHOICE':
       return (

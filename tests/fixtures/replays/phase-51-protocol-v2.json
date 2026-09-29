@@ -9,7 +9,9 @@
           "type": "TRANSFORM_HAND_CARD"
         }
       ],
-      "keywords": ["alchemy"],
+      "keywords": [
+        "alchemy"
+      ],
       "deckLimit": 3
     },
     {
@@ -23,7 +25,10 @@
           "target": "SELF"
         }
       ],
-      "keywords": ["material", "reagent:white"],
+      "keywords": [
+        "material",
+        "reagent:white"
+      ],
       "deckLimit": 3
     },
     {
@@ -37,7 +42,10 @@
           "target": "ENEMY"
         }
       ],
-      "keywords": ["material", "reagent:red"],
+      "keywords": [
+        "material",
+        "reagent:red"
+      ],
       "deckLimit": 3
     },
     {
@@ -57,7 +65,10 @@
           ]
         }
       ],
-      "keywords": ["magic", "wish"],
+      "keywords": [
+        "magic",
+        "wish"
+      ],
       "deckLimit": 3
     },
     {
@@ -70,7 +81,9 @@
           "blockPerChant": 3
         }
       ],
-      "keywords": ["magic"],
+      "keywords": [
+        "magic"
+      ],
       "deckLimit": 3
     }
   ],
@@ -203,7 +216,9 @@
         "choices": [
           {
             "kind": "CARD_INSTANCES",
-            "cardInstanceIds": ["material"]
+            "cardInstanceIds": [
+              "material"
+            ]
           }
         ]
       }
@@ -421,7 +436,9 @@
           "choices": [
             {
               "kind": "CARD_INSTANCES",
-              "cardInstanceIds": ["material"]
+              "cardInstanceIds": [
+                "material"
+              ]
             }
           ]
         }
@@ -542,8 +559,13 @@
       {
         "type": "CARD_EXHAUSTED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
         "cardInstanceId": "material",
+        "definitionId": "alchemist_004",
+        "definitionVersion": "1.0.0",
         "sourceCardInstanceId": "transform",
+        "sourceDefinitionId": "alchemist_007",
+        "sourceDefinitionVersion": "1.0.0",
         "from": "hand",
         "fromIndex": 0,
         "toIndex": 0,
@@ -554,8 +576,18 @@
       {
         "type": "DECK_CARD_REVEALED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
         "cardInstanceId": "candidate",
+        "definitionId": "alchemist_001",
+        "definitionVersion": "1.0.0",
+        "zone": "drawPile",
+        "index": 0,
         "position": 0,
+        "positionVisibility": "ownerOnly",
+        "sourceCardInstanceId": "transform",
+        "sourceDefinitionId": "alchemist_007",
+        "sourceDefinitionVersion": "1.0.0",
+        "reason": "ALCHEMY_TRANSFORM",
         "visibility": "ownerOnly",
         "sequence": 8
       },
@@ -564,7 +596,9 @@
         "choiceRequestId": "choice:1",
         "playerId": "golden-player-one",
         "choiceKind": "CARD",
-        "candidateIds": ["candidate"],
+        "candidateIds": [
+          "candidate"
+        ],
         "visibility": "ownerOnly",
         "sequence": 9
       },
@@ -580,11 +614,20 @@
       {
         "type": "CARD_MOVED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
         "cardInstanceId": "candidate",
+        "definitionId": "alchemist_001",
+        "definitionVersion": "1.0.0",
         "from": "drawPile",
+        "fromZone": "drawPile",
         "fromIndex": 0,
         "to": "hand",
+        "toZone": "hand",
         "toIndex": 2,
+        "sourceCardInstanceId": "transform",
+        "sourceDefinitionId": "alchemist_007",
+        "sourceDefinitionVersion": "1.0.0",
+        "positionVisibility": "ownerOnly",
         "reason": "CARD_CHOICE",
         "visibility": "ownerOnly",
         "sequence": 11
@@ -593,7 +636,9 @@
         "type": "CARD_CHOICE_SUBMITTED",
         "choiceRequestId": "choice:1",
         "playerId": "golden-player-one",
-        "selectedIds": ["candidate"],
+        "selectedIds": [
+          "candidate"
+        ],
         "visibility": "ownerOnly",
         "sequence": 12
       },
@@ -620,11 +665,20 @@
       {
         "type": "CARD_MOVED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
         "cardInstanceId": "transform",
+        "definitionId": "alchemist_007",
+        "definitionVersion": "1.0.0",
         "from": "discard",
+        "fromZone": "discard",
         "fromIndex": 0,
         "to": "drawPile",
+        "toZone": "drawPile",
         "toIndex": 0,
+        "sourceCardInstanceId": null,
+        "sourceDefinitionId": null,
+        "sourceDefinitionVersion": null,
+        "positionVisibility": "ownerOnly",
         "reason": "DRAW_PILE_EMPTY",
         "visibility": "ownerOnly",
         "sequence": 17
@@ -632,8 +686,18 @@
       {
         "type": "DECK_SHUFFLED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
+        "pile": "drawPile",
         "reason": "DRAW_PILE_EMPTY",
-        "cardInstanceIds": ["transform"],
+        "cardInstanceIds": [
+          "transform"
+        ],
+        "cardInstanceIdsBefore": [
+          "transform"
+        ],
+        "sourceCardInstanceId": null,
+        "sourceDefinitionId": null,
+        "sourceDefinitionVersion": null,
         "rngStateBefore": 1026112623,
         "rngStateAfter": 1026112623,
         "visibility": "ownerOnly",
@@ -664,6 +728,7 @@
         "type": "CHANT_STARTED",
         "chantEntryId": "chant:1",
         "ownerPlayerId": "golden-player-one",
+        "visibility": "allPlayers",
         "sourceDefinitionId": "mage_017",
         "sourceDefinitionVersion": "1.0.0",
         "before": null,
@@ -704,6 +769,7 @@
         "type": "CHANT_ADVANCED",
         "chantEntryId": "chant:1",
         "ownerPlayerId": "golden-player-one",
+        "visibility": "allPlayers",
         "sourceDefinitionId": "mage_017",
         "sourceDefinitionVersion": "1.0.0",
         "before": 100,
@@ -714,11 +780,20 @@
       {
         "type": "CARD_MOVED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
         "cardInstanceId": "wish",
+        "definitionId": "mage_017",
+        "definitionVersion": "1.0.0",
         "from": "discard",
+        "fromZone": "discard",
         "fromIndex": 0,
         "to": "drawPile",
+        "toZone": "drawPile",
         "toIndex": 0,
+        "sourceCardInstanceId": null,
+        "sourceDefinitionId": null,
+        "sourceDefinitionVersion": null,
+        "positionVisibility": "ownerOnly",
         "reason": "DRAW_PILE_EMPTY",
         "visibility": "ownerOnly",
         "sequence": 29
@@ -726,8 +801,18 @@
       {
         "type": "DECK_SHUFFLED",
         "playerId": "golden-player-one",
+        "ownerPlayerId": "golden-player-one",
+        "pile": "drawPile",
         "reason": "DRAW_PILE_EMPTY",
-        "cardInstanceIds": ["wish"],
+        "cardInstanceIds": [
+          "wish"
+        ],
+        "cardInstanceIdsBefore": [
+          "wish"
+        ],
+        "sourceCardInstanceId": null,
+        "sourceDefinitionId": null,
+        "sourceDefinitionVersion": null,
         "rngStateBefore": 1026112623,
         "rngStateAfter": 1026112623,
         "visibility": "ownerOnly",
@@ -758,6 +843,7 @@
         "type": "CHANT_ADVANCED",
         "chantEntryId": "chant:1",
         "ownerPlayerId": "golden-player-one",
+        "visibility": "allPlayers",
         "sourceDefinitionId": "mage_017",
         "sourceDefinitionVersion": "1.0.0",
         "before": 99,
@@ -769,6 +855,7 @@
         "type": "CHANT_COMPLETED",
         "chantEntryId": "chant:1",
         "ownerPlayerId": "golden-player-one",
+        "visibility": "allPlayers",
         "sourceDefinitionId": "mage_017",
         "sourceDefinitionVersion": "1.0.0",
         "before": 99,
@@ -989,11 +1076,50 @@
             "sourceDefinitionId": "alchemist_007",
             "sourceDefinitionVersion": "1.0.0",
             "choiceKind": "CARD",
-            "candidateIds": ["candidate"],
+            "candidateIds": [
+              "candidate"
+            ],
             "minSelections": 1,
             "maxSelections": 1,
             "resolution": {
               "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
+            },
+            "continuation": {
+              "sourceCard": {
+                "id": "transform",
+                "definitionId": "alchemist_007",
+                "definitionVersion": "1.0.0",
+                "costModifier": 0,
+                "visibility": "allPlayers"
+              },
+              "sourceDefinition": {
+                "id": "alchemist_007",
+                "version": "1.0.0",
+                "cost": 1,
+                "effects": [
+                  {
+                    "type": "TRANSFORM_HAND_CARD"
+                  }
+                ],
+                "keywords": [
+                  "alchemy"
+                ],
+                "deckLimit": 3
+              },
+              "action": {
+                "type": "PLAY_CARD",
+                "playerId": "golden-player-one",
+                "cardInstanceId": "transform",
+                "choices": [
+                  {
+                    "kind": "CARD_INSTANCES",
+                    "cardInstanceIds": [
+                      "material"
+                    ]
+                  }
+                ]
+              },
+              "nextEffectIndex": 1
             }
           }
         }
@@ -1098,13 +1224,52 @@
             "sourceDefinitionId": "alchemist_007",
             "sourceDefinitionVersion": "1.0.0",
             "choiceKind": "CARD",
-            "candidateIds": ["candidate"],
+            "candidateIds": [
+              "candidate"
+            ],
             "minSelections": 1,
             "maxSelections": 1,
             "resolution": {
               "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
             },
-            "deadlineCommandSequence": 2
+            "deadlineCommandSequence": 2,
+            "continuation": {
+              "sourceCard": {
+                "id": "transform",
+                "definitionId": "alchemist_007",
+                "definitionVersion": "1.0.0",
+                "costModifier": 0,
+                "visibility": "allPlayers"
+              },
+              "sourceDefinition": {
+                "id": "alchemist_007",
+                "version": "1.0.0",
+                "cost": 1,
+                "effects": [
+                  {
+                    "type": "TRANSFORM_HAND_CARD"
+                  }
+                ],
+                "keywords": [
+                  "alchemy"
+                ],
+                "deckLimit": 3
+              },
+              "action": {
+                "type": "PLAY_CARD",
+                "playerId": "golden-player-one",
+                "cardInstanceId": "transform",
+                "choices": [
+                  {
+                    "kind": "CARD_INSTANCES",
+                    "cardInstanceIds": [
+                      "material"
+                    ]
+                  }
+                ]
+              },
+              "nextEffectIndex": 1
+            }
           }
         }
       },
@@ -1476,6 +1641,7 @@
             {
               "chantEntryId": "chant:1",
               "ownerPlayerId": "golden-player-one",
+              "visibility": "allPlayers",
               "sourceDefinitionId": "mage_017",
               "sourceDefinitionVersion": "1.0.0",
               "remaining": 100,
@@ -1585,6 +1751,7 @@
             {
               "chantEntryId": "chant:1",
               "ownerPlayerId": "golden-player-one",
+              "visibility": "allPlayers",
               "sourceDefinitionId": "mage_017",
               "sourceDefinitionVersion": "1.0.0",
               "remaining": 100,
@@ -1693,6 +1860,7 @@
             {
               "chantEntryId": "chant:1",
               "ownerPlayerId": "golden-player-one",
+              "visibility": "allPlayers",
               "sourceDefinitionId": "mage_017",
               "sourceDefinitionVersion": "1.0.0",
               "remaining": 99,
@@ -1946,8 +2114,13 @@
         {
           "type": "CARD_EXHAUSTED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
           "cardInstanceId": "material",
+          "definitionId": "alchemist_004",
+          "definitionVersion": "1.0.0",
           "sourceCardInstanceId": "transform",
+          "sourceDefinitionId": "alchemist_007",
+          "sourceDefinitionVersion": "1.0.0",
           "from": "hand",
           "fromIndex": 0,
           "toIndex": 0,
@@ -1958,8 +2131,18 @@
         {
           "type": "DECK_CARD_REVEALED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
           "cardInstanceId": "candidate",
+          "definitionId": "alchemist_001",
+          "definitionVersion": "1.0.0",
+          "zone": "drawPile",
+          "index": 0,
           "position": 0,
+          "positionVisibility": "ownerOnly",
+          "sourceCardInstanceId": "transform",
+          "sourceDefinitionId": "alchemist_007",
+          "sourceDefinitionVersion": "1.0.0",
+          "reason": "ALCHEMY_TRANSFORM",
           "visibility": "ownerOnly",
           "sequence": 8
         },
@@ -1968,7 +2151,9 @@
           "choiceRequestId": "choice:1",
           "playerId": "golden-player-one",
           "choiceKind": "CARD",
-          "candidateIds": ["candidate"],
+          "candidateIds": [
+            "candidate"
+          ],
           "visibility": "ownerOnly",
           "sequence": 9
         },
@@ -1984,11 +2169,20 @@
         {
           "type": "CARD_MOVED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
           "cardInstanceId": "candidate",
+          "definitionId": "alchemist_001",
+          "definitionVersion": "1.0.0",
           "from": "drawPile",
+          "fromZone": "drawPile",
           "fromIndex": 0,
           "to": "hand",
+          "toZone": "hand",
           "toIndex": 2,
+          "sourceCardInstanceId": "transform",
+          "sourceDefinitionId": "alchemist_007",
+          "sourceDefinitionVersion": "1.0.0",
+          "positionVisibility": "ownerOnly",
           "reason": "CARD_CHOICE",
           "visibility": "ownerOnly",
           "sequence": 11
@@ -1997,7 +2191,9 @@
           "type": "CARD_CHOICE_SUBMITTED",
           "choiceRequestId": "choice:1",
           "playerId": "golden-player-one",
-          "selectedIds": ["candidate"],
+          "selectedIds": [
+            "candidate"
+          ],
           "visibility": "ownerOnly",
           "sequence": 12
         },
@@ -2024,11 +2220,20 @@
         {
           "type": "CARD_MOVED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
           "cardInstanceId": "transform",
+          "definitionId": "alchemist_007",
+          "definitionVersion": "1.0.0",
           "from": "discard",
+          "fromZone": "discard",
           "fromIndex": 0,
           "to": "drawPile",
+          "toZone": "drawPile",
           "toIndex": 0,
+          "sourceCardInstanceId": null,
+          "sourceDefinitionId": null,
+          "sourceDefinitionVersion": null,
+          "positionVisibility": "ownerOnly",
           "reason": "DRAW_PILE_EMPTY",
           "visibility": "ownerOnly",
           "sequence": 17
@@ -2036,8 +2241,18 @@
         {
           "type": "DECK_SHUFFLED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
+          "pile": "drawPile",
           "reason": "DRAW_PILE_EMPTY",
-          "cardInstanceIds": ["transform"],
+          "cardInstanceIds": [
+            "transform"
+          ],
+          "cardInstanceIdsBefore": [
+            "transform"
+          ],
+          "sourceCardInstanceId": null,
+          "sourceDefinitionId": null,
+          "sourceDefinitionVersion": null,
           "rngStateBefore": 1026112623,
           "rngStateAfter": 1026112623,
           "visibility": "ownerOnly",
@@ -2068,6 +2283,7 @@
           "type": "CHANT_STARTED",
           "chantEntryId": "chant:1",
           "ownerPlayerId": "golden-player-one",
+          "visibility": "allPlayers",
           "sourceDefinitionId": "mage_017",
           "sourceDefinitionVersion": "1.0.0",
           "before": null,
@@ -2108,6 +2324,7 @@
           "type": "CHANT_ADVANCED",
           "chantEntryId": "chant:1",
           "ownerPlayerId": "golden-player-one",
+          "visibility": "allPlayers",
           "sourceDefinitionId": "mage_017",
           "sourceDefinitionVersion": "1.0.0",
           "before": 100,
@@ -2118,11 +2335,20 @@
         {
           "type": "CARD_MOVED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
           "cardInstanceId": "wish",
+          "definitionId": "mage_017",
+          "definitionVersion": "1.0.0",
           "from": "discard",
+          "fromZone": "discard",
           "fromIndex": 0,
           "to": "drawPile",
+          "toZone": "drawPile",
           "toIndex": 0,
+          "sourceCardInstanceId": null,
+          "sourceDefinitionId": null,
+          "sourceDefinitionVersion": null,
+          "positionVisibility": "ownerOnly",
           "reason": "DRAW_PILE_EMPTY",
           "visibility": "ownerOnly",
           "sequence": 29
@@ -2130,8 +2356,18 @@
         {
           "type": "DECK_SHUFFLED",
           "playerId": "golden-player-one",
+          "ownerPlayerId": "golden-player-one",
+          "pile": "drawPile",
           "reason": "DRAW_PILE_EMPTY",
-          "cardInstanceIds": ["wish"],
+          "cardInstanceIds": [
+            "wish"
+          ],
+          "cardInstanceIdsBefore": [
+            "wish"
+          ],
+          "sourceCardInstanceId": null,
+          "sourceDefinitionId": null,
+          "sourceDefinitionVersion": null,
           "rngStateBefore": 1026112623,
           "rngStateAfter": 1026112623,
           "visibility": "ownerOnly",
@@ -2162,6 +2398,7 @@
           "type": "CHANT_ADVANCED",
           "chantEntryId": "chant:1",
           "ownerPlayerId": "golden-player-one",
+          "visibility": "allPlayers",
           "sourceDefinitionId": "mage_017",
           "sourceDefinitionVersion": "1.0.0",
           "before": 99,
@@ -2173,6 +2410,7 @@
           "type": "CHANT_COMPLETED",
           "chantEntryId": "chant:1",
           "ownerPlayerId": "golden-player-one",
+          "visibility": "allPlayers",
           "sourceDefinitionId": "mage_017",
           "sourceDefinitionVersion": "1.0.0",
           "before": 99,
@@ -2208,6 +2446,6 @@
       }
     },
     "snapshotInterval": 1,
-    "checksum": "sha256:3db03e86beca5537527a8a17ebc501713026bad967972b8c284e5dcc4a0248b1"
+    "checksum": "sha256:ea8b9a6a7bc597edfcd13b63da64f18da3e309bda206d2b440e3a36256fd4bc8"
   }
 }

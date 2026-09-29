@@ -76,10 +76,16 @@ Format 1 continues to use `recordReplay` / `verifyReplay`,
 action-index snapshots, and its existing schema.
 
 Replay V2 command verification is fail-closed. API tooling obtains an HMAC
-verifier from `BATTLE_COMMAND_SECRET`; V2 persistence cannot be loaded or saved
+verifier from `BATTLE_COMMAND_SECRET` and the comma-separated
+`BATTLE_COMMAND_PREVIOUS_SECRETS`; V2 persistence cannot be loaded or saved
 without one, while format 1 remains readable without this setting. Deadline and
 timeout timestamps use non-negative UTC epoch milliseconds and are covered by
 the signed payloads and the Replay V2 checksum.
+New commands are signed with the current secret. When rotating it, move the old
+secret into `BATTLE_COMMAND_PREVIOUS_SECRETS` and retain it for as long as any
+replay signed with that secret must remain verifiable. All API instances and
+replay tooling must use the same verification key ring. Remove a previous secret
+only after its replays have been retired.
 
 The special-victory definitions remain outside the production seed and offline
 preview catalog until the product match transport is upgraded from protocol 1.

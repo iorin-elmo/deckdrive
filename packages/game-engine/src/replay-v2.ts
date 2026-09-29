@@ -463,6 +463,12 @@ function isBattleStateV2(value: unknown): value is BattleStateV2 {
     value.players.length === 2 &&
     new Set(value.players.map((player) => (isRecord(player) ? player.id : undefined))).size === 2 &&
     Array.isArray(value.chantQueue) &&
+    value.chantQueue.every(
+      (entry) =>
+        isRecord(entry) &&
+        entry.visibility === 'allPlayers' &&
+        typeof entry.ownerPlayerId === 'string',
+    ) &&
     Array.isArray(value.events) &&
     (value.phase === 'PLAYER_TURN' ||
       value.phase === 'PENDING_CARD_CHOICE' ||
@@ -502,6 +508,9 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
     (value.sequence as number) < 1
   )
     return false;
+  if (value.type.startsWith('CHANT_')) {
+    return value.visibility === 'allPlayers' && typeof value.ownerPlayerId === 'string';
+  }
   if (value.type === 'CARD_MOVED' || value.type === 'CARD_EXHAUSTED') {
     if (
       typeof value.playerId !== 'string' ||
