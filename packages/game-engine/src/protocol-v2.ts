@@ -278,19 +278,33 @@ type CardPoolAuditEventType = 'CARD_MOVED' | 'CARD_EXHAUSTED' | 'DECK_SHUFFLED';
 
 export interface CardMovedEventV2 extends GameEventBaseV2<'CARD_MOVED'> {
   readonly playerId: PlayerId;
+  readonly ownerPlayerId: PlayerId;
   readonly cardInstanceId: CardInstanceId;
+  readonly definitionId: CardDefinitionId;
+  readonly definitionVersion: string;
   readonly from: 'hand' | 'discard' | 'drawPile';
+  readonly fromZone: 'hand' | 'discard' | 'drawPile';
   readonly fromIndex: number;
   readonly to: 'hand' | 'drawPile';
+  readonly toZone: 'hand' | 'drawPile';
   readonly toIndex: number;
+  readonly sourceCardInstanceId: CardInstanceId | null;
+  readonly sourceDefinitionId: CardDefinitionId | null;
+  readonly sourceDefinitionVersion: string | null;
+  readonly positionVisibility?: Visibility;
   readonly reason: string;
   readonly visibility: Visibility;
 }
 
 export interface CardExhaustedEventV2 extends GameEventBaseV2<'CARD_EXHAUSTED'> {
   readonly playerId: PlayerId;
+  readonly ownerPlayerId: PlayerId;
   readonly cardInstanceId: CardInstanceId;
-  readonly sourceCardInstanceId: CardInstanceId;
+  readonly definitionId: CardDefinitionId;
+  readonly definitionVersion: string;
+  readonly sourceCardInstanceId: CardInstanceId | null;
+  readonly sourceDefinitionId: CardDefinitionId | null;
+  readonly sourceDefinitionVersion: string | null;
   readonly from: 'hand' | 'discard';
   readonly fromIndex: number;
   readonly toIndex: number;
@@ -300,8 +314,14 @@ export interface CardExhaustedEventV2 extends GameEventBaseV2<'CARD_EXHAUSTED'> 
 
 export interface DeckShuffledEventV2 extends GameEventBaseV2<'DECK_SHUFFLED'> {
   readonly playerId: PlayerId;
+  readonly ownerPlayerId: PlayerId;
+  readonly pile: 'drawPile';
   readonly reason: 'DRAW_PILE_EMPTY' | 'ALCHEMY_TRANSFORM';
   readonly cardInstanceIds: readonly CardInstanceId[];
+  readonly cardInstanceIdsBefore: readonly CardInstanceId[];
+  readonly sourceCardInstanceId: CardInstanceId | null;
+  readonly sourceDefinitionId: CardDefinitionId | null;
+  readonly sourceDefinitionVersion: string | null;
   readonly rngStateBefore: number;
   readonly rngStateAfter: number;
   readonly visibility: 'ownerOnly';
@@ -925,6 +945,11 @@ function applyServerCommand(
       mutable.players.findIndex((player) => player.id === pending.ownerPlayerId),
       'ALCHEMY_TRANSFORM',
       emitter,
+      {
+        id: pending.sourceCardInstanceId,
+        definitionId: pending.sourceDefinitionId,
+        definitionVersion: pending.sourceDefinitionVersion,
+      },
     );
   }
   resumeChoiceEffects(state, mutable, pending, definitions, emitter);
@@ -991,16 +1016,29 @@ function submitChoice(
     emitter.emit({
       type: 'CARD_MOVED',
       playerId: player.id,
+      ownerPlayerId: player.id,
       cardInstanceId: card.id,
+      definitionId: card.definitionId,
+      definitionVersion: card.definitionVersion,
       from: 'drawPile',
+      fromZone: 'drawPile',
       fromIndex: cardIndex,
       to: 'hand',
+      toZone: 'hand',
       toIndex: player.hand.length,
+      sourceCardInstanceId: pending.sourceCardInstanceId,
+      sourceDefinitionId: pending.sourceDefinitionId,
+      sourceDefinitionVersion: pending.sourceDefinitionVersion,
+      positionVisibility: 'ownerOnly',
       reason: 'CARD_CHOICE',
       visibility: card.visibility,
     });
     if (pending.resolution.type === 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE') {
-      shuffleDrawPile(mutable, playerIndex, 'ALCHEMY_TRANSFORM', emitter);
+      shuffleDrawPile(mutable, playerIndex, 'ALCHEMY_TRANSFORM', emitter, {
+        id: pending.sourceCardInstanceId,
+        definitionId: pending.sourceDefinitionId,
+        definitionVersion: pending.sourceDefinitionVersion,
+      });
     }
   }
   emitter.emit({
@@ -1128,8 +1166,13 @@ function transformHandCard(
   emitter.emit({
     type: 'CARD_EXHAUSTED',
     playerId: actor.id,
+    ownerPlayerId: actor.id,
     cardInstanceId: selected.id,
+    definitionId: selected.definitionId,
+    definitionVersion: selected.definitionVersion,
     sourceCardInstanceId: sourceCard.id,
+    sourceDefinitionId: sourceCard.definitionId,
+    sourceDefinitionVersion: sourceCard.definitionVersion,
     from: 'hand',
     fromIndex: selectedIndex,
     toIndex: actor.exhaust.length - 1,
@@ -1142,8 +1185,18 @@ function transformHandCard(
     emitter.emit({
       type: 'DECK_CARD_REVEALED',
       playerId: actor.id,
+      ownerPlayerId: actor.id,
       cardInstanceId: card.id,
+      definitionId: card.definitionId,
+      definitionVersion: card.definitionVersion,
+      zone: 'drawPile',
+      index: position,
       position,
+      positionVisibility: 'ownerOnly',
+      sourceCardInstanceId: sourceCard.id,
+      sourceDefinitionId: sourceCard.definitionId,
+      sourceDefinitionVersion: sourceCard.definitionVersion,
+      reason: 'ALCHEMY_TRANSFORM',
       visibility: card.visibility,
     });
   }
@@ -1154,7 +1207,7 @@ function transformHandCard(
     );
   });
   if (candidates.length === 0) {
-    shuffleDrawPile(mutable, actorIndex, 'ALCHEMY_TRANSFORM', emitter);
+    shuffleDrawPile(mutable, actorIndex, 'ALCHEMY_TRANSFORM', emitter, sourceCard);
     return;
   }
   const sequence = mutable.nextChoiceRequestSequence;
@@ -1210,14 +1263,20 @@ function sealGrimoire(
   emitter.emit({
     type: 'CARD_MOVED',
     playerId: actor.id,
+    ownerPlayerId: actor.id,
     cardInstanceId: selected.id,
     definitionId: selected.definitionId,
     definitionVersion: selected.definitionVersion,
     from: 'hand',
+    fromZone: 'hand',
     fromIndex: selectedIndex,
     to: 'drawPile',
+    toZone: 'drawPile',
     toIndex: actor.drawPile.length,
     sourceCardInstanceId: sourceCard.id,
+    sourceDefinitionId: sourceCard.definitionId,
+    sourceDefinitionVersion: sourceCard.definitionVersion,
+    positionVisibility: 'ownerOnly',
     reason: 'MAGE_GRIMOIRE_SEAL',
     visibility: selected.visibility,
   });
@@ -1300,8 +1359,13 @@ function synthesize(
     emitter.emit({
       type: 'CARD_EXHAUSTED',
       playerId: player.id,
+      ownerPlayerId: player.id,
       cardInstanceId: located.card.id,
+      definitionId: located.card.definitionId,
+      definitionVersion: located.card.definitionVersion,
       sourceCardInstanceId: sourceCard.id,
+      sourceDefinitionId: sourceCard.definitionId,
+      sourceDefinitionVersion: sourceCard.definitionVersion,
       from: located.zone,
       fromIndex: currentIndex,
       toIndex: player.exhaust.length - 1,
@@ -1441,8 +1505,17 @@ function exhaustGrimoireAndAdvanceWish(
   emitter.emit({
     type: 'CARD_EXHAUSTED',
     playerId: actor.id,
+    ownerPlayerId: actor.id,
     cardInstanceId: card.id,
+    definitionId: card.definitionId,
+    definitionVersion: card.definitionVersion,
     sourceCardInstanceId: action.cardInstanceId,
+    sourceDefinitionId:
+      state.players[actorIndex]!.hand.find((item) => item.id === action.cardInstanceId)
+        ?.definitionId ?? null,
+    sourceDefinitionVersion:
+      state.players[actorIndex]!.hand.find((item) => item.id === action.cardInstanceId)
+        ?.definitionVersion ?? null,
     from: 'hand',
     fromIndex: index,
     toIndex: actor.exhaust.length - 1,
@@ -1731,11 +1804,20 @@ function refillDrawPileIfEmpty(
     emitter.emit({
       type: 'CARD_MOVED',
       playerId: player.id,
+      ownerPlayerId: player.id,
       cardInstanceId: card.id,
+      definitionId: card.definitionId,
+      definitionVersion: card.definitionVersion,
       from: 'discard',
+      fromZone: 'discard',
       fromIndex: index,
       to: 'drawPile',
+      toZone: 'drawPile',
       toIndex: index,
+      sourceCardInstanceId: null,
+      sourceDefinitionId: null,
+      sourceDefinitionVersion: null,
+      positionVisibility: 'ownerOnly',
       reason: 'DRAW_PILE_EMPTY',
       visibility: 'ownerOnly',
     });
@@ -1747,8 +1829,14 @@ function refillDrawPileIfEmpty(
   emitter.emit({
     type: 'DECK_SHUFFLED',
     playerId: player.id,
+    ownerPlayerId: player.id,
+    pile: 'drawPile',
     reason: 'DRAW_PILE_EMPTY',
     cardInstanceIds: shuffled.cards.map((card) => card.id),
+    cardInstanceIdsBefore: player.discard.map((card) => card.id),
+    sourceCardInstanceId: null,
+    sourceDefinitionId: null,
+    sourceDefinitionVersion: null,
     rngStateBefore,
     rngStateAfter: shuffled.rngState,
     visibility: 'ownerOnly',
@@ -1760,6 +1848,11 @@ function shuffleDrawPile(
   playerIndex: number,
   reason: 'ALCHEMY_TRANSFORM',
   emitter: EventEmitter,
+  source?: {
+    readonly id: CardInstanceId;
+    readonly definitionId: CardDefinitionId;
+    readonly definitionVersion: string;
+  },
 ): void {
   const player = mutable.players[playerIndex];
   if (player === undefined || player.drawPile.length === 0) return;
@@ -1770,8 +1863,14 @@ function shuffleDrawPile(
   emitter.emit({
     type: 'DECK_SHUFFLED',
     playerId: player.id,
+    ownerPlayerId: player.id,
+    pile: 'drawPile',
     reason,
     cardInstanceIds: shuffled.cards.map((card) => card.id),
+    cardInstanceIdsBefore: player.drawPile.map((card) => card.id),
+    sourceCardInstanceId: source?.id ?? null,
+    sourceDefinitionId: source?.definitionId ?? null,
+    sourceDefinitionVersion: source?.definitionVersion ?? null,
     rngStateBefore,
     rngStateAfter: shuffled.rngState,
     visibility: 'ownerOnly',
@@ -2207,35 +2306,38 @@ function projectCard(card: CardInstanceV2, isOwner: boolean): unknown {
 }
 
 function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
-  const redacted = { ...event } as Record<string, unknown>;
-  delete redacted.rngStateBefore;
-  delete redacted.rngStateAfter;
-  if (
-    event.visibility !== 'ownerOnly' ||
-    event.playerId === viewerId ||
-    event.ownerPlayerId === viewerId
-  ) {
-    return redacted as GameEventV2;
+  const ownerPlayerId = (event.ownerPlayerId ?? event.playerId) as PlayerId | undefined;
+  const hiddenDrawPileMove =
+    event.type === 'CARD_MOVED' && event.toZone === 'drawPile' && ownerPlayerId !== viewerId;
+  if ((event.visibility === 'ownerOnly' || hiddenDrawPileMove) && ownerPlayerId !== viewerId) {
+    const view: Record<string, unknown> = {
+      type: event.type,
+      sequence: event.sequence,
+      visibility: event.visibility,
+      ownerPlayerId,
+      redacted: true,
+    };
+    return view as GameEventV2;
   }
-  for (const key of [
-    'cardInstanceId',
-    'cardInstanceIds',
-    'definitionId',
-    'definitionVersion',
-    'candidateIds',
-    'choiceRequestId',
-    'materialCardInstanceIds',
-    'selectedIds',
-    'sourceCardInstanceId',
-    'recipeId',
-    'position',
-    'index',
-    'fromIndex',
-    'toIndex',
-  ]) {
-    delete redacted[key];
+  const projected = { ...event } as Record<string, unknown>;
+  delete projected.rngStateBefore;
+  delete projected.rngStateAfter;
+  if (ownerPlayerId !== viewerId && event.positionVisibility === 'ownerOnly') {
+    for (const key of [
+      'zone',
+      'from',
+      'to',
+      'fromZone',
+      'toZone',
+      'index',
+      'position',
+      'fromIndex',
+      'toIndex',
+    ]) {
+      delete projected[key];
+    }
   }
-  return redacted as GameEventV2;
+  return projected as GameEventV2;
 }
 
 function eventEmitter(existing: readonly GameEventV2[]): EventEmitter {

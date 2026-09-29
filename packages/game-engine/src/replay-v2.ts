@@ -505,7 +505,16 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
   if (value.type === 'CARD_MOVED' || value.type === 'CARD_EXHAUSTED') {
     if (
       typeof value.playerId !== 'string' ||
+      value.ownerPlayerId !== value.playerId ||
       typeof value.cardInstanceId !== 'string' ||
+      typeof value.definitionId !== 'string' ||
+      typeof value.definitionVersion !== 'string' ||
+      (value.sourceCardInstanceId !== null && typeof value.sourceCardInstanceId !== 'string') ||
+      (value.sourceDefinitionId !== null && typeof value.sourceDefinitionId !== 'string') ||
+      (value.sourceDefinitionVersion !== null &&
+        typeof value.sourceDefinitionVersion !== 'string') ||
+      (value.sourceCardInstanceId === null) !== (value.sourceDefinitionId === null) ||
+      (value.sourceCardInstanceId === null) !== (value.sourceDefinitionVersion === null) ||
       !isNonNegativeSafeInteger(value.fromIndex) ||
       !isNonNegativeSafeInteger(value.toIndex) ||
       typeof value.reason !== 'string' ||
@@ -515,7 +524,12 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
     if (value.type === 'CARD_MOVED') {
       return (
         (value.from === 'hand' || value.from === 'discard' || value.from === 'drawPile') &&
-        (value.to === 'hand' || value.to === 'drawPile')
+        (value.to === 'hand' || value.to === 'drawPile') &&
+        value.fromZone === value.from &&
+        value.toZone === value.to &&
+        (value.from === 'drawPile' || value.to === 'drawPile'
+          ? value.positionVisibility === 'ownerOnly' || value.positionVisibility === 'allPlayers'
+          : value.positionVisibility === undefined)
       );
     }
     return (
@@ -523,13 +537,41 @@ function isPersistedEventV2(value: unknown): value is GameEventV2 {
       typeof value.sourceCardInstanceId === 'string'
     );
   }
+  if (value.type === 'DECK_CARD_REVEALED') {
+    return (
+      typeof value.playerId === 'string' &&
+      value.ownerPlayerId === value.playerId &&
+      typeof value.cardInstanceId === 'string' &&
+      typeof value.definitionId === 'string' &&
+      typeof value.definitionVersion === 'string' &&
+      value.zone === 'drawPile' &&
+      isNonNegativeSafeInteger(value.index) &&
+      value.position === value.index &&
+      (value.positionVisibility === 'ownerOnly' || value.positionVisibility === 'allPlayers') &&
+      typeof value.sourceCardInstanceId === 'string' &&
+      typeof value.sourceDefinitionId === 'string' &&
+      typeof value.sourceDefinitionVersion === 'string' &&
+      typeof value.reason === 'string' &&
+      (value.visibility === 'ownerOnly' || value.visibility === 'allPlayers')
+    );
+  }
   if (value.type === 'DECK_SHUFFLED') {
     return (
       typeof value.playerId === 'string' &&
+      value.ownerPlayerId === value.playerId &&
+      value.pile === 'drawPile' &&
       (value.reason === 'DRAW_PILE_EMPTY' || value.reason === 'ALCHEMY_TRANSFORM') &&
       Array.isArray(value.cardInstanceIds) &&
       dense(value.cardInstanceIds) &&
       value.cardInstanceIds.every((id) => typeof id === 'string') &&
+      Array.isArray(value.cardInstanceIdsBefore) &&
+      dense(value.cardInstanceIdsBefore) &&
+      value.cardInstanceIdsBefore.every((id) => typeof id === 'string') &&
+      value.cardInstanceIdsBefore.length === value.cardInstanceIds.length &&
+      (value.sourceCardInstanceId === null || typeof value.sourceCardInstanceId === 'string') &&
+      (value.sourceDefinitionId === null || typeof value.sourceDefinitionId === 'string') &&
+      (value.sourceDefinitionVersion === null ||
+        typeof value.sourceDefinitionVersion === 'string') &&
       isNonNegativeSafeInteger(value.rngStateBefore) &&
       isNonNegativeSafeInteger(value.rngStateAfter) &&
       value.visibility === 'ownerOnly'
