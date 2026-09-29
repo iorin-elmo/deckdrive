@@ -213,6 +213,7 @@ describe('MatchReplayRepository', () => {
     const createCommand = vi.fn();
     const createEvent = vi.fn();
     const createSnapshot = vi.fn();
+    const upsertDefinitionSnapshot = vi.fn();
     const transaction = {
       cardVersion: {
         findMany: vi.fn().mockResolvedValue(definitions.map((definition) => ({ definition }))),
@@ -222,6 +223,7 @@ describe('MatchReplayRepository', () => {
       matchServerCommand: { create: createCommand },
       matchEvent: { create: createEvent },
       matchSnapshot: { create: createSnapshot },
+      replayDefinitionSnapshot: { upsert: upsertDefinitionSnapshot },
     };
     const prisma = {
       $transaction: vi.fn((callback) => callback(transaction)),
@@ -239,6 +241,11 @@ describe('MatchReplayRepository', () => {
         draftDefinitionRevision: revision,
       }),
     });
+    expect(upsertDefinitionSnapshot).toHaveBeenCalledWith({
+      where: { revision },
+      create: { revision, definitions },
+      update: {},
+    });
     expect(createAction).toHaveBeenCalledTimes(2);
     expect(createCommand).toHaveBeenCalledWith({
       data: expect.objectContaining({ sequence: 2 }),
@@ -246,6 +253,53 @@ describe('MatchReplayRepository', () => {
     expect(createSnapshot).toHaveBeenCalledWith({
       data: expect.objectContaining({ actionIndex: null, inputSequence: 3 }),
     });
+
+    const findCurrentDefinitions = vi.fn();
+    const findDefinitionSnapshot = vi.fn().mockResolvedValue({
+      revision,
+      definitions,
+    });
+    const storedReplay = recorded.replay;
+    const loadPrisma = {
+      match: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: storedReplay.matchId,
+          engineVersion: storedReplay.engineVersion,
+          rulesVersion: storedReplay.rulesVersion,
+          cardDataVersion: storedReplay.cardDataVersion,
+          formatVersion: storedReplay.formatVersion,
+          battleProtocolVersion: storedReplay.battleProtocolVersion,
+          draftDefinitionRevision: storedReplay.draftDefinitionRevision,
+          snapshotInterval: storedReplay.snapshotInterval,
+          seed: storedReplay.seed,
+          initialState: storedReplay.initialState,
+          finalState: storedReplay.finalState,
+          checksum: storedReplay.checksum,
+          actions: storedReplay.actions.map((action) => ({
+            sequence: action.inputSequence,
+            action: action.payload,
+          })),
+          serverCommands: storedReplay.serverCommands.map((command) => ({
+            sequence: command.inputSequence,
+            command: command.payload,
+          })),
+          events: storedReplay.events.map((event) => ({ event })),
+          snapshots: storedReplay.snapshots.map((snapshot) => ({
+            actionIndex: null,
+            inputSequence: snapshot.inputSequence,
+            eventSequence: snapshot.eventSequence,
+            state: snapshot.state,
+          })),
+        }),
+      },
+      cardVersion: { findMany: findCurrentDefinitions },
+      replayDefinitionSnapshot: { findUnique: findDefinitionSnapshot },
+    } as unknown as PrismaClient;
+    await expect(
+      new MatchReplayRepository(loadPrisma, () => true).load(storedReplay.matchId),
+    ).resolves.toEqual(storedReplay);
+    expect(findDefinitionSnapshot).toHaveBeenCalledWith({ where: { revision } });
+    expect(findCurrentDefinitions).not.toHaveBeenCalled();
   });
 });
 

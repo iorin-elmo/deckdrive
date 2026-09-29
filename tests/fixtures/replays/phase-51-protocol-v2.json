@@ -587,6 +587,7 @@
         "choiceRequestId": "choice:1",
         "playerId": "golden-player-one",
         "selectedIds": ["candidate"],
+        "visibility": "ownerOnly",
         "sequence": 12
       },
       {
@@ -942,6 +943,7 @@
           "chantEntrySequence": 0,
           "generatedCardSequence": 0,
           "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 1,
           "pendingCardChoice": {
             "choiceRequestId": "choice:1",
             "ownerPlayerId": "golden-player-one",
@@ -956,8 +958,7 @@
             "resolution": {
               "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
             }
-          },
-          "lastInputSequence": 1
+          }
         }
       },
       {
@@ -1051,6 +1052,7 @@
           "chantEntrySequence": 0,
           "generatedCardSequence": 0,
           "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 2,
           "pendingCardChoice": {
             "choiceRequestId": "choice:1",
             "ownerPlayerId": "golden-player-one",
@@ -1066,8 +1068,7 @@
               "type": "MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE"
             },
             "deadlineCommandSequence": 2
-          },
-          "lastInputSequence": 2
+          }
         }
       },
       {
@@ -1764,13 +1765,13 @@
           "chantEntrySequence": 1,
           "generatedCardSequence": 0,
           "nextChoiceRequestSequence": 2,
+          "lastInputSequence": 9,
           "terminalResult": {
             "status": "WIN",
             "winnerId": "golden-player-one",
             "reason": "SPECIAL_VICTORY",
             "specialVictoryId": "MAGE_GRAND_WISH"
-          },
-          "lastInputSequence": 9
+          }
         }
       }
     ],
@@ -1861,12 +1862,6 @@
       "chantEntrySequence": 1,
       "generatedCardSequence": 0,
       "nextChoiceRequestSequence": 2,
-      "terminalResult": {
-        "status": "WIN",
-        "winnerId": "golden-player-one",
-        "reason": "SPECIAL_VICTORY",
-        "specialVictoryId": "MAGE_GRAND_WISH"
-      },
       "lastInputSequence": 9,
       "events": [
         {
@@ -1959,6 +1954,7 @@
           "choiceRequestId": "choice:1",
           "playerId": "golden-player-one",
           "selectedIds": ["candidate"],
+          "visibility": "ownerOnly",
           "sequence": 12
         },
         {
@@ -2129,9 +2125,15 @@
           },
           "sequence": 35
         }
-      ]
+      ],
+      "terminalResult": {
+        "status": "WIN",
+        "winnerId": "golden-player-one",
+        "reason": "SPECIAL_VICTORY",
+        "specialVictoryId": "MAGE_GRAND_WISH"
+      }
     },
     "snapshotInterval": 1,
-    "checksum": "sha256:f0a8e241398ccfd73e653f4a5d2552eb5b89138072c242ac214d0e859587a758"
+    "checksum": "sha256:de93844f021058d96c1d8809803ae4c232087d85bc1c9db2e0b1c07ec106412c"
   }
 }

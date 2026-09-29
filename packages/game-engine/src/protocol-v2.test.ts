@@ -9,6 +9,7 @@ import {
   createInitialBattleStateV2,
   projectBattleStateV2,
   recordReplayV2,
+  SeededRandom,
   verifyReplayV2,
 } from './index.js';
 import type {
@@ -204,6 +205,36 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.events.filter((event) => event.type === 'SYNTHESIS_RESOLVED')).toEqual([
       expect.objectContaining({ beforeCount: 0, afterCount: 1, result: 'SUCCESS' }),
     ]);
+  });
+
+  it('consumes legal Sage Recipe materials as a weak synthesis failure', () => {
+    let state = battle([
+      card('red', 'alchemist_001'),
+      card('catalyst', 'alchemist_003'),
+      card('solvent', 'alchemist_014'),
+      card('recipe', 'alchemist_015'),
+    ]);
+    state = apply(
+      state,
+      client(1, {
+        ...play('recipe'),
+        choices: [
+          {
+            kind: 'CARD_INSTANCES',
+            cardInstanceIds: ['red', 'catalyst', 'solvent'] as CardInstanceId[],
+          },
+        ],
+      }),
+    );
+    expect(state.players[0]).toMatchObject({ block: 2, synthesisCount: 1, alchemyStage: 0 });
+    expect(state.players[0]!.exhaust.map((entry) => entry.id)).toEqual([
+      'red',
+      'catalyst',
+      'solvent',
+    ]);
+    expect(state.events).toContainEqual(
+      expect.objectContaining({ type: 'SYNTHESIS_RESOLVED', result: 'FAILURE' }),
+    );
   });
 
   it('treats a legal unknown synthesis as a weak failure instead of rejecting it', () => {
@@ -445,6 +476,12 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.events).toContainEqual(
       expect.objectContaining({ type: 'DECK_SHUFFLED', reason: 'ALCHEMY_TRANSFORM' }),
     );
+    const opponentProjection = projectBattleStateV2(state, playerTwo) as {
+      readonly events: readonly Record<string, unknown>[];
+    };
+    expect(
+      opponentProjection.events.find((event) => event.type === 'CARD_CHOICE_SUBMITTED'),
+    ).not.toHaveProperty('selectedIds');
   });
 
   it('recycles the discard pile before an empty-pile transformation search', () => {
@@ -535,6 +572,7 @@ describe('battle protocol 2 special victory routes', () => {
 
   it('allows energy above max and deterministically rebuilds an empty draw pile', () => {
     let state = battle([card('energy', 'test_energy'), card('draw', 'test_draw')]);
+    const rngStateBeforeShuffle = state.rngState;
     state = {
       ...state,
       players: [
@@ -552,6 +590,11 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.players[0]!.hand).toHaveLength(2);
     expect(state.players[0]!.discard.map((entry) => entry.id)).toEqual(['draw']);
     expect(state.events).toContainEqual(expect.objectContaining({ type: 'DECK_SHUFFLED' }));
+    const expectedRandom = new SeededRandom(0);
+    expectedRandom.restore({ state: rngStateBeforeShuffle });
+    expectedRandom.next();
+    expectedRandom.next();
+    expect(state.rngState).toBe(expectedRandom.snapshot().state);
   });
 
   it('redacts owner-only card identities from the opponent state projection', () => {

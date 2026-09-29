@@ -50,6 +50,17 @@ export class MatchReplayRepository {
       );
       this.assertValidReplay(replay, definitions);
 
+      if (replay.formatVersion === replayFormatVersionV2) {
+        await transaction.replayDefinitionSnapshot.upsert({
+          where: { revision: replay.draftDefinitionRevision },
+          create: {
+            revision: replay.draftDefinitionRevision,
+            definitions: asInputJson(definitions),
+          },
+          update: {},
+        });
+      }
+
       await transaction.match.create({
         data: {
           id: replay.matchId,
@@ -158,11 +169,20 @@ export class MatchReplayRepository {
     if (match.finalState === null || match.checksum === null) {
       throw new ReplayPersistenceError(`Persisted replay ${matchId} is incomplete.`);
     }
+    if (
+      match.formatVersion === replayFormatVersionV2 &&
+      (match.battleProtocolVersion !== 2 || match.draftDefinitionRevision === null)
+    ) {
+      throw new ReplayPersistenceError(`Persisted replay ${matchId} is missing V2 metadata.`);
+    }
 
-    const definitions = await this.loadCardDefinitions(
-      match.cardDataVersion,
-      this.prisma.cardVersion,
-    );
+    const definitions =
+      match.formatVersion === replayFormatVersion
+        ? await this.loadCardDefinitions(match.cardDataVersion, this.prisma.cardVersion)
+        : await this.loadDefinitionSnapshot(
+            match.draftDefinitionRevision!,
+            this.prisma.replayDefinitionSnapshot,
+          );
     const common = {
       matchId: match.id,
       engineVersion: match.engineVersion,
@@ -192,9 +212,6 @@ export class MatchReplayRepository {
           })),
       } as unknown as Replay;
     } else {
-      if (match.battleProtocolVersion !== 2 || match.draftDefinitionRevision === null) {
-        throw new ReplayPersistenceError(`Persisted replay ${matchId} is missing V2 metadata.`);
-      }
       replay = {
         ...common,
         formatVersion: replayFormatVersionV2,
@@ -275,6 +292,30 @@ export class MatchReplayRepository {
       }
       return definition;
     });
+  }
+
+  private async loadDefinitionSnapshot(
+    revision: string,
+    snapshot: Pick<PrismaClient['replayDefinitionSnapshot'], 'findUnique'>,
+  ): Promise<readonly CardDefinitionV2[]> {
+    const stored = await snapshot.findUnique({ where: { revision } });
+    if (stored === null || !Array.isArray(stored.definitions)) {
+      throw new ReplayPersistenceError(
+        `No immutable card definition snapshot exists for revision ${revision}.`,
+      );
+    }
+    const definitions = stored.definitions.map((definition) => {
+      if (!isCardDefinition(definition)) {
+        throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
+      }
+      return definition;
+    });
+    if (calculateDraftDefinitionRevision(definitions) !== revision) {
+      throw new ReplayPersistenceError(
+        `Stored card definition snapshot does not match revision ${revision}.`,
+      );
+    }
+    return definitions;
   }
 }
 

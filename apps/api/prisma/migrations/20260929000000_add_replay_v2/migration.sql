@@ -2,6 +2,19 @@ ALTER TABLE "matches"
   ADD COLUMN "battle_protocol_version" INTEGER,
   ADD COLUMN "draft_definition_revision" TEXT;
 
+CREATE TABLE "replay_definition_snapshots" (
+  "revision" TEXT NOT NULL,
+  "definitions" JSONB NOT NULL,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  CONSTRAINT "replay_definition_snapshots_pkey" PRIMARY KEY ("revision")
+);
+
+ALTER TABLE "matches"
+  ADD CONSTRAINT "matches_draft_definition_revision_fkey"
+  FOREIGN KEY ("draft_definition_revision") REFERENCES "replay_definition_snapshots"("revision")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+
 ALTER TABLE "match_snapshots"
   ALTER COLUMN "action_index" DROP NOT NULL,
   ADD COLUMN "input_sequence" INTEGER;

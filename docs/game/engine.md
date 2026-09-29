@@ -70,7 +70,9 @@ synthesis with no recipe consumes its selected materials, increments
 `formatVersion: 2`, `battleProtocolVersion: 2`, an immutable SHA-256 card
 definition revision, input-boundary snapshots, events, and final state. The API
 repository dispatches by format version and persists server commands separately
-from player actions. Format 1 continues to use `recordReplay` / `verifyReplay`,
+from player actions. It stores the exact protocol-2 definition set as an immutable
+revision-keyed snapshot, so later draft additions cannot invalidate old replays.
+Format 1 continues to use `recordReplay` / `verifyReplay`,
 action-index snapshots, and its existing schema.
 
 Replay V2 command verification is fail-closed. API tooling obtains an HMAC

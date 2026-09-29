@@ -361,10 +361,20 @@ model Match {
   serverCommands  MatchServerCommand[]
   events          MatchEvent[]
   snapshots       MatchSnapshot[]
+  draftDefinitionSnapshot ReplayDefinitionSnapshot? @relation(fields: [draftDefinitionRevision], references: [revision], onDelete: Restrict)
 
   @@index([status, createdAt])
   @@index([cardDataVersion, rulesVersion, engineVersion])
   @@map("matches")
+}
+
+model ReplayDefinitionSnapshot {
+  revision    String   @id
+  definitions Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  matches     Match[]
+
+  @@map("replay_definition_snapshots")
 }
 
 model MatchPlayer {

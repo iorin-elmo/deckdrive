@@ -6,6 +6,7 @@ import type {
   PlayerId,
   Status,
 } from './index.js';
+import { SeededRandom } from './random/index.js';
 
 export const battleProtocolVersion = 2 as const;
 
@@ -937,6 +938,7 @@ function submitChoice(
     choiceRequestId: pending.choiceRequestId,
     playerId: action.playerId,
     selectedIds: selected,
+    visibility: 'ownerOnly',
   });
   mutable.pendingCardChoice = undefined;
   return finishResolution(state, inputSequence, mutable, emitter);
@@ -1791,7 +1793,7 @@ function validatePlayChoices(
         }
       }
       if (
-        (effect.mode === 'SAGE_RECIPE' || effect.mode === 'COMPLETE_REACTION') &&
+        effect.mode === 'COMPLETE_REACTION' &&
         cards.some((id) => {
           const located = locateOwnedCard(player, id)!;
           const tags =
@@ -2122,30 +2124,17 @@ function shuffle(
   initialState: number,
 ): { cards: CardInstanceV2[]; rngState: number } {
   const values = [...cards];
-  let rngState = initialState;
+  const random = new SeededRandom(0);
+  random.restore({ state: initialState });
   for (let index = values.length - 1; index > 0; index -= 1) {
-    rngState = nextUint32(rngState);
-    const selected = rngState % (index + 1);
+    const selected = Math.floor(random.next() * (index + 1));
     [values[index], values[selected]] = [values[selected]!, values[index]!];
   }
-  return { cards: values, rngState };
+  return { cards: values, rngState: random.snapshot().state };
 }
 
 function seedToUint32(seed: string): number {
-  let value = 2166136261;
-  for (const character of new TextEncoder().encode(seed)) {
-    value ^= character;
-    value = Math.imul(value, 16777619);
-  }
-  return value >>> 0 || 1;
-}
-
-function nextUint32(state: number): number {
-  let value = state || 1;
-  value ^= value << 13;
-  value ^= value >>> 17;
-  value ^= value << 5;
-  return value >>> 0;
+  return new SeededRandom(seed).snapshot().state;
 }
 
 function isBattleInputShape(value: unknown): value is BattleInput {
