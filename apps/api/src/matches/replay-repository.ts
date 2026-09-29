@@ -47,6 +47,7 @@ export class MatchReplayRepository {
       const definitions = await this.loadCardDefinitions(
         replay.cardDataVersion,
         transaction.cardVersion,
+        replay.formatVersion === replayFormatVersionV2,
       );
       this.assertValidReplay(replay, definitions);
 
@@ -178,7 +179,7 @@ export class MatchReplayRepository {
 
     const definitions =
       match.formatVersion === replayFormatVersion
-        ? await this.loadCardDefinitions(match.cardDataVersion, this.prisma.cardVersion)
+        ? await this.loadCardDefinitions(match.cardDataVersion, this.prisma.cardVersion, false)
         : await this.loadDefinitionSnapshot(
             match.draftDefinitionRevision!,
             this.prisma.replayDefinitionSnapshot,
@@ -242,12 +243,12 @@ export class MatchReplayRepository {
 
   private assertValidReplay(
     replay: Replay | ReplayV2,
-    definitions: readonly CardDefinitionV2[],
+    definitions: readonly (CardDefinition | CardDefinitionV2)[],
   ): void {
     const verification =
       replay.formatVersion === replayFormatVersion
         ? verifyReplay(replay, definitions as readonly CardDefinition[])
-        : this.verifyReplayV2(replay, definitions);
+        : this.verifyReplayV2(replay, definitions as readonly CardDefinitionV2[]);
     if (!verification.ok) {
       throw new ReplayPersistenceError(
         `Cannot persist or reconstruct an invalid replay: ${verification.error.message}`,
@@ -275,7 +276,8 @@ export class MatchReplayRepository {
   private async loadCardDefinitions(
     cardDataVersion: string,
     cardVersion: Pick<PrismaClient['cardVersion'], 'findMany'>,
-  ): Promise<readonly CardDefinitionV2[]> {
+    requireVersion: boolean,
+  ): Promise<readonly (CardDefinition | CardDefinitionV2)[]> {
     const versions = await cardVersion.findMany({
       where: { version: cardDataVersion },
       orderBy: { cardId: 'asc' },
@@ -287,7 +289,7 @@ export class MatchReplayRepository {
       );
     }
     return versions.map(({ definition }) => {
-      if (!isCardDefinition(definition)) {
+      if (!isCardDefinition(definition, requireVersion)) {
         throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
       }
       return definition;
@@ -305,7 +307,7 @@ export class MatchReplayRepository {
       );
     }
     const definitions = stored.definitions.map((definition) => {
-      if (!isCardDefinition(definition)) {
+      if (!isCardDefinitionV2(definition)) {
         throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
       }
       return definition;
@@ -323,17 +325,23 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-function isCardDefinition(value: unknown): value is CardDefinitionV2 {
+function isCardDefinition(
+  value: unknown,
+  requireVersion: boolean,
+): value is CardDefinition | CardDefinitionV2 {
   if (!isRecord(value) || !Array.isArray(value.effects)) return false;
   return (
     typeof value.id === 'string' &&
     value.id.length > 0 &&
-    typeof value.version === 'string' &&
-    value.version.length > 0 &&
+    (!requireVersion || (typeof value.version === 'string' && value.version.length > 0)) &&
     isNonNegativeInteger(value.cost) &&
     value.effects.length > 0 &&
     value.effects.every(isCardEffect)
   );
+}
+
+function isCardDefinitionV2(value: unknown): value is CardDefinitionV2 {
+  return isRecord(value) && isCardDefinition(value, true);
 }
 
 function isCardEffect(value: unknown): boolean {

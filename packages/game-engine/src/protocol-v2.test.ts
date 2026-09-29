@@ -482,6 +482,9 @@ describe('battle protocol 2 special victory routes', () => {
     expect(
       opponentProjection.events.find((event) => event.type === 'CARD_CHOICE_SUBMITTED'),
     ).not.toHaveProperty('selectedIds');
+    expect(
+      opponentProjection.events.find((event) => event.type === 'CARD_CHOICE_SUBMITTED'),
+    ).not.toHaveProperty('choiceRequestId');
   });
 
   it('recycles the discard pile before an empty-pile transformation search', () => {
@@ -668,6 +671,19 @@ describe('battle protocol 2 special victory routes', () => {
       error: { code: 'MALFORMED_INPUT' },
     });
   });
+
+  it('rejects sparse chant completion effects before playing the card', () => {
+    const state = battle([card('sparse-chant', 'sparse-chant')]);
+    const sparseDefinition = definition('sparse-chant', 0, [
+      { type: 'START_CHANT', countdown: 1, completionEffects: new Array(1) },
+    ]);
+    expect(
+      applyBattleInputV2(state, client(1, play('sparse-chant')), [sparseDefinition]),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_CARD_DEFINITION' },
+    });
+  });
 });
 
 describe('Replay format 2 and pending choices', () => {
@@ -802,6 +818,15 @@ describe('Replay format 2 and pending choices', () => {
     expect(state.events.map((event) => event.type)).toEqual(
       expect.arrayContaining(['CARD_CHOICE_TIMED_OUT', 'TURN_ENDED', 'TURN_STARTED']),
     );
+    const opponentProjection = projectBattleStateV2(state, playerTwo) as {
+      readonly events: readonly Record<string, unknown>[];
+    };
+    expect(
+      opponentProjection.events.find((event) => event.type === 'CARD_CHOICE_REQUESTED'),
+    ).not.toHaveProperty('choiceRequestId');
+    expect(
+      opponentProjection.events.find((event) => event.type === 'CARD_CHOICE_TIMED_OUT'),
+    ).not.toHaveProperty('choiceRequestId');
   });
 
   it('rejects a replay that leaves a pending choice without its deadline command', () => {

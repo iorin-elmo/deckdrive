@@ -845,6 +845,7 @@ function applyServerCommand(
     type: 'CARD_CHOICE_TIMED_OUT',
     choiceRequestId: pending.choiceRequestId,
     playerId: pending.ownerPlayerId,
+    visibility: 'ownerOnly',
   });
   const mutable = mutableFrom(state);
   mutable.pendingCardChoice = undefined;
@@ -1963,6 +1964,7 @@ function isValidEffect(effect: unknown): effect is CardEffectV2 {
         (effect.damageDelay === undefined || isNonNegativeInteger(effect.damageDelay)) &&
         Array.isArray(effect.completionEffects) &&
         effect.completionEffects.length > 0 &&
+        isDense(effect.completionEffects) &&
         effect.completionEffects.every(isValidEffect)
       );
     case 'ADVANCE_CHANT':
@@ -2081,6 +2083,7 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
     'definitionId',
     'definitionVersion',
     'candidateIds',
+    'choiceRequestId',
     'materialCardInstanceIds',
     'selectedIds',
     'sourceCardInstanceId',

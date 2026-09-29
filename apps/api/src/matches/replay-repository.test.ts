@@ -20,6 +20,36 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { MatchReplayRepository, ReplayPersistenceError } from './replay-repository.js';
 
 describe('MatchReplayRepository', () => {
+  it('saves legacy definitions without embedded versions', async () => {
+    const replay = createActionReplay();
+    const createMatch = vi.fn();
+    const transaction = {
+      cardVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            definition: {
+              id: 'strike',
+              cost: 1,
+              effects: [{ type: 'DAMAGE', amount: 6, target: 'ENEMY' }],
+            },
+          },
+        ]),
+      },
+      match: { create: createMatch },
+      matchAction: { create: vi.fn() },
+      matchEvent: { create: vi.fn() },
+      matchSnapshot: { create: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn((callback) => callback(transaction)),
+    } as unknown as PrismaClient;
+
+    await new MatchReplayRepository(prisma).save(replay);
+    expect(createMatch).toHaveBeenCalledWith({
+      data: expect.objectContaining({ formatVersion: 1, id: replay.matchId }),
+    });
+  });
+
   it('rejects saving a replay when its card-data version is unavailable', async () => {
     const replay = createZeroActionReplay();
     const findCardVersions = vi.fn().mockResolvedValue([]);
