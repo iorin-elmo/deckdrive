@@ -37,7 +37,6 @@ import {
 } from 'react-router-dom';
 import { maximumCardCopies } from '@deck-drive/card-definitions';
 import { ActionButton, AsyncNotice, classNames } from '@deck-drive/ui';
-import { useAudioSettings, unlockAudioContext } from './audio-settings.js';
 
 import {
   api,
@@ -56,13 +55,6 @@ import {
 } from './api.js';
 import { PvpSocketClient, type PvpServerMessage } from './pvp.js';
 import { useSessionStore } from './store.js';
-import {
-  initialPackRevealState,
-  movePackSelection,
-  packHasDuplicate,
-  revealPackCard,
-  shortenPackReveal,
-} from './presentation-runtime.js';
 import {
   I18nProvider,
   localizeCard,
