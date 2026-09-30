@@ -10,6 +10,10 @@ import { SeededRandom } from './random/index.js';
 import { sha256Hex } from './sha256.js';
 
 export const battleProtocolVersion = 2 as const;
+export const normalSynthesisOutputDefinitionsV2 = [
+  { id: 'alchemist_005', version: '1.0.0' },
+  { id: 'alchemist_006', version: '1.0.0' },
+] as const;
 
 export type Visibility = 'ownerOnly' | 'allPlayers';
 export type SpecialVictoryId = 'MAGE_GRAND_WISH' | 'ALCHEMY_SAGE_STONE';
@@ -637,6 +641,29 @@ function playCard(
   }
   if (!isValidCardDefinitionV2(definition)) {
     return failure(state, 'INVALID_CARD_DEFINITION', 'The card definition is malformed.');
+  }
+  if (
+    definition.effects.some((effect) => effect.type === 'SYNTHESIZE' && effect.mode === 'NORMAL')
+  ) {
+    for (const output of normalSynthesisOutputDefinitionsV2) {
+      const outputDefinition = resolveDefinition(definitions, output.id, output.version);
+      if (
+        outputDefinition === undefined ||
+        outputDefinition.id !== output.id ||
+        outputDefinition.version !== output.version
+      )
+        return failure(
+          state,
+          'CARD_DEFINITION_NOT_FOUND',
+          `Missing fixed recipe output ${output.id}@${output.version}.`,
+        );
+      if (!isValidCardDefinitionV2(outputDefinition))
+        return failure(
+          state,
+          'INVALID_CARD_DEFINITION',
+          'The fixed recipe output definition is malformed.',
+        );
+    }
   }
   const choiceError = validatePlayChoices(state, playerIndex, action, definition, definitions);
   if (choiceError !== undefined) return failure(state, choiceError.code, choiceError.message);
@@ -1500,12 +1527,15 @@ function synthesize(
       synthesisResult = 'FAILURE';
     }
   }
-  if (
-    outputDefinitionId !== undefined &&
-    !canCreateCard(mutable.players[actorIndex]!, outputDefinitionId, definitions)
-  ) {
-    synthesisResult = 'FAILURE';
-    outputDefinitionId = undefined;
+  let outputDefinition: CardDefinitionV2 | undefined;
+  if (outputDefinitionId !== undefined) {
+    outputDefinition = resolveAnyCurrentDefinition(definitions, outputDefinitionId);
+    if (outputDefinition === undefined)
+      throw new TypeError(`Missing fixed recipe output ${outputDefinitionId}@1.0.0.`);
+    if (!canCreateCard(mutable.players[actorIndex]!, outputDefinition)) {
+      synthesisResult = 'FAILURE';
+      outputDefinition = undefined;
+    }
   }
   emitter.emit({
     type: 'SYNTHESIS_RESOLVED',
@@ -1562,14 +1592,13 @@ function synthesize(
     }
     return;
   }
-  if (outputDefinitionId !== undefined) {
+  if (outputDefinition !== undefined) {
     createCard(
       mutable,
       actorIndex,
-      outputDefinitionId,
+      outputDefinition,
       sourceCard,
       exhaustedCards.some((card) => hasKeyword(card, 'catalyst', definitions)) ? -1 : 0,
-      definitions,
       emitter,
     );
   }
@@ -1631,14 +1660,11 @@ function exhaustGrimoireAndAdvanceWish(
 function createCard(
   mutable: MutableResolution,
   playerIndex: number,
-  definitionId: string,
+  definition: CardDefinitionV2,
   sourceCard: CardInstanceV2,
   costModifier: number,
-  definitions: CardDefinitionSourceV2,
   emitter: EventEmitter,
 ): void {
-  const definition = resolveAnyCurrentDefinition(definitions, definitionId);
-  if (definition === undefined) return;
   const player = mutable.players[playerIndex]!;
   const sequence = mutable.generatedCardSequence + 1;
   const card: CardInstanceV2 = {
@@ -1663,13 +1689,7 @@ function createCard(
   });
 }
 
-function canCreateCard(
-  player: BattlePlayerStateV2,
-  definitionId: string,
-  definitions: CardDefinitionSourceV2,
-): boolean {
-  const definition = resolveAnyCurrentDefinition(definitions, definitionId);
-  if (definition === undefined) return false;
+function canCreateCard(player: BattlePlayerStateV2, definition: CardDefinitionV2): boolean {
   if (definition.deckLimit === null || definition.deckLimit === undefined) return true;
   const copies = [...player.drawPile, ...player.hand, ...player.discard, ...player.exhaust].filter(
     (card) => card.definitionId === definition.id && card.definitionVersion === definition.version,

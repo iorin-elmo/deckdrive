@@ -3,6 +3,7 @@ import {
   battleProtocolVersion,
   createInitialBattleStateV2,
   isValidCardDefinitionV2,
+  normalSynthesisOutputDefinitionsV2,
   isGameActionV2,
   projectBattleStateV2,
   projectGameEventV2,
@@ -238,6 +239,12 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
     return invalid('Invalid projected event sequence or event visibility.');
   if (canonicalReplayJson(view.finalState.events) !== canonicalReplayJson(view.events))
     return invalid('Final projected events do not match the replay events.');
+  const initialEvents = view.initialState.events as unknown[];
+  if (
+    canonicalReplayJson(initialEvents) !==
+    canonicalReplayJson(view.events.slice(0, initialEvents.length))
+  )
+    return invalid('Initial projected events do not match the replay event prefix.');
   if (
     !dense(view.actions) ||
     !view.actions.every(
@@ -1557,6 +1564,21 @@ function validateDefinitionSnapshot(definitions: readonly CardDefinitionV2[]): v
     if (keys.has(key))
       throw new TypeError('Definition snapshot contains a duplicate definition version.');
     keys.add(key);
+  }
+  if (
+    definitions.some((definition) =>
+      definition.effects.some(
+        (effect: CardDefinitionV2['effects'][number]) =>
+          effect.type === 'SYNTHESIZE' && effect.mode === 'NORMAL',
+      ),
+    )
+  ) {
+    for (const output of normalSynthesisOutputDefinitionsV2) {
+      if (!keys.has(`${output.id}\u0000${output.version}`))
+        throw new TypeError(
+          `Definition snapshot is missing fixed recipe output ${output.id}@${output.version}.`,
+        );
+    }
   }
   canonicalJsonV2(definitions);
 }

@@ -320,6 +320,27 @@ describe('battle protocol 2 special victory routes', () => {
     );
   });
 
+  it('rejects a missing fixed recipe output instead of treating it as a copy limit', () => {
+    const missingOutput = definitions.filter((entry) => entry.id !== 'alchemist_005');
+    expect(() => calculateDraftDefinitionRevision(missingOutput)).toThrow(
+      'missing fixed recipe output alchemist_005@1.0.0',
+    );
+    const initial = battle([card('synthesis', 'alchemist_008')]);
+    expect(applyBattleInputV2(initial, client(1, play('synthesis')), missingOutput)).toMatchObject({
+      ok: false,
+      error: { code: 'CARD_DEFINITION_NOT_FOUND' },
+    });
+    expect(
+      recordReplayV2(initial, [], missingOutput, {
+        draftDefinitionRevision: `sha256:${'0'.repeat(64)}`,
+        battleProtocolVersion: 2,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_DEFINITION_REVISION' },
+    });
+  });
+
   it('requires an authoritative recipe choice when solvent matches multiple recipes', () => {
     const initial = battle([
       card('catalyst', 'alchemist_003'),

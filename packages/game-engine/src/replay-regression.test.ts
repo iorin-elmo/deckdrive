@@ -214,6 +214,24 @@ describe('Replay regression gate', () => {
       });
     }
   });
+
+  it('rejects a projected initial event history that is not the replay prefix', () => {
+    const view = projectReplayV2(
+      v2Fixture.expectedReplay,
+      () => v2Fixture.definitions,
+      () => true,
+      v2Fixture.initial.players[0]!.id,
+    );
+    const copy = structuredClone(view);
+    const initialEvents = copy.initialState.events as Record<string, unknown>[];
+    initialEvents[0] = { ...initialEvents[0]!, cardInstanceId: 'different-card' };
+    (copy as { projectionChecksum: string }).projectionChecksum =
+      calculatePlayerReplayProjectionChecksumV2(copy);
+    expect(verifyPlayerReplayViewV2(copy)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_PROJECTION' },
+    });
+  });
 });
 
 const v2Fixture = JSON.parse(
