@@ -83,6 +83,7 @@ export interface EventMessage {
 export type PublicGameEvent =
   | (Omit<Extract<GameEvent, { type: 'CARD_PLAYED' }>, 'cardInstanceId'> & {
       readonly cardInstanceId?: string;
+      readonly definitionId?: string;
     })
   | (Omit<Extract<GameEvent, { type: 'CARD_DRAWN' }>, 'cardInstanceId'> & {
       readonly cardInstanceId?: string;
@@ -110,6 +111,7 @@ export interface ErrorMessage {
     | 'MATCH_FINISHED'
     | 'MATCH_ABANDONED'
     | 'MATCH_UNAVAILABLE'
+    | 'REQUEST_CONFLICT'
     | 'RATE_LIMITED';
   readonly message: string;
   readonly requestId?: string;
@@ -157,7 +159,11 @@ export function projectBattleState(
   };
 }
 
-export function projectEvent(event: GameEvent, viewerId: PlayerId): PublicGameEvent {
+export function projectEvent(
+  event: GameEvent,
+  viewerId: PlayerId,
+  publicDefinitionId?: string,
+): PublicGameEvent {
   if (event.type === 'EFFECT_STARTED')
     return {
       type: event.type,
@@ -165,7 +171,12 @@ export function projectEvent(event: GameEvent, viewerId: PlayerId): PublicGameEv
       effectId: `effect-${String(event.sequence)}`,
     };
   if (event.type === 'CARD_PLAYED' && event.playerId !== viewerId)
-    return { type: event.type, sequence: event.sequence, playerId: event.playerId };
+    return {
+      type: event.type,
+      sequence: event.sequence,
+      playerId: event.playerId,
+      ...(publicDefinitionId === undefined ? {} : { definitionId: publicDefinitionId }),
+    };
   if (event.type === 'CARD_DRAWN' && event.playerId !== viewerId)
     return { type: event.type, sequence: event.sequence, playerId: event.playerId, count: 1 };
   if (event.type === 'CARDS_DRAWN' && event.playerId !== viewerId)

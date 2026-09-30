@@ -148,6 +148,29 @@ describe('PvP socket client', () => {
           action: { type: 'END_TURN', playerId: 'player-1' },
         }),
       );
+      sockets[1]!.onmessage?.({
+        data: JSON.stringify({
+          type: 'STATE',
+          protocolVersion: 1,
+          matchId: 'match-1',
+          actionSequence: 0,
+          eventSequence: 1,
+          snapshotActionIndex: 0,
+          requestId: 'request-1',
+          state: {},
+        }),
+      });
+      sockets[1]!.onclose?.();
+      vi.advanceTimersByTime(20);
+      sockets[2]!.onopen?.();
+      expect(sockets[2]!.sent).not.toContain(
+        JSON.stringify({
+          type: 'ACTION',
+          requestId: 'request-1',
+          sequence: 0,
+          action: { type: 'END_TURN', playerId: 'player-1' },
+        }),
+      );
       client.close();
     } finally {
       vi.useRealTimers();

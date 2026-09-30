@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   createInitialBattleState,
   recordReplay,
+  SeededRandom,
   type BattleState,
   type CardDefinition,
   type CardInstance,
@@ -59,6 +60,14 @@ export class PvpMatchService {
   private readonly lobby: PvpLobby<PvpDeck>;
   private readonly loading = new Map<string, Promise<MatchSession | undefined>>();
   private readonly casualInFlight = new Map<string, Promise<CasualMatchResult>>();
+  private readonly privateCreateRequests = new Map<
+    string,
+    {
+      readonly deckId: string;
+      readonly result: { readonly inviteCode: string; readonly host: LobbyPlayer<PvpDeck> };
+      readonly expiresAt: number;
+    }
+  >();
   private readonly matchmakingRateLimiter = new PvpRateLimiter();
 
   constructor(
@@ -70,8 +79,12 @@ export class PvpMatchService {
       createState: ({ matchId, players }) => createState(matchId, players),
       canPair: (candidate, incoming) =>
         candidate.deck.cardDataVersion === incoming.deck.cardDataVersion,
-      createSession: ({ players }) => ({
+      createSession: ({ matchId, players }) => ({
         definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
+        onPlayerConnect: (playerId) =>
+          this.persistence.setPlayerDisconnected(matchId, playerId, null),
+        onPlayerDisconnect: (playerId, disconnectedAt) =>
+          this.persistence.setPlayerDisconnected(matchId, playerId, disconnectedAt),
       }),
       session: {
         onAction: (accepted) => this.persistAction(accepted),
@@ -129,10 +142,26 @@ export class PvpMatchService {
     return result;
   }
 
-  async createPrivate(playerId: string, deckId: string) {
+  async createPrivate(playerId: string, deckId: string, requestId?: string) {
+    this.prunePrivateCreateRequests();
+    const requestKey = requestId === undefined ? undefined : `${playerId}:${requestId}`;
+    if (requestKey !== undefined) {
+      const existing = this.privateCreateRequests.get(requestKey);
+      if (existing !== undefined) {
+        if (existing.deckId !== deckId) throw new PvpRequestError('REQUEST_CONFLICT');
+        return existing.result;
+      }
+    }
     this.matchmakingRateLimiter.consume(`${playerId}:private-create`, 5, 60_000);
     try {
-      return this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
+      const result = this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
+      if (requestKey !== undefined)
+        this.privateCreateRequests.set(requestKey, {
+          deckId,
+          result,
+          expiresAt: Date.now() + pvpStatusRetentionMs,
+        });
+      return result;
     } catch (error) {
       if (error instanceof Error && error.message === 'PRIVATE_INVITE_LIMIT')
         throw new PvpRequestError('PRIVATE_INVITE_LIMIT');
@@ -264,7 +293,9 @@ export class PvpMatchService {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       include: {
-        players: { select: { playerId: true, seat: true, deckSnapshot: true } },
+        players: {
+          select: { playerId: true, seat: true, deckSnapshot: true, disconnectedAt: true },
+        },
         actions: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
         snapshots: { orderBy: { actionIndex: 'desc' }, take: 1 },
@@ -295,6 +326,8 @@ export class PvpMatchService {
           playerId: entry.playerId as PlayerId,
           requestId: entry.requestId,
           source: entry.source,
+          sequence: entry.sequence,
+          action: entry.action as unknown as GameAction,
           messages: entry.response as unknown as RestoredRequest['messages'],
           ...(entry.timeoutStreak === null ? {} : { timeoutStreak: entry.timeoutStreak }),
         },
@@ -331,6 +364,11 @@ export class PvpMatchService {
         snapshots,
         turnStartedAt: turnStartedAt.getTime(),
         requests,
+        disconnectedAt: match.players.flatMap((player) =>
+          player.disconnectedAt === null
+            ? []
+            : [{ playerId: player.playerId as PlayerId, at: player.disconnectedAt.getTime() }],
+        ),
       },
       onAction: async (accepted) => {
         await this.persistAction(accepted);
@@ -385,6 +423,12 @@ export class PvpMatchService {
     }
   }
 
+  private prunePrivateCreateRequests(): void {
+    const now = Date.now();
+    for (const [key, request] of this.privateCreateRequests)
+      if (request.expiresAt <= now) this.privateCreateRequests.delete(key);
+  }
+
   private async findPersistedCasualMatch(
     playerId: string,
     status: ReturnType<PvpLobby<PvpDeck>['casualStatusForPlayer']>,
@@ -423,6 +467,7 @@ export class PvpRequestError extends Error {
       | 'QUEUE_NOT_FOUND'
       | 'PRIVATE_STATUS_NOT_FOUND'
       | 'PRIVATE_INVITE_LIMIT'
+      | 'REQUEST_CONFLICT'
       | 'RATE_LIMITED',
   ) {
     super(code);
@@ -436,16 +481,30 @@ function createState(
 ) {
   if (players[0].deck.cardDataVersion !== players[1].deck.cardDataVersion)
     throw new PvpRequestError('INVALID_DECK');
+  const seed = randomUUID();
   return createInitialBattleState({
     matchId,
     engineVersion: '1.0.0',
     rulesVersion: '1.0.0',
     cardDataVersion: players[0].deck.cardDataVersion,
-    seed: randomUUID(),
+    seed,
     initialDrawCount: 5,
     turnDrawCount: 1,
-    players: players.map((player) => ({ id: player.playerId, drawPile: player.deck.cards })),
+    players: players.map((player) => ({
+      id: player.playerId,
+      drawPile: shuffleDeck(player.deck.cards, `${seed}:${player.playerId}`),
+    })),
   });
+}
+
+function shuffleDeck(cards: readonly CardInstance[], seed: string): readonly CardInstance[] {
+  const shuffled = [...cards];
+  const random = new SeededRandom(seed);
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random.next() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+  }
+  return shuffled;
 }
 
 function mergeDefinitions(definitions: readonly CardDefinition[]): CardDefinitionSource {

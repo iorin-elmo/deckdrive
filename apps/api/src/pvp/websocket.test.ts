@@ -51,7 +51,7 @@ class RawWebSocketClient {
         'Connection: Upgrade',
         'Sec-WebSocket-Version: 13',
         'Sec-WebSocket-Key: dGVzdC1rZXktMTIzNDU2',
-        `x-deckdrive-player-id: ${playerId}`,
+        `Cookie: deckdrive_session=session-${playerId}`,
         '',
         '',
       ].join('\r\n'),
@@ -156,14 +156,15 @@ function battleState(): BattleState {
 describe('PvP WebSocket adapter', () => {
   it('recovers projected state and missing events over a real authenticated socket', async () => {
     const server = createServer();
-    const session = new MatchSession({ state: battleState(), now: () => 0, snapshotInterval: 10 });
+    let session = new MatchSession({ state: battleState(), now: () => 0, snapshotInterval: 10 });
     const stop = attachPvpWebSocket(
       server,
       {
         find: (matchId) => (matchId === 'match-1' ? session : undefined),
         authenticate: (request) => {
-          const playerId = request.headers['x-deckdrive-player-id'];
-          return typeof playerId === 'string' ? (playerId as PlayerId) : null;
+          const cookie = request.headers.cookie;
+          const playerId = cookie?.match(/(?:^|;\s*)deckdrive_session=session-([^;]+)/u)?.[1];
+          return playerId === 'player-1' || playerId === 'player-2' ? (playerId as PlayerId) : null;
         },
         sessions: () => [session],
       },
@@ -196,18 +197,39 @@ describe('PvP WebSocket adapter', () => {
         'advanced state',
       );
 
+      // Recreate the coordinator from the persisted replay boundary to cover
+      // the process-restart path before the reconnecting browser joins.
+      session = new MatchSession({
+        state: session.currentState,
+        initialState: battleState(),
+        now: () => 0,
+        snapshotInterval: 10,
+        history: {
+          actions: [{ type: 'END_TURN', playerId: 'player-1' as PlayerId }],
+          events: session.currentState.events,
+          snapshots: [
+            {
+              actionIndex: 1,
+              eventSequence: session.eventSequence,
+              state: session.currentState,
+            },
+          ],
+        },
+      });
+
       reconnectedPlayerTwo = await RawWebSocketClient.open(port, 'player-2');
       const state = await reconnectedPlayerTwo.waitFor(
         (message) => message.type === 'STATE' && message.actionSequence === 1,
         2_000,
         'reconnected state',
       );
+      reconnectedPlayerTwo.send({ type: 'RESYNC', afterEventSequence: 0 });
       const event = await reconnectedPlayerTwo.waitFor(
         (message) => message.type === 'EVENT',
         2_000,
         'recovered event',
       );
-      expect(state.state).toEqual(expect.objectContaining({ activePlayerId: 'player-1' }));
+      expect(state.state).toEqual(expect.objectContaining({ activePlayerId: 'player-2' }));
       expect(event.event).toEqual(expect.objectContaining({ type: 'TURN_ENDED' }));
     } finally {
       playerOne?.close();

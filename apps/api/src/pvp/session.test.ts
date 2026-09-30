@@ -72,6 +72,31 @@ describe('MatchSession', () => {
     expect(resync[0]).toMatchObject({ type: 'STATE', snapshotActionIndex: 1 });
   });
 
+  it('rejects reuse of a request ID with different action input', async () => {
+    const session = new MatchSession({ state: state() });
+    await session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'same-request',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId: 'player-1' },
+    });
+    await expect(
+      session.receive('player-1' as PlayerId, {
+        type: 'ACTION',
+        requestId: 'same-request',
+        sequence: 1,
+        action: { type: 'END_TURN', playerId: 'player-2' },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        type: 'ERROR',
+        code: 'REQUEST_CONFLICT',
+        requestId: 'same-request',
+      }),
+    ]);
+    expect(session.actionSequence).toBe(1);
+  });
+
   it('does not advance memory when the persistence callback fails', async () => {
     const session = new MatchSession({
       state: state(),

@@ -43,6 +43,7 @@ export class PrismaPvpMatchPersistence {
               playerId: player.playerId,
               seat: index + 1,
               deckSnapshot: asInputJson(player.deckSnapshot),
+              disconnectedAt: new Date(),
             })),
           },
         },
@@ -131,6 +132,17 @@ export class PrismaPvpMatchPersistence {
     await this.prisma.match.updateMany({
       where: { id: matchId, status: 'IN_PROGRESS' },
       data: { status: 'ABANDONED', completedAt: new Date() },
+    });
+  }
+
+  async setPlayerDisconnected(
+    matchId: string,
+    playerId: string,
+    disconnectedAt: number | null,
+  ): Promise<void> {
+    await this.prisma.matchPlayer.updateMany({
+      where: { matchId, playerId },
+      data: { disconnectedAt: disconnectedAt === null ? null : new Date(disconnectedAt) },
     });
   }
 }

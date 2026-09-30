@@ -55,11 +55,17 @@ export interface MatchSessionOptions {
   readonly snapshotInterval?: number;
   readonly onAction?: (accepted: AcceptedAction) => Promise<void> | void;
   readonly onAbandoned?: (matchId: string) => Promise<void> | void;
+  readonly onPlayerConnect?: (playerId: PlayerId) => Promise<void> | void;
+  readonly onPlayerDisconnect?: (
+    playerId: PlayerId,
+    disconnectedAt: number,
+  ) => Promise<void> | void;
   readonly history?: {
     readonly actions: readonly GameAction[];
     readonly events: readonly GameEvent[];
     readonly snapshots: readonly MatchSnapshot[];
     readonly turnStartedAt?: number;
+    readonly disconnectedAt?: readonly { readonly playerId: PlayerId; readonly at: number }[];
     readonly requests?: readonly RestoredRequest[];
   };
 }
@@ -70,6 +76,8 @@ export interface ConnectedPlayer {
 }
 
 interface CachedRequest {
+  readonly action: GameAction;
+  readonly sequence: number;
   readonly messages?: readonly ServerMessage[];
   readonly pending?: Promise<readonly ServerMessage[]>;
 }
@@ -78,6 +86,8 @@ export interface RestoredRequest {
   readonly playerId: PlayerId;
   readonly requestId: string;
   readonly source: 'CLIENT' | 'TIMEOUT';
+  readonly sequence: number;
+  readonly action: GameAction;
   readonly messages: readonly ServerMessage[];
   readonly timeoutStreak?: number;
 }
@@ -97,6 +107,9 @@ export class MatchSession {
   private readonly snapshotInterval: number;
   private readonly onAction: ((accepted: AcceptedAction) => Promise<void> | void) | undefined;
   private readonly onAbandoned: ((matchId: string) => Promise<void> | void) | undefined;
+  private readonly onPlayerConnect: ((playerId: PlayerId) => Promise<void> | void) | undefined;
+  private readonly onPlayerDisconnect:
+    ((playerId: PlayerId, disconnectedAt: number) => Promise<void> | void) | undefined;
   private readonly clients = new Map<string, Set<ConnectedPlayer>>();
   private readonly requests = new Map<string, CachedRequest>();
   private readonly pendingActions = new Map<string, number>();
@@ -108,6 +121,7 @@ export class MatchSession {
   private turnStartedAt: number;
   private readonly disconnectedAt = new Map<string, number>();
   private readonly timeoutStreaks = new Map<string, number>();
+  private readonly cardDefinitions = new Map<string, string>();
   private timeoutInFlightTurn: number | undefined;
   private abandoning = false;
   private abandoned = false;
@@ -130,6 +144,8 @@ export class MatchSession {
     this.snapshotInterval = options.snapshotInterval ?? 1;
     this.onAction = options.onAction;
     this.onAbandoned = options.onAbandoned;
+    this.onPlayerConnect = options.onPlayerConnect;
+    this.onPlayerDisconnect = options.onPlayerDisconnect;
     this.events = [...(options.history?.events ?? options.state.events)];
     this.actions.push(...(options.history?.actions ?? []));
     this.snapshots = options.history?.snapshots?.length
@@ -137,8 +153,15 @@ export class MatchSession {
       : [{ actionIndex: 0, eventSequence: lastEventSequence(this.events), state: options.state }];
     this.turnStartedAt = options.history?.turnStartedAt ?? this.now();
     for (const player of options.state.players) this.disconnectedAt.set(player.id, this.now());
+    for (const disconnected of options.history?.disconnectedAt ?? [])
+      this.disconnectedAt.set(disconnected.playerId, disconnected.at);
+    for (const player of this.initialState.players)
+      for (const card of [...player.drawPile, ...player.hand, ...player.discard])
+        this.cardDefinitions.set(card.id, card.definitionId);
     for (const request of options.history?.requests ?? []) {
       this.requests.set(requestKey(request.source, request.playerId, request.requestId), {
+        action: request.action,
+        sequence: request.sequence,
         messages: request.messages,
       });
       if (request.timeoutStreak !== undefined)
@@ -192,13 +215,10 @@ export class MatchSession {
     clients.add(client);
     this.clients.set(client.playerId, clients);
     this.disconnectedAt.delete(client.playerId);
-    const state = this.stateMessage(client.playerId, this.latestSnapshot());
+    void this.onPlayerConnect?.(client.playerId);
+    const state = this.stateMessage(client.playerId, this.latestSnapshot(), this.state);
     client.send(state);
-    const missing = this.events
-      .filter((event) => event.sequence > this.latestSnapshot().eventSequence)
-      .map((event) => this.eventMessage(client.playerId, event));
-    for (const event of missing) client.send(event);
-    return [state, ...missing];
+    return [state];
   }
 
   disconnect(clientOrPlayerId: ConnectedPlayer | PlayerId, at = this.now()): void {
@@ -213,6 +233,7 @@ export class MatchSession {
     if (clients.size === 0) {
       this.clients.delete(playerId);
       this.disconnectedAt.set(playerId, at);
+      void this.onPlayerDisconnect?.(playerId, at);
     }
   }
 
@@ -267,6 +288,14 @@ export class MatchSession {
     }
     if (message.type === 'RESYNC') return Promise.resolve(this.resync(playerId, message));
     const cached = this.requests.get(requestKey('CLIENT', playerId, message.requestId));
+    if (cached !== undefined && !sameRequest(cached, message))
+      return Promise.resolve([
+        this.error(
+          'REQUEST_CONFLICT',
+          'Request ID was already used with different action input.',
+          message.requestId,
+        ),
+      ]);
     if (cached?.messages !== undefined) return Promise.resolve(cached.messages);
     if (cached?.pending !== undefined) return cached.pending;
     if (this.abandoned || this.abandonRequested)
@@ -303,13 +332,25 @@ export class MatchSession {
   ): Promise<readonly ServerMessage[]> {
     const key = requestKey(source, playerId, requestId);
     const cached = this.requests.get(key);
+    if (cached !== undefined && !sameRequest(cached, message))
+      return Promise.resolve([
+        this.error(
+          'REQUEST_CONFLICT',
+          'Request ID was already used with different action input.',
+          requestId,
+        ),
+      ]);
     if (cached?.messages !== undefined) return Promise.resolve(cached.messages);
     if (cached?.pending !== undefined) return cached.pending;
     let resolveResult!: (messages: readonly ServerMessage[]) => void;
     const result = new Promise<readonly ServerMessage[]>((resolve) => {
       resolveResult = resolve;
     });
-    this.requests.set(key, { pending: result });
+    this.requests.set(key, {
+      action: message.action,
+      sequence: message.sequence,
+      pending: result,
+    });
     this.actionQueue = this.actionQueue.then(async () => {
       let messages: readonly ServerMessage[];
       try {
@@ -326,7 +367,12 @@ export class MatchSession {
       if (this.requests.get(key)?.pending === result) {
         if (messages[0]?.type === 'ERROR' && messages[0].code === 'MATCH_UNAVAILABLE')
           this.requests.delete(key);
-        else this.requests.set(key, { messages });
+        else
+          this.requests.set(key, {
+            action: message.action,
+            sequence: message.sequence,
+            messages,
+          });
       }
       resolveResult(messages);
     });
@@ -347,7 +393,11 @@ export class MatchSession {
         requestId,
         this.actions.length,
       );
-      this.requests.set(key, { messages: [error] });
+      this.requests.set(key, {
+        action: message.action,
+        sequence: message.sequence,
+        messages: [error],
+      });
       return [error];
     }
     if (message.action.playerId !== playerId) {
@@ -356,13 +406,21 @@ export class MatchSession {
         'Action player does not match the authenticated player.',
         requestId,
       );
-      this.requests.set(key, { messages: [error] });
+      this.requests.set(key, {
+        action: message.action,
+        sequence: message.sequence,
+        messages: [error],
+      });
       return [error];
     }
     const result = applyAction(this.state, message.action, this.definitions);
     if (!result.ok) {
       const error = this.error('INVALID_ACTION', result.error.message, requestId);
-      this.requests.set(key, { messages: [error] });
+      this.requests.set(key, {
+        action: message.action,
+        sequence: message.sequence,
+        messages: [error],
+      });
       return [error];
     }
     const previousEventCount = this.events.length;
@@ -421,7 +479,11 @@ export class MatchSession {
       this.scheduleAbandonment();
     }
     if (message.action.type === 'END_TURN') this.turnStartedAt = this.now();
-    this.requests.set(key, { messages: responses });
+    this.requests.set(key, {
+      action: message.action,
+      sequence: message.sequence,
+      messages: responses,
+    });
     this.broadcastEvents(outgoing);
     this.broadcastState(requestId, playerId);
     return responses;
@@ -429,13 +491,13 @@ export class MatchSession {
 
   private resync(
     playerId: PlayerId,
-    _message: Extract<ClientMessage, { type: 'RESYNC' }>,
+    message: Extract<ClientMessage, { type: 'RESYNC' }>,
   ): readonly ServerMessage[] {
     const snapshot = this.latestSnapshot();
-    const responses: ServerMessage[] = [this.stateMessage(playerId, snapshot)];
+    const responses: ServerMessage[] = [this.stateMessage(playerId, snapshot, this.state)];
     responses.push(
       ...this.events
-        .filter((event) => event.sequence > snapshot.eventSequence)
+        .filter((event) => event.sequence > message.afterEventSequence)
         .map((event) => this.eventMessage(playerId, event)),
     );
     return responses;
@@ -457,11 +519,9 @@ export class MatchSession {
       type: 'STATE',
       protocolVersion: 1,
       matchId: this.state.matchId,
-      // These are the current stream cursors even when `state` is an older
-      // snapshot. The following EVENT messages advance the snapshot to them.
       actionSequence,
       eventSequence,
-      snapshotActionIndex: snapshot.actionIndex,
+      snapshotActionIndex: actionSequence,
       ...(requestId === undefined ? {} : { requestId }),
       state: projectBattleState(sourceState, playerId),
     };
@@ -473,7 +533,11 @@ export class MatchSession {
       protocolVersion: 1,
       matchId: this.state.matchId,
       sequence: event.sequence,
-      event: projectEvent(event, playerId),
+      event: projectEvent(
+        event,
+        playerId,
+        event.type === 'CARD_PLAYED' ? this.cardDefinitions.get(event.cardInstanceId) : undefined,
+      ),
     };
   }
 
@@ -555,4 +619,14 @@ function lastEventSequence(events: readonly GameEvent[]): number {
 
 function requestKey(source: 'CLIENT' | 'TIMEOUT', playerId: PlayerId, requestId: string): string {
   return `${source}:${playerId}:${requestId}`;
+}
+
+function sameRequest(
+  cached: Pick<CachedRequest, 'action' | 'sequence'>,
+  message: Extract<ClientMessage, { type: 'ACTION' }>,
+): boolean {
+  return (
+    cached.sequence === message.sequence &&
+    JSON.stringify(cached.action) === JSON.stringify(message.action)
+  );
 }

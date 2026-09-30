@@ -119,6 +119,7 @@ export class PvpSocketClient {
         return;
       }
       if (message.type === 'STATE') {
+        if (typeof message.requestId === 'string') this.pendingActions.delete(message.requestId);
         if (
           typeof message.actionSequence === 'number' &&
           message.actionSequence < this.lastActionSequence
@@ -128,7 +129,6 @@ export class PvpSocketClient {
           this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
         if (typeof message.eventSequence === 'number')
           this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
-        if (typeof message.requestId === 'string') this.pendingActions.delete(message.requestId);
       }
       if (message.type === 'ERROR' && typeof message.requestId === 'string') {
         if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);

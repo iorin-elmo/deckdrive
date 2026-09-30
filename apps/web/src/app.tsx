@@ -1476,7 +1476,12 @@ function PvpSetupPage() {
   const playableDecks = (decks.data ?? []).filter(isCpuReadyDeck);
   const [deckId, setDeckId] = useState('');
   const [inviteCode, setInviteCode] = useState('');
-  const [createdInvite, setCreatedInvite] = useState('');
+  const inviteStorageKey = `deckdrive:pvp:invite:${playerId}`;
+  const [createdInvite, setCreatedInvite] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(inviteStorageKey) ?? '';
+  });
+  const privateCreateRequestId = useRef<string | undefined>(undefined);
   const [mode, setMode] = useState<'CASUAL' | 'PRIVATE'>('CASUAL');
   const [queueId, setQueueId] = useState('');
   const selectedDeck = playableDecks.some((deck) => deck.id === deckId);
@@ -1497,10 +1502,15 @@ function PvpSetupPage() {
     refetchInterval: 1_000,
   });
   const createPrivate = useMutation({
-    mutationFn: () => client.createPrivateMatch(playerId, deckId),
+    mutationFn: () => {
+      privateCreateRequestId.current ??= crypto.randomUUID();
+      return client.createPrivateMatch(playerId, deckId, privateCreateRequestId.current);
+    },
     onSuccess: (result) => {
       setCreatedInvite(result.inviteCode);
       setInviteCode(result.inviteCode);
+      window.localStorage.setItem(inviteStorageKey, result.inviteCode);
+      privateCreateRequestId.current = undefined;
     },
   });
   const privateStatus = useQuery({
@@ -1530,6 +1540,7 @@ function PvpSetupPage() {
     ) {
       setCreatedInvite('');
       setInviteCode('');
+      window.localStorage.removeItem(inviteStorageKey);
     }
   }, [privateStatus.error]);
 
@@ -1702,6 +1713,7 @@ function PvpBattlePage() {
   const viewer = players.find((player) => player?.id === playerId);
   const opponent = players.find((player) => player?.id !== playerId);
   const activePlayerId = state?.activePlayerId;
+  const socketClosed = connectionStatus === 'CLOSED';
   const eventSequence =
     typeof stateMessage?.eventSequence === 'number' ? stateMessage.eventSequence : 0;
   const actionSequence =
@@ -1744,6 +1756,11 @@ function PvpBattlePage() {
         ) : (
           <AsyncNotice kind="error" title="PvP connection error">
             {error}
+            {connectionStatus === 'CLOSED' ? (
+              <ActionButton className="mt-3" type="button" onClick={() => window.location.reload()}>
+                Reload battle
+              </ActionButton>
+            ) : null}
           </AsyncNotice>
         )}
       </>
@@ -1788,7 +1805,9 @@ function PvpBattlePage() {
               className="hand-card text-left disabled:cursor-not-allowed disabled:opacity-50"
               key={card.id}
               type="button"
-              disabled={activePlayerId !== playerId || state?.phase !== 'PLAYER_TURN'}
+              disabled={
+                socketClosed || activePlayerId !== playerId || state?.phase !== 'PLAYER_TURN'
+              }
               onClick={() => playCard(card)}
             >
               <p className="text-xs font-semibold text-amber-200">Play card</p>
@@ -1809,12 +1828,17 @@ function PvpBattlePage() {
         </div>
       </section>
       <div className="mt-5 flex flex-wrap gap-3">
-        <ActionButton type="button" onClick={endTurn} disabled={activePlayerId !== playerId}>
+        <ActionButton
+          type="button"
+          onClick={endTurn}
+          disabled={socketClosed || activePlayerId !== playerId}
+        >
           End turn
         </ActionButton>
         <button
           className="hero-secondary"
           type="button"
+          disabled={socketClosed}
           onClick={() => clientRef.current?.resync(eventSequence)}
         >
           Resync
@@ -1826,6 +1850,11 @@ function PvpBattlePage() {
       {error === undefined ? null : (
         <AsyncNotice kind="error" title="PvP error">
           {error}
+          {socketClosed ? (
+            <ActionButton className="mt-3" type="button" onClick={() => window.location.reload()}>
+              Reload battle
+            </ActionButton>
+          ) : null}
         </AsyncNotice>
       )}
     </>

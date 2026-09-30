@@ -61,6 +61,21 @@ describe('PvP protocol', () => {
     ).toEqual({ type: 'CARD_PLAYED', sequence: 2, playerId: 'player-2' });
   });
 
+  it('keeps the public card definition while hiding the opponent instance ID', () => {
+    expect(
+      projectEvent(
+        {
+          type: 'CARD_PLAYED',
+          sequence: 2,
+          playerId: 'player-2' as PlayerId,
+          cardInstanceId: 'secret' as CardInstance['id'],
+        },
+        'player-1' as PlayerId,
+        'strike',
+      ),
+    ).toEqual({ type: 'CARD_PLAYED', sequence: 2, playerId: 'player-2', definitionId: 'strike' });
+  });
+
   it('replaces effect IDs because the engine derives them from hidden card IDs', () => {
     expect(
       projectEvent(

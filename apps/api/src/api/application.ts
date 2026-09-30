@@ -701,7 +701,11 @@ export class ApiApplication {
   private async createPrivateMatch(playerId: string, body: unknown): Promise<ApiResponse> {
     if (this.pvp === undefined) throw new PvpUnavailableError();
     const value = object(body);
-    const result = await this.pvp.createPrivate(playerId, string(value.deckId, 'deckId'));
+    const result = await this.pvp.createPrivate(
+      playerId,
+      string(value.deckId, 'deckId'),
+      optionalString(value.requestId),
+    );
     return { status: 201, body: { inviteCode: result.inviteCode } };
   }
 
@@ -861,6 +865,7 @@ export class ApiApplication {
         return { status: 409, body: { error: error.code } };
       if (error.code === 'PRIVATE_INVITE_LIMIT')
         return { status: 409, body: { error: error.code } };
+      if (error.code === 'REQUEST_CONFLICT') return { status: 409, body: { error: error.code } };
       if (error.code === 'RATE_LIMITED') return { status: 429, body: { error: error.code } };
       return { status: 400, body: { error: error.code } };
     }
@@ -948,6 +953,10 @@ function string(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new BadRequestError(`${field} is required.`);
   return value;
+}
+function optionalString(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  return string(value, 'requestId');
 }
 function header(
   headers: Readonly<Record<string, string | undefined>>,

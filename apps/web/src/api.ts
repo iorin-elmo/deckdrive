@@ -192,7 +192,7 @@ export interface DeckDriveClient {
   ): Promise<CpuMatch>;
   startCasualMatch(playerId: string, deckId: string): Promise<PvpMatchQueue>;
   casualMatchStatus(playerId: string, queueId: string): Promise<PvpMatchQueue>;
-  createPrivateMatch(playerId: string, deckId: string): Promise<PvpInvite>;
+  createPrivateMatch(playerId: string, deckId: string, requestId?: string): Promise<PvpInvite>;
   joinPrivateMatch(
     playerId: string,
     inviteCode: string,
@@ -351,11 +351,15 @@ export class DeckDriveApi implements DeckDriveClient {
     return this.request(`/api/v1/matches/queue/${encodeURIComponent(queueId)}`, { playerId });
   }
 
-  async createPrivateMatch(playerId: string, deckId: string): Promise<PvpInvite> {
+  async createPrivateMatch(
+    playerId: string,
+    deckId: string,
+    requestId?: string,
+  ): Promise<PvpInvite> {
     return this.request('/api/v1/matches/private', {
       method: 'POST',
       playerId,
-      body: { deckId },
+      body: { deckId, ...(requestId === undefined ? {} : { requestId }) },
     });
   }
 
