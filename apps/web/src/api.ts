@@ -76,7 +76,11 @@ export interface BattlePlayer {
   readonly energy: number;
   readonly maxEnergy: number;
   readonly block: number;
-  readonly hand: readonly { readonly id: string; readonly definitionId: string }[];
+  readonly hand: readonly {
+    readonly id: string;
+    readonly definitionId: string;
+    readonly definitionVersion?: string;
+  }[];
   readonly statuses: readonly { readonly id: string; readonly stacks: number }[];
   readonly synthesisCount?: number;
   readonly alchemyStage?: 0 | 1 | 2 | 3;
@@ -92,6 +96,7 @@ export interface BattleState {
     readonly chantEntryId: string;
     readonly ownerPlayerId: string;
     readonly sourceDefinitionId: string;
+    readonly sourceDefinitionVersion?: string;
     readonly remaining: number;
   }[];
 }
@@ -466,6 +471,7 @@ function previewBattle(matchId: string): BattleState {
         hand: previewCards.map((card, index) => ({
           id: `preview-hand-${String(index)}`,
           definitionId: card.definition.id,
+          definitionVersion: card.definition.version,
         })),
         statuses: [],
       },

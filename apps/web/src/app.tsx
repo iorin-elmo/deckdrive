@@ -1542,7 +1542,17 @@ export function BattleBoard({
                     key={entry.chantEntryId}
                   >
                     <span className="font-semibold text-violet-100">
-                      {entry.sourceDefinitionId}
+                      {localizedCardName(
+                        entry.sourceDefinitionId,
+                        entry.sourceDefinitionVersion ?? state.cardDataVersion,
+                        locale,
+                        cards.data?.find(
+                          (candidate) =>
+                            candidate.cardId === entry.sourceDefinitionId &&
+                            candidate.version ===
+                              (entry.sourceDefinitionVersion ?? state.cardDataVersion),
+                        )?.definition,
+                      )}
                     </span>{' '}
                     <span className="text-stone-300">
                       {t('chantRemaining').replace('{count}', String(entry.remaining))}
@@ -1575,12 +1585,12 @@ export function BattleBoard({
                 <p className="mt-5 font-bold text-stone-50">
                   {localizedCardName(
                     card.definitionId,
-                    state.cardDataVersion,
+                    card.definitionVersion ?? state.cardDataVersion,
                     locale,
                     cards.data?.find(
                       (candidate) =>
                         candidate.cardId === card.definitionId &&
-                        candidate.version === state.cardDataVersion,
+                        candidate.version === (card.definitionVersion ?? state.cardDataVersion),
                     )?.definition,
                   )}
                 </p>

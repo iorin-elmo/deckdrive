@@ -24,6 +24,7 @@ import {
   BattleBoard,
 } from './app.js';
 import { I18nProvider } from './i18n.js';
+import { useLocaleStore } from './locale-store.js';
 import { useSessionStore } from './store.js';
 
 describe('BattleBoard participant identity', () => {
@@ -53,17 +54,28 @@ describe('BattleBoard participant identity', () => {
           energy: 2,
           maxEnergy: 3,
           block: 1,
-          hand: [{ id: 'seat-two-card', definitionId: 'sword_strike' }],
+          hand: [{ id: 'seat-two-card', definitionId: 'sword_strike', definitionVersion: '1.1.0' }],
           statuses: [],
           alchemyStage: 2,
           synthesisCount: 3,
         },
       ],
+      chantQueue: [
+        {
+          chantEntryId: 'chant-1',
+          ownerPlayerId: 'seat-two',
+          sourceDefinitionId: 'sword_strike',
+          sourceDefinitionVersion: '1.1.0',
+          remaining: 2,
+        },
+      ],
     };
+    const originalLocale = useLocaleStore.getState().locale;
+    useLocaleStore.getState().setLocale('en');
     useSessionStore.getState().setPlayerId('seat-two');
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const queryClient = new QueryClient();
-    queryClient.setQueryData(['cards', false], []);
+    queryClient.setQueryData(['cards', false], cards);
     const container = document.createElement('div');
     const root = createRoot(container);
     try {
@@ -84,11 +96,14 @@ describe('BattleBoard participant identity', () => {
       expect(html.indexOf('seat-one')).toBeLessThan(html.indexOf('seat-two'));
       expect(html).toContain('seat-two-card');
       expect(html).not.toContain('seat-one-card');
+      expect(html.match(/Strike\+/g)).toHaveLength(2);
+      expect(html).not.toContain('>Strike<');
       expect(container.querySelector('.combatant-player')?.textContent).toContain('seat-two');
       expect(container.querySelector('.combatant-player')?.textContent).toContain('2/3');
     } finally {
       await act(async () => root.unmount());
       useSessionStore.getState().clearPlayerId();
+      useLocaleStore.getState().setLocale(originalLocale);
       delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
     }
   });
