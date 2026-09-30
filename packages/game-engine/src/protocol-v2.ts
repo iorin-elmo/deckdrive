@@ -1208,6 +1208,25 @@ function requestDrawPileChoice(
 ): void {
   refillDrawPileIfEmpty(mutable, actorIndex, emitter);
   const actor = mutable.players[actorIndex]!;
+  for (const [index, card] of actor.drawPile.entries()) {
+    emitter.emit({
+      type: 'DECK_CARD_REVEALED',
+      playerId: actor.id,
+      ownerPlayerId: actor.id,
+      cardInstanceId: card.id,
+      definitionId: card.definitionId,
+      definitionVersion: card.definitionVersion,
+      zone: 'drawPile',
+      index,
+      position: index,
+      positionVisibility: 'ownerOnly',
+      sourceCardInstanceId: sourceCard.id,
+      sourceDefinitionId: sourceCard.definitionId,
+      sourceDefinitionVersion: sourceCard.definitionVersion,
+      reason: 'CARD_CHOICE',
+      visibility: card.visibility,
+    });
+  }
   const candidates = actor.drawPile.filter((card) => {
     const definition = resolveDefinition(definitions, card.definitionId, card.definitionVersion);
     return (

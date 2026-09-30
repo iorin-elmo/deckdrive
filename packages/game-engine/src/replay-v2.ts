@@ -1369,11 +1369,31 @@ function isReplayV2Shape(value: unknown): value is ReplayV2 {
     !value.finalState.events.every(isPersistedEventV2)
   )
     return false;
+  if (!hasRevealBeforeSearchMoves(value.events)) return false;
   if (!value.snapshots.every((entry) => isReplaySnapshotV2(entry, battleProtocolVersion)))
     return false;
   const first = value.snapshots[0];
   const last = value.snapshots.at(-1);
   return first?.inputSequence === 0 && last?.inputSequence === value.finalState.lastInputSequence;
+}
+
+function hasRevealBeforeSearchMoves(events: readonly GameEventV2[]): boolean {
+  const revealed = new Set<string>();
+  for (const event of events) {
+    if (event.type === 'DECK_CARD_REVEALED') {
+      revealed.add(
+        `${String(event.ownerPlayerId)}:${String(event.cardInstanceId)}:${String(event.sourceCardInstanceId)}`,
+      );
+    } else if (event.type === 'DECK_SHUFFLED') {
+      for (const key of revealed) {
+        if (key.startsWith(`${String(event.ownerPlayerId)}:`)) revealed.delete(key);
+      }
+    } else if (event.type === 'CARD_MOVED' && event.reason === 'CARD_CHOICE') {
+      const key = `${String(event.ownerPlayerId)}:${String(event.cardInstanceId)}:${String(event.sourceCardInstanceId)}`;
+      if (!revealed.delete(key)) return false;
+    }
+  }
+  return true;
 }
 
 function isBattleStateV2(value: unknown): value is BattleStateV2 {
