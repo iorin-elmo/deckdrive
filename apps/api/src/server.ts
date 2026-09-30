@@ -1,7 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg';
+import type { PlayerId } from '@deck-drive/game-engine';
 
 import { ApiApplication } from './api/application.js';
 import { createApiHttpServer } from './api/http.js';
+import { parseCookies, sessionCookieName } from './auth/cookies.js';
+import { OAuthService } from './auth/oauth-service.js';
 import { loadRootEnvironment } from './database/load-environment.js';
 import { PrismaClient } from './generated/prisma/client.js';
 import { PvpMatchService } from './pvp/service.js';
@@ -14,7 +17,24 @@ if (databaseUrl === undefined || databaseUrl.length === 0)
   throw new Error('DATABASE_URL is required to start the API.');
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
-const pvp = new PvpMatchService(prisma);
+const oauth = new OAuthService(prisma, process.env);
+const pvp = new PvpMatchService(prisma, async (request) => {
+  const sessionToken = parseCookies(request.headers.cookie)[sessionCookieName];
+  const session = await oauth.session().authenticate(sessionToken);
+  if (session !== undefined) return session.playerId as PlayerId;
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+    const playerId = request.headers['x-deckdrive-player-id'];
+    if (typeof playerId === 'string' && playerId.trim().length > 0) {
+      const player = await prisma.player.findUnique({
+        where: { id: playerId },
+        select: { id: true },
+      });
+      if (player !== null) return player.id as PlayerId;
+    }
+  }
+  return null;
+});
+await pvp.restoreActive();
 const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp), {
   allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
   developmentLoginLoopbackOnly: true,

@@ -1,3 +1,4 @@
+import { recordReplay } from '@deck-drive/game-engine';
 import type { BattleState, GameEvent, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import type { AcceptedAction } from './session.js';
@@ -31,6 +32,11 @@ export class PrismaPvpMatchPersistence {
           },
         },
       });
+      for (const event of state.events) {
+        await transaction.matchEvent.create({
+          data: { matchId: state.matchId, sequence: event.sequence, event: asInputJson(event) },
+        });
+      }
       const snapshotState = withoutEvents(state);
       await transaction.matchSnapshot.create({
         data: {
@@ -52,6 +58,7 @@ export class PrismaPvpMatchPersistence {
         data: {
           matchId: accepted.matchId,
           sequence: accepted.sequence,
+          source: accepted.source,
           action: asInputJson(accepted.action),
         },
       });
@@ -72,11 +79,14 @@ export class PrismaPvpMatchPersistence {
         });
       }
       if (accepted.state.phase === 'MATCH_END') {
+        const replay = recordReplay(accepted.initialState, accepted.actions, accepted.definitions);
+        if (!replay.ok) throw new Error(`Cannot record PvP replay: ${replay.error.message}`);
         await transaction.match.update({
           where: { id: accepted.matchId },
           data: {
             status: 'COMPLETED',
             finalState: asInputJson(accepted.state),
+            checksum: replay.replay.checksum,
             completedAt: new Date(),
           },
         });

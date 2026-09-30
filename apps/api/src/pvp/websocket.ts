@@ -4,18 +4,20 @@ import type { Socket } from 'node:net';
 
 import type { PlayerId } from '@deck-drive/game-engine';
 
-import { MatchSession } from './session.js';
+import { MatchSession, type ConnectedPlayer } from './session.js';
 import { parseClientMessage, type ServerMessage } from './protocol.js';
 
 export interface PvpWebSocketRegistry {
-  find(matchId: string): MatchSession | undefined;
-  /** The O00 session resolver can be injected here when its branch is merged. */
+  find(matchId: string): Promise<MatchSession | undefined> | MatchSession | undefined;
+  sessions?(): readonly MatchSession[];
   authenticate(request: IncomingMessage): Promise<PlayerId | null> | PlayerId | null;
 }
 
 export interface PvpWebSocketOptions {
   readonly maxMessageBytes?: number;
   readonly tickIntervalMs?: number;
+  readonly maxPendingActionsPerPlayer?: number;
+  readonly maxActionsPerSecond?: number;
   /** Browser origins allowed to use cookie-backed WebSocket authentication. */
   readonly allowedOrigins?: readonly string[];
 }
@@ -28,6 +30,8 @@ export function attachPvpWebSocket(
 ): () => void {
   const maxMessageBytes = options.maxMessageBytes ?? 64 * 1024;
   const tickIntervalMs = options.tickIntervalMs ?? 1_000;
+  const maxPendingActionsPerPlayer = options.maxPendingActionsPerPlayer ?? 32;
+  const maxActionsPerSecond = options.maxActionsPerSecond ?? 30;
   const connections = new Set<PvpWebSocketConnection>();
   const onUpgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
     void acceptUpgrade(
@@ -38,11 +42,18 @@ export function attachPvpWebSocket(
       connections,
       maxMessageBytes,
       options.allowedOrigins ?? [],
-    );
+      maxPendingActionsPerPlayer,
+      maxActionsPerSecond,
+      (connection) => connections.delete(connection),
+    ).catch(() => {
+      if (!socket.destroyed) rejectUpgrade(socket, 500, 'WebSocket upgrade failed.');
+    });
   };
   server.on('upgrade', onUpgrade);
   const timer = setInterval(() => {
-    for (const connection of connections) connection.session.tick();
+    const sessions =
+      registry.sessions?.() ?? [...connections].map((connection) => connection.session);
+    for (const session of new Set(sessions)) session.tick();
   }, tickIntervalMs);
   timer.unref();
   return () => {
@@ -61,6 +72,9 @@ async function acceptUpgrade(
   connections: Set<PvpWebSocketConnection>,
   maxMessageBytes: number,
   allowedOrigins: readonly string[],
+  maxPendingActionsPerPlayer: number,
+  maxActionsPerSecond: number,
+  onClosed: (connection: PvpWebSocketConnection) => void,
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const matchId = url.pathname.match(/^\/ws\/matches\/([^/]+)$/u)?.[1];
@@ -88,12 +102,20 @@ async function acceptUpgrade(
     rejectUpgrade(socket, 401, 'Authentication required.');
     return;
   }
-  const session = registry.find(matchId);
+  const session = await registry.find(matchId);
   if (session === undefined) {
     rejectUpgrade(socket, 404, 'Match not found.');
     return;
   }
-  const connection = new PvpWebSocketConnection(socket, session, playerId, maxMessageBytes);
+  const connection = new PvpWebSocketConnection(
+    socket,
+    session,
+    playerId,
+    maxMessageBytes,
+    maxPendingActionsPerPlayer,
+    maxActionsPerSecond,
+    onClosed,
+  );
   socket.write(
     [
       'HTTP/1.1 101 Switching Protocols',
@@ -110,24 +132,32 @@ async function acceptUpgrade(
 class PvpWebSocketConnection {
   private buffer = Buffer.alloc(0);
   private closed = false;
+  private disconnected = false;
+  private pendingActions = 0;
+  private readonly actionTimestamps: number[] = [];
+  private client: ConnectedPlayer | undefined;
 
   constructor(
     private readonly socket: Socket,
     readonly session: MatchSession,
     private readonly playerId: PlayerId,
     private readonly maxMessageBytes: number,
+    private readonly maxPendingActions: number,
+    private readonly maxActionsPerSecond: number,
+    private readonly onClosed: (connection: PvpWebSocketConnection) => void,
   ) {}
 
   start(head: Buffer): void {
-    this.session.connect({ playerId: this.playerId, send: (message) => this.sendJson(message) });
+    this.client = { playerId: this.playerId, send: (message) => this.sendJson(message) };
+    this.session.connect(this.client);
     this.socket.on('data', (chunk: Buffer) => this.onData(chunk));
     this.socket.once('close', () => {
       this.closed = true;
-      this.session.disconnect(this.playerId);
+      this.disconnect();
     });
     this.socket.once('error', () => {
       this.closed = true;
-      this.session.disconnect(this.playerId);
+      this.disconnect();
     });
     if (head.length > 0) this.onData(head);
   }
@@ -146,7 +176,14 @@ class PvpWebSocketConnection {
     this.sendFrame(0x8, payload);
     this.closed = true;
     this.socket.end();
-    this.session.disconnect(this.playerId);
+    this.disconnect();
+  }
+
+  private disconnect(): void {
+    if (this.disconnected) return;
+    this.disconnected = true;
+    this.session.disconnect(this.client ?? this.playerId);
+    this.onClosed(this);
   }
 
   private onData(chunk: Buffer): void {
@@ -208,22 +245,48 @@ class PvpWebSocketConnection {
         typeof value.requestId === 'string'
           ? value.requestId
           : undefined;
+      if (actionRequest !== undefined && !this.allowAction()) {
+        this.sendJson({
+          type: 'ERROR',
+          protocolVersion: 1,
+          code: 'RATE_LIMITED',
+          message: 'Too many pending or recent actions.',
+          requestId: actionRequest,
+        });
+        continue;
+      }
       const wasCached =
         actionRequest === undefined
           ? false
           : this.session.hasCachedRequest(this.playerId, actionRequest);
-      void this.session.receive(this.playerId, value).then((messages) => {
-        // MatchSession broadcasts accepted actions. Only direct responses are
-        // sent here for PING, RESYNC, and request errors.
-        if (actionRequest !== undefined && !wasCached) {
-          for (const message of messages) {
-            if (message.type === 'ERROR') this.sendJson(message);
+      if (actionRequest !== undefined) this.pendingActions += 1;
+      void this.session
+        .receive(this.playerId, value)
+        .then((messages) => {
+          // MatchSession broadcasts accepted actions. Only direct responses are
+          // sent here for PING, RESYNC, and request errors.
+          if (actionRequest !== undefined && !wasCached) {
+            for (const message of messages) {
+              if (message.type === 'ERROR') this.sendJson(message);
+            }
+            return;
           }
-          return;
-        }
-        for (const message of messages) this.sendJson(message);
-      });
+          for (const message of messages) this.sendJson(message);
+        })
+        .finally(() => {
+          if (actionRequest !== undefined) this.pendingActions -= 1;
+        });
     }
+  }
+
+  private allowAction(): boolean {
+    const now = Date.now();
+    while (this.actionTimestamps[0] !== undefined && now - this.actionTimestamps[0] >= 1_000)
+      this.actionTimestamps.shift();
+    if (this.pendingActions >= this.maxPendingActions) return false;
+    if (this.actionTimestamps.length >= this.maxActionsPerSecond) return false;
+    this.actionTimestamps.push(now);
+    return true;
   }
 
   private sendFrame(opcode: number, payload: Buffer): void {

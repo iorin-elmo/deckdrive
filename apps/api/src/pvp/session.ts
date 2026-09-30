@@ -35,10 +35,15 @@ export interface AcceptedAction {
   readonly events: readonly GameEvent[];
   readonly state: BattleState;
   readonly snapshot: MatchSnapshot | undefined;
+  readonly source: 'CLIENT' | 'TIMEOUT';
+  readonly initialState: BattleState;
+  readonly actions: readonly GameAction[];
+  readonly definitions: CardDefinitionSource | undefined;
 }
 
 export interface MatchSessionOptions {
   readonly state: BattleState;
+  readonly initialState?: BattleState;
   readonly definitions?: CardDefinitionSource;
   readonly now?: () => number;
   readonly turnTimeoutMs?: number;
@@ -46,6 +51,12 @@ export interface MatchSessionOptions {
   readonly snapshotInterval?: number;
   readonly onAction?: (accepted: AcceptedAction) => Promise<void> | void;
   readonly onAbandoned?: (matchId: string) => Promise<void> | void;
+  readonly history?: {
+    readonly actions: readonly GameAction[];
+    readonly events: readonly GameEvent[];
+    readonly snapshots: readonly MatchSnapshot[];
+    readonly turnStartedAt?: number;
+  };
 }
 
 export interface ConnectedPlayer {
@@ -54,7 +65,8 @@ export interface ConnectedPlayer {
 }
 
 interface CachedRequest {
-  readonly messages: readonly ServerMessage[];
+  readonly messages?: readonly ServerMessage[];
+  readonly pending?: Promise<readonly ServerMessage[]>;
 }
 
 /**
@@ -64,6 +76,7 @@ interface CachedRequest {
  */
 export class MatchSession {
   private state: BattleState;
+  private readonly initialState: BattleState;
   private readonly definitions: CardDefinitionSource | undefined;
   private readonly now: () => number;
   private readonly turnTimeoutMs: number;
@@ -78,7 +91,9 @@ export class MatchSession {
   private readonly snapshots: MatchSnapshot[];
   private actionQueue: Promise<void> = Promise.resolve();
   private turnStartedAt: number;
-  private disconnectedAt: number | undefined;
+  private readonly disconnectedAt = new Map<string, number>();
+  private timeoutInFlightTurn: number | undefined;
+  private abandoning = false;
   private abandoned = false;
 
   constructor(options: MatchSessionOptions) {
@@ -89,6 +104,7 @@ export class MatchSession {
     if (options.snapshotInterval !== undefined && options.snapshotInterval <= 0)
       throw new RangeError('snapshotInterval must be positive.');
     this.state = options.state;
+    this.initialState = options.initialState ?? options.state;
     this.definitions = options.definitions;
     this.now = options.now ?? Date.now;
     this.turnTimeoutMs = options.turnTimeoutMs ?? pvpTurnTimeoutMs;
@@ -96,11 +112,12 @@ export class MatchSession {
     this.snapshotInterval = options.snapshotInterval ?? 1;
     this.onAction = options.onAction;
     this.onAbandoned = options.onAbandoned;
-    this.events = [...options.state.events];
-    this.snapshots = [
-      { actionIndex: 0, eventSequence: lastEventSequence(this.events), state: options.state },
-    ];
-    this.turnStartedAt = this.now();
+    this.events = [...(options.history?.events ?? options.state.events)];
+    this.actions.push(...(options.history?.actions ?? []));
+    this.snapshots = options.history?.snapshots?.length
+      ? [...options.history.snapshots]
+      : [{ actionIndex: 0, eventSequence: lastEventSequence(this.events), state: options.state }];
+    this.turnStartedAt = options.history?.turnStartedAt ?? this.now();
   }
 
   get matchId(): string {
@@ -119,8 +136,12 @@ export class MatchSession {
     return lastEventSequence(this.events);
   }
 
+  get isActive(): boolean {
+    return !this.abandoned && this.state.phase !== 'MATCH_END';
+  }
+
   hasCachedRequest(playerId: PlayerId, requestId: string): boolean {
-    return this.requests.has(`${playerId}:${requestId}`);
+    return this.requests.has(requestKey('CLIENT', playerId, requestId));
   }
 
   connect(client: ConnectedPlayer): readonly ServerMessage[] {
@@ -135,7 +156,7 @@ export class MatchSession {
       return [error];
     }
     this.clients.set(client.playerId, client);
-    this.disconnectedAt = undefined;
+    this.disconnectedAt.delete(client.playerId);
     const state = this.stateMessage(client.playerId, this.latestSnapshot());
     client.send(state);
     const missing = this.events
@@ -145,27 +166,50 @@ export class MatchSession {
     return [state, ...missing];
   }
 
-  disconnect(playerId: PlayerId, at = this.now()): void {
-    this.clients.delete(playerId as string);
-    if (this.clients.size === 0) this.disconnectedAt = at;
+  disconnect(clientOrPlayerId: ConnectedPlayer | PlayerId, at = this.now()): void {
+    const playerId =
+      typeof clientOrPlayerId === 'string' ? clientOrPlayerId : clientOrPlayerId.playerId;
+    const current = this.clients.get(playerId);
+    if (typeof clientOrPlayerId !== 'string' && current !== clientOrPlayerId) return;
+    this.clients.delete(playerId);
+    this.disconnectedAt.set(playerId, at);
   }
 
   /** Called by the server's scheduler; keeping time outside the engine makes it testable. */
   tick(at = this.now()): void {
-    if (this.abandoned) return;
-    if (this.disconnectedAt !== undefined && at - this.disconnectedAt >= this.reconnectGraceMs) {
-      this.abandoned = true;
-      void this.onAbandoned?.(this.matchId);
-      this.broadcast(this.error('MATCH_ABANDONED', 'Reconnect grace period has expired.'));
+    if (this.abandoned || this.abandoning) return;
+    const expiredDisconnect = [...this.disconnectedAt.values()].some(
+      (disconnectedAt) => at - disconnectedAt >= this.reconnectGraceMs,
+    );
+    if (expiredDisconnect) {
+      this.abandoning = true;
+      void Promise.resolve(this.onAbandoned?.(this.matchId))
+        .then(() => {
+          this.abandoning = false;
+          this.abandoned = true;
+          this.broadcast(this.error('MATCH_ABANDONED', 'Reconnect grace period has expired.'));
+        })
+        .catch(() => {
+          this.abandoning = false;
+        });
       return;
     }
-    if (this.state.phase === 'PLAYER_TURN' && at - this.turnStartedAt >= this.turnTimeoutMs) {
+    if (
+      this.state.phase === 'PLAYER_TURN' &&
+      at - this.turnStartedAt >= this.turnTimeoutMs &&
+      this.timeoutInFlightTurn !== this.state.turn
+    ) {
+      const timeoutTurn = this.state.turn;
+      this.timeoutInFlightTurn = timeoutTurn;
       const action: GameAction = { type: 'END_TURN', playerId: this.state.activePlayerId };
-      void this.enqueueAction(this.state.activePlayerId, `timeout:${String(this.actionSequence)}`, {
-        type: 'ACTION',
-        requestId: `timeout:${String(this.actionSequence)}`,
-        sequence: this.actionSequence,
-        action,
+      const requestId = `server-timeout:${String(timeoutTurn)}:${String(this.actionSequence)}`;
+      void this.enqueueAction(
+        this.state.activePlayerId,
+        requestId,
+        { type: 'ACTION', requestId, sequence: this.actionSequence, action },
+        'TIMEOUT',
+      ).finally(() => {
+        if (this.timeoutInFlightTurn === timeoutTurn) this.timeoutInFlightTurn = undefined;
       });
     }
   }
@@ -188,32 +232,41 @@ export class MatchSession {
     if (message.type === 'RESYNC') return Promise.resolve(this.resync(playerId, message));
     if (this.abandoned)
       return Promise.resolve([this.error('MATCH_ABANDONED', 'This match is no longer active.')]);
-    return this.enqueueAction(playerId, message.requestId, message);
+    return this.enqueueAction(playerId, message.requestId, message, 'CLIENT');
   }
 
   private enqueueAction(
     playerId: PlayerId,
     requestId: string,
     message: Extract<ClientMessage, { type: 'ACTION' }>,
+    source: 'CLIENT' | 'TIMEOUT',
   ): Promise<readonly ServerMessage[]> {
-    const cached = this.requests.get(`${playerId}:${requestId}`);
-    if (cached !== undefined) return Promise.resolve(cached.messages);
+    const key = requestKey(source, playerId, requestId);
+    const cached = this.requests.get(key);
+    if (cached?.messages !== undefined) return Promise.resolve(cached.messages);
+    if (cached?.pending !== undefined) return cached.pending;
     let resolveResult!: (messages: readonly ServerMessage[]) => void;
     const result = new Promise<readonly ServerMessage[]>((resolve) => {
       resolveResult = resolve;
     });
+    this.requests.set(key, { pending: result });
     this.actionQueue = this.actionQueue.then(async () => {
       let messages: readonly ServerMessage[];
       try {
-        messages = await this.applyAction(playerId, requestId, message);
+        messages = await this.applyAction(playerId, requestId, message, source);
       } catch {
         const error = this.error(
           'MATCH_UNAVAILABLE',
           'The match could not be committed. Retry the same request.',
           requestId,
         );
-        this.requests.set(`${playerId}:${requestId}`, { messages: [error] });
+        this.requests.delete(key);
         messages = [error];
+      }
+      if (this.requests.get(key)?.pending === result) {
+        if (messages[0]?.type === 'ERROR' && messages[0].code === 'MATCH_UNAVAILABLE')
+          this.requests.delete(key);
+        else this.requests.set(key, { messages });
       }
       resolveResult(messages);
     });
@@ -224,7 +277,9 @@ export class MatchSession {
     playerId: PlayerId,
     requestId: string,
     message: Extract<ClientMessage, { type: 'ACTION' }>,
+    source: 'CLIENT' | 'TIMEOUT',
   ): Promise<readonly ServerMessage[]> {
+    const key = requestKey(source, playerId, requestId);
     if (message.sequence !== this.actions.length) {
       const error = this.error(
         'STALE_ACTION',
@@ -232,7 +287,7 @@ export class MatchSession {
         requestId,
         this.actions.length,
       );
-      this.requests.set(`${playerId}:${requestId}`, { messages: [error] });
+      this.requests.set(key, { messages: [error] });
       return [error];
     }
     if (message.action.playerId !== playerId) {
@@ -241,13 +296,13 @@ export class MatchSession {
         'Action player does not match the authenticated player.',
         requestId,
       );
-      this.requests.set(`${playerId}:${requestId}`, { messages: [error] });
+      this.requests.set(key, { messages: [error] });
       return [error];
     }
     const result = applyAction(this.state, message.action, this.definitions);
     if (!result.ok) {
       const error = this.error('INVALID_ACTION', result.error.message, requestId);
-      this.requests.set(`${playerId}:${requestId}`, { messages: [error] });
+      this.requests.set(key, { messages: [error] });
       return [error];
     }
     const previousEventCount = this.events.length;
@@ -270,18 +325,22 @@ export class MatchSession {
       events: result.events,
       state: nextState,
       snapshot,
+      source,
+      initialState: this.initialState,
+      actions: [...this.actions, message.action],
+      definitions: this.definitions,
     });
 
     this.state = nextState;
     this.actions.push(message.action);
     this.events.push(...result.events);
     if (snapshot !== undefined) this.snapshots.push(snapshot);
-    this.turnStartedAt = this.now();
+    if (message.action.type === 'END_TURN') this.turnStartedAt = this.now();
     const outgoing = nextEvents.slice(previousEventCount);
     const responses: ServerMessage[] = outgoing.map((event) => this.eventMessage(playerId, event));
     const stateMessage = this.stateMessage(playerId, snapshot ?? this.latestSnapshot(), this.state);
     responses.push(stateMessage);
-    this.requests.set(`${playerId}:${requestId}`, { messages: responses });
+    this.requests.set(key, { messages: responses });
     this.broadcastEvents(outgoing);
     this.broadcastState();
     return responses;
@@ -373,4 +432,8 @@ export class MatchSession {
 
 function lastEventSequence(events: readonly GameEvent[]): number {
   return events.at(-1)?.sequence ?? 0;
+}
+
+function requestKey(source: 'CLIENT' | 'TIMEOUT', playerId: PlayerId, requestId: string): string {
+  return `${source}:${playerId}:${requestId}`;
 }

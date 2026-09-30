@@ -97,6 +97,7 @@ export class MatchReplayRepository {
         actions: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
         snapshots: { orderBy: { actionIndex: 'asc' } },
+        players: { select: { deckSnapshot: true } },
       },
     });
     if (match === null) throw new ReplayNotFoundError(matchId);
@@ -107,10 +108,9 @@ export class MatchReplayRepository {
       throw new ReplayPersistenceError(`Persisted replay ${matchId} is incomplete.`);
     }
 
-    const definitions = await this.loadCardDefinitions(
-      match.cardDataVersion,
-      this.prisma.cardVersion,
-    );
+    const definitions =
+      definitionsFromDeckSnapshots(match.players ?? []) ??
+      (await this.loadCardDefinitions(match.cardDataVersion, this.prisma.cardVersion));
     const replay = {
       formatVersion: match.formatVersion,
       matchId: match.id,
@@ -165,6 +165,24 @@ export class MatchReplayRepository {
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function definitionsFromDeckSnapshots(
+  players: readonly { readonly deckSnapshot: Prisma.JsonValue }[],
+): readonly CardDefinition[] | undefined {
+  const definitions = new Map<string, CardDefinition>();
+  for (const player of players) {
+    if (!isRecord(player.deckSnapshot)) continue;
+    const cards = player.deckSnapshot.cards;
+    if (!Array.isArray(cards)) continue;
+    for (const card of cards) {
+      if (!isRecord(card) || !isRecord(card.cardVersion)) continue;
+      const definition = card.cardVersion.definition;
+      if (!isCardDefinition(definition)) continue;
+      definitions.set(definition.id, definition);
+    }
+  }
+  return definitions.size === 0 ? undefined : [...definitions.values()];
 }
 
 function isCardDefinition(value: unknown): value is CardDefinition {

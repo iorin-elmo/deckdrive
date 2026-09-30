@@ -36,6 +36,7 @@ export interface PvpSocketClientOptions {
 export class PvpSocketClient {
   readonly socket: PvpSocketLike;
   private nextRequest = 0;
+  private readonly clientId = randomClientId();
 
   constructor(matchId: string, handlers: PvpSocketHandlers, options: PvpSocketClientOptions = {}) {
     const factory =
@@ -70,16 +71,23 @@ export class PvpSocketClient {
 
   private requestId(): string {
     this.nextRequest += 1;
-    return `web-${String(this.nextRequest)}`;
+    return `web-${this.clientId}-${String(this.nextRequest)}`;
   }
 }
 
 export function webSocketUrl(baseUrl: string | undefined, matchId: string): string {
   const source =
-    baseUrl ?? (typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
+    baseUrl ??
+    import.meta.env.VITE_API_URL ??
+    (typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
   const url = new URL(`/ws/matches/${encodeURIComponent(matchId)}`, source);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
+}
+
+function randomClientId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function parseServerMessage(value: unknown): PvpServerMessage | null {

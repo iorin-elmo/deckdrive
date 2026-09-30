@@ -79,6 +79,9 @@ export interface EventMessage {
 }
 
 export type PublicGameEvent =
+  | (Omit<Extract<GameEvent, { type: 'CARD_PLAYED' }>, 'cardInstanceId'> & {
+      readonly cardInstanceId?: string;
+    })
   | (Omit<Extract<GameEvent, { type: 'CARD_DRAWN' }>, 'cardInstanceId'> & {
       readonly cardInstanceId?: string;
       readonly count?: number;
@@ -153,6 +156,8 @@ export function projectBattleState(
 }
 
 export function projectEvent(event: GameEvent, viewerId: PlayerId): PublicGameEvent {
+  if (event.type === 'CARD_PLAYED' && event.playerId !== viewerId)
+    return { type: event.type, sequence: event.sequence, playerId: event.playerId };
   if (event.type === 'CARD_DRAWN' && event.playerId !== viewerId)
     return { type: event.type, sequence: event.sequence, playerId: event.playerId, count: 1 };
   if (event.type === 'CARDS_DRAWN' && event.playerId !== viewerId)

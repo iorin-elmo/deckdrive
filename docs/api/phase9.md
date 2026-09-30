@@ -17,11 +17,18 @@ Match creation is authenticated and deck-owned:
 POST /api/v1/matches/casual
 POST /api/v1/matches/private
 POST /api/v1/matches/private/:inviteCode/join
+GET /api/v1/matches/queue/:queueId
+GET /api/v1/matches/private/:inviteCode/status
 ```
 
 Casual returns `202 QUEUED` until another player is paired. Private returns an
 invite code; joining the code creates and persists the match. The returned
 match id is then used for the WebSocket connection.
+
+The queue owner polls the queue endpoint with the returned `queueId`. A private
+match host polls the status endpoint with the invite code. Both endpoints are
+authenticated and return only the owner's status; once paired, the response
+contains the `matchId`.
 
 Clients send `ACTION`, `PING`, and `RESYNC`. The server sends `STATE`,
 `EVENT`, `ERROR`, and `PONG`. An action contains a request id and the accepted
@@ -56,8 +63,7 @@ opaque server-loaded values; callers must load and validate decks before
 entering the lobby. It creates a `MatchSession` only after both players are
 known.
 
-The WebSocket adapter accepts an injected `PvpWebSocketRegistry` so O00's
-session-cookie authentication can be used without coupling the PvP code to the
-OAuth implementation. Until that integration is wired by the application,
-`PvpLobby.authenticate` supports the existing development-only player header.
-It must not be used as production authentication.
+The WebSocket adapter accepts an injected `PvpWebSocketRegistry`. The production
+server resolves the HttpOnly session cookie through O00's `OAuthService`; the
+development-only player header is accepted only in development and test
+environments. PvP transport code does not depend on the OAuth implementation.

@@ -47,6 +47,20 @@ describe('PvP protocol', () => {
     ).toEqual({ type: 'CARD_DRAWN', sequence: 1, playerId: 'player-2', count: 1 });
   });
 
+  it('redacts opponent card instance IDs when a card is played', () => {
+    expect(
+      projectEvent(
+        {
+          type: 'CARD_PLAYED',
+          sequence: 2,
+          playerId: 'player-2' as PlayerId,
+          cardInstanceId: 'secret' as CardInstance['id'],
+        },
+        'player-1' as PlayerId,
+      ),
+    ).toEqual({ type: 'CARD_PLAYED', sequence: 2, playerId: 'player-2' });
+  });
+
   it('rejects malformed and forged action messages', () => {
     expect(
       parseClientMessage({

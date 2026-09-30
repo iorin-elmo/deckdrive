@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import {
   createInitialBattleState,
+  recordReplay,
+  type BattleState,
   type CardDefinition,
   type CardInstance,
+  type CardDefinitionSource,
+  type GameAction,
+  type GameEvent,
   type MatchId,
   type PlayerId,
 } from '@deck-drive/game-engine';
@@ -12,23 +17,35 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 import { deckSize } from '../decks/deck-validation.js';
 import { PrismaPvpMatchPersistence } from './persistence.js';
 import { PvpLobby, type LobbyPlayer } from './lobby.js';
-import { MatchSession } from './session.js';
+import { MatchSession, type MatchSnapshot } from './session.js';
 
 interface PvpDeck {
   readonly cardDataVersion: string;
   readonly cards: readonly CardInstance[];
+  readonly definitions: readonly CardDefinition[];
   readonly snapshot: unknown;
 }
+
+export type PvpAuthenticator = (
+  request: IncomingMessage,
+) => Promise<PlayerId | null> | PlayerId | null;
 
 /** API-facing orchestration for validated player decks and PvP sessions. */
 export class PvpMatchService {
   private readonly persistence: PrismaPvpMatchPersistence;
   private readonly lobby: PvpLobby<PvpDeck>;
+  private readonly loading = new Map<string, Promise<MatchSession | undefined>>();
 
-  constructor(private readonly prisma: PrismaClient) {
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly authenticator: PvpAuthenticator = developmentAuthenticator,
+  ) {
     this.persistence = new PrismaPvpMatchPersistence(prisma);
     this.lobby = new PvpLobby({
       createState: ({ matchId, players }) => createState(matchId, players),
+      createSession: ({ players }) => ({
+        definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
+      }),
       session: {
         onAction: (accepted) => this.persistence.append(accepted),
         onAbandoned: (matchId) => this.persistence.abandon(matchId),
@@ -37,12 +54,17 @@ export class PvpMatchService {
   }
 
   async enqueueCasual(playerId: string, deckId: string) {
+    const existing = this.lobby.casualStatusForPlayer(playerId as PlayerId);
+    if (existing !== undefined) return existing;
     const player = await this.loadPlayerDeck(playerId, deckId);
     const result = this.lobby.enqueueCasual(player);
     if (result.status === 'QUEUED') return result;
     try {
       await this.persistNewMatch(result.session, result.players);
+      this.lobby.markCasualMatched(result.queueId, result.matchId);
+      this.lobby.commitCasual(result.queueId);
     } catch (error) {
+      this.lobby.releaseCasual(result.queueId);
       this.lobby.remove(result.matchId);
       throw error;
     }
@@ -67,23 +89,52 @@ export class PvpMatchService {
     }
     try {
       await this.persistNewMatch(result.session, result.players);
+      this.lobby.markPrivateMatched(result.inviteCode, result.matchId);
+      this.lobby.commitPrivate(result.inviteCode);
     } catch (error) {
+      this.lobby.releasePrivate(result.inviteCode);
       this.lobby.remove(result.matchId);
       throw error;
     }
     return result;
   }
 
-  find(matchId: string): MatchSession | undefined {
-    return this.lobby.find(matchId);
+  find(matchId: string): Promise<MatchSession | undefined> {
+    const cached = this.lobby.find(matchId);
+    if (cached !== undefined) return Promise.resolve(cached);
+    const loading = this.loading.get(matchId);
+    if (loading !== undefined) return loading;
+    const promise = this.restore(matchId).finally(() => this.loading.delete(matchId));
+    this.loading.set(matchId, promise);
+    return promise;
   }
 
-  authenticate(request: IncomingMessage): PlayerId | null {
-    // O00 can replace this resolver with its HttpOnly session-cookie lookup.
-    const playerId = request.headers['x-deckdrive-player-id'];
-    return typeof playerId === 'string' && playerId.trim().length > 0
-      ? (playerId as PlayerId)
-      : null;
+  sessions(): readonly MatchSession[] {
+    return this.lobby.sessions().filter((session) => session.isActive);
+  }
+
+  casualStatus(playerId: string, queueId: string) {
+    const status = this.lobby.casualStatus(queueId, playerId as PlayerId);
+    if (status === undefined) throw new PvpRequestError('QUEUE_NOT_FOUND');
+    return status;
+  }
+
+  privateStatus(playerId: string, inviteCode: string) {
+    const status = this.lobby.privateStatus(inviteCode, playerId as PlayerId);
+    if (status === undefined) throw new PvpRequestError('PRIVATE_STATUS_NOT_FOUND');
+    return status;
+  }
+
+  async restoreActive(): Promise<void> {
+    const matches = await this.prisma.match.findMany({
+      where: { status: 'IN_PROGRESS' },
+      select: { id: true },
+    });
+    await Promise.all(matches.map((match) => this.find(match.id)));
+  }
+
+  authenticate(request: IncomingMessage): Promise<PlayerId | null> | PlayerId | null {
+    return this.authenticator(request);
   }
 
   private async loadPlayerDeck(playerId: string, deckId: string): Promise<LobbyPlayer<PvpDeck>> {
@@ -99,15 +150,67 @@ export class PvpMatchService {
         definitionId: definition.id,
       }));
     });
+    const definitions = deck.cards.map((deckCard) => toDefinition(deckCard.cardVersion.definition));
     if (cards.length !== deckSize) throw new PvpRequestError('INVALID_DECK');
     return {
       playerId: playerId as PlayerId,
       deck: {
         cardDataVersion: deck.cardDataVersion,
         cards,
+        definitions,
         snapshot: deck,
       },
     };
+  }
+
+  private async restore(matchId: string): Promise<MatchSession | undefined> {
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: {
+        players: { select: { deckSnapshot: true } },
+        actions: { orderBy: { sequence: 'asc' } },
+        events: { orderBy: { sequence: 'asc' } },
+        snapshots: { orderBy: { actionIndex: 'asc' } },
+      },
+    });
+    if (match === null || match.status !== 'IN_PROGRESS' || match.players.length !== 2)
+      return undefined;
+    const definitions = definitionsFromDeckSnapshots(match.players);
+    const initialState = match.initialState as unknown as BattleState;
+    const actions = match.actions.map((entry) => entry.action as unknown as GameAction);
+    const replay = recordReplay(initialState, actions, definitions);
+    if (!replay.ok) return undefined;
+    const events = match.events.map((entry) => entry.event as unknown as GameEvent);
+    const snapshots: MatchSnapshot[] = match.snapshots.map((snapshot) => ({
+      actionIndex: snapshot.actionIndex,
+      eventSequence: snapshot.eventSequence,
+      state: {
+        ...(snapshot.state as object),
+        events: events.filter((event) => event.sequence <= snapshot.eventSequence),
+      } as unknown as BattleState,
+    }));
+    const turnStartedAt =
+      [...match.actions]
+        .reverse()
+        .find(
+          (entry) =>
+            isRecord(entry.action) && (entry.action as Record<string, unknown>).type === 'END_TURN',
+        )?.createdAt ?? match.createdAt;
+    const session = new MatchSession({
+      state: replay.replay.finalState,
+      initialState,
+      definitions,
+      history: {
+        actions,
+        events,
+        snapshots,
+        turnStartedAt: turnStartedAt.getTime(),
+      },
+      onAction: (accepted) => this.persistence.append(accepted),
+      onAbandoned: (abandonedMatchId) => this.persistence.abandon(abandonedMatchId),
+    });
+    this.lobby.restore(session);
+    return session;
   }
 
   private async persistNewMatch(
@@ -125,7 +228,12 @@ export class PvpMatchService {
 export class PvpRequestError extends Error {
   constructor(
     readonly code:
-      'DECK_NOT_FOUND' | 'INVALID_DECK' | 'PRIVATE_INVITE_NOT_FOUND' | 'PRIVATE_INVITE_SELF_JOIN',
+      | 'DECK_NOT_FOUND'
+      | 'INVALID_DECK'
+      | 'PRIVATE_INVITE_NOT_FOUND'
+      | 'PRIVATE_INVITE_SELF_JOIN'
+      | 'QUEUE_NOT_FOUND'
+      | 'PRIVATE_STATUS_NOT_FOUND',
   ) {
     super(code);
     this.name = 'PvpRequestError';
@@ -148,6 +256,36 @@ function createState(
     turnDrawCount: 1,
     players: players.map((player) => ({ id: player.playerId, drawPile: player.deck.cards })),
   });
+}
+
+function mergeDefinitions(definitions: readonly CardDefinition[]): CardDefinitionSource {
+  const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+  return [...byId.values()];
+}
+
+function definitionsFromDeckSnapshots(
+  players: readonly { readonly deckSnapshot: unknown }[],
+): readonly CardDefinition[] {
+  const definitions = new Map<string, CardDefinition>();
+  for (const player of players) {
+    if (!isRecord(player.deckSnapshot) || !Array.isArray(player.deckSnapshot.cards)) continue;
+    for (const card of player.deckSnapshot.cards) {
+      if (!isRecord(card) || !isRecord(card.cardVersion)) continue;
+      const definition = toDefinition(card.cardVersion.definition);
+      definitions.set(definition.id, definition);
+    }
+  }
+  if (definitions.size === 0) throw new PvpRequestError('INVALID_DECK');
+  return [...definitions.values()];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function developmentAuthenticator(request: IncomingMessage): PlayerId | null {
+  const playerId = request.headers['x-deckdrive-player-id'];
+  return typeof playerId === 'string' && playerId.trim().length > 0 ? (playerId as PlayerId) : null;
 }
 
 function toDefinition(value: unknown): CardDefinition {

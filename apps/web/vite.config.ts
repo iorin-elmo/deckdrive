@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => {
           target: environment.VITE_API_PROXY || 'http://127.0.0.1:3000',
           changeOrigin: true,
         },
+        '/ws': {
+          target: environment.VITE_API_PROXY || 'http://127.0.0.1:3000',
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
   };

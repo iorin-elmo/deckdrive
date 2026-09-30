@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { createInitialBattleState } from '@deck-drive/game-engine';
+import { createInitialBattleState, type BattleState } from '@deck-drive/game-engine';
+import { projectBattleState } from '../pvp/protocol.js';
 import type { CardDefinition, CardInstance, MatchId, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import {
@@ -112,6 +113,8 @@ export class ApiApplication {
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const privateJoin = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/join$/u)?.[1];
+      const queueId = path.match(/^\/api\/v1\/matches\/queue\/([^/]+)$/u)?.[1];
+      const privateStatusCode = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/status$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
       const missionId = path.match(/^\/api\/v1\/missions\/([^/]+)\/claim$/u)?.[1];
       const authenticatedRoute =
@@ -123,6 +126,7 @@ export class ApiApplication {
             path === '/api/v1/missions' ||
             path === '/api/v1/progression' ||
             path === '/api/v1/cosmetics')) ||
+        (request.method === 'GET' && (queueId !== undefined || privateStatusCode !== undefined)) ||
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
@@ -149,6 +153,10 @@ export class ApiApplication {
         return await this.progression(player.id);
       if (request.method === 'GET' && path === '/api/v1/cosmetics')
         return await this.listCosmetics(player.id);
+      if (request.method === 'GET' && queueId !== undefined)
+        return await this.getCasualStatus(player.id, queueId);
+      if (request.method === 'GET' && privateStatusCode !== undefined)
+        return await this.getPrivateStatus(player.id, privateStatusCode);
       if (request.method === 'POST' && packProductId !== undefined)
         return await this.openPack(player.id, packProductId, request);
       if (request.method === 'POST' && missionId !== undefined)
@@ -631,9 +639,19 @@ export class ApiApplication {
       where: { id: matchId, players: { some: { playerId } } },
       select: { id: true, status: true, initialState: true, finalState: true, createdAt: true },
     });
-    return match === null
-      ? { status: 404, body: { error: 'MATCH_NOT_FOUND' } }
-      : { status: 200, body: match };
+    if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
+    const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
+    const liveState = liveSession?.currentState;
+    const state = liveState ?? match.finalState ?? match.initialState;
+    return {
+      status: 200,
+      body: {
+        id: match.id,
+        status: match.status,
+        createdAt: match.createdAt,
+        state: projectBattleState(state as BattleState, playerId as PlayerId),
+      },
+    };
   }
 
   private async startCasualMatch(playerId: string, body: unknown): Promise<ApiResponse> {
@@ -650,6 +668,16 @@ export class ApiApplication {
     const value = object(body);
     const result = await this.pvp.createPrivate(playerId, string(value.deckId, 'deckId'));
     return { status: 201, body: { inviteCode: result.inviteCode } };
+  }
+
+  private async getCasualStatus(playerId: string, queueId: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: this.pvp.casualStatus(playerId, queueId) };
+  }
+
+  private async getPrivateStatus(playerId: string, inviteCode: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: this.pvp.privateStatus(playerId, inviteCode) };
   }
 
   private async joinPrivateMatch(
@@ -787,7 +815,12 @@ export class ApiApplication {
     if (error instanceof DevelopmentAuthenticationDisabledError)
       return { status: 404, body: { error: 'NOT_FOUND' } };
     if (error instanceof PvpRequestError) {
-      if (error.code === 'DECK_NOT_FOUND' || error.code === 'PRIVATE_INVITE_NOT_FOUND')
+      if (
+        error.code === 'DECK_NOT_FOUND' ||
+        error.code === 'PRIVATE_INVITE_NOT_FOUND' ||
+        error.code === 'QUEUE_NOT_FOUND' ||
+        error.code === 'PRIVATE_STATUS_NOT_FOUND'
+      )
         return { status: 404, body: { error: error.code } };
       if (error.code === 'PRIVATE_INVITE_SELF_JOIN')
         return { status: 409, body: { error: error.code } };

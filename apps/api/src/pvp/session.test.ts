@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialBattleState } from '@deck-drive/game-engine';
-import type { BattleState, MatchId, PlayerId } from '@deck-drive/game-engine';
+import type { BattleState, CardInstanceId, MatchId, PlayerId } from '@deck-drive/game-engine';
 
 import { MatchSession } from './session.js';
 
@@ -88,5 +88,100 @@ describe('MatchSession', () => {
     expect(result[0]).toMatchObject({ type: 'ERROR', code: 'MATCH_UNAVAILABLE' });
     expect(session.actionSequence).toBe(0);
     expect(session.currentState.activePlayerId).toBe('player-1');
+  });
+
+  it('shares an in-flight retry and does not cache failed persistence', async () => {
+    let release!: () => void;
+    let attempts = 0;
+    const session = new MatchSession({
+      state: state(),
+      onAction: async () => {
+        attempts += 1;
+        if (attempts === 1)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        if (attempts === 1) throw new Error('database unavailable');
+      },
+    });
+    const first = session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'retryable',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId: 'player-1' },
+    });
+    const duplicate = session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'retryable',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId: 'player-1' },
+    });
+    expect(first).toBe(duplicate);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    release();
+    await expect(first).resolves.toMatchObject([{ type: 'ERROR', code: 'MATCH_UNAVAILABLE' }]);
+    await expect(
+      session.receive('player-1' as PlayerId, {
+        type: 'ACTION',
+        requestId: 'retryable',
+        sequence: 0,
+        action: { type: 'END_TURN', playerId: 'player-1' },
+      }),
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'STATE' })]));
+    expect(attempts).toBe(2);
+  });
+
+  it('keeps a play-card turn deadline and ignores a stale socket disconnect', async () => {
+    let now = 0;
+    const battleState = createInitialBattleState({
+      ...state(),
+      initialDrawCount: 1,
+      players: [
+        {
+          id: 'player-1' as PlayerId,
+          drawPile: [{ id: 'card-1' as CardInstanceId, definitionId: 'strike' }],
+        },
+        { id: 'player-2' as PlayerId, drawPile: [] },
+      ],
+    });
+    const session = new MatchSession({
+      state: battleState,
+      definitions: [
+        { id: 'strike', cost: 1, effects: [{ type: 'DAMAGE', amount: 1, target: 'ENEMY' }] },
+      ],
+      now: () => now,
+    });
+    const oldMessages: unknown[] = [];
+    const newMessages: unknown[] = [];
+    const oldClient = {
+      playerId: 'player-1' as PlayerId,
+      send: (message: unknown) => oldMessages.push(message),
+    };
+    const newClient = {
+      playerId: 'player-1' as PlayerId,
+      send: (message: unknown) => newMessages.push(message),
+    };
+    session.connect(oldClient);
+    session.connect(newClient);
+    session.disconnect(oldClient);
+    await session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'play-card',
+      sequence: 0,
+      action: {
+        type: 'PLAY_CARD',
+        playerId: 'player-1',
+        cardInstanceId: 'card-1',
+        targetId: 'player-2',
+      },
+    });
+    now = 60_000;
+    session.tick();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(session.actionSequence).toBe(2);
+    expect(newMessages.some((message) => (message as { type?: string }).type === 'STATE')).toBe(
+      true,
+    );
+    expect(oldMessages.length).toBeGreaterThan(0);
   });
 });
