@@ -131,6 +131,51 @@ describe('Replay regression gate', () => {
       });
     }
   });
+
+  it('rejects incomplete projected states and snapshots with mismatched boundaries', () => {
+    const view = projectReplayV2(
+      v2Fixture.expectedReplay,
+      () => v2Fixture.definitions,
+      () => true,
+      v2Fixture.initial.players[0]!.id,
+    );
+    const invalidViews = [
+      (copy: typeof view) => {
+        delete copy.snapshots[1]!.state.matchId;
+      },
+      (copy: typeof view) => {
+        delete copy.snapshots[1]!.state.battleProtocolVersion;
+      },
+      (copy: typeof view) => {
+        delete copy.snapshots[1]!.state.lastInputSequence;
+      },
+      (copy: typeof view) => {
+        delete copy.snapshots[1]!.state.chantEntrySequence;
+      },
+      (copy: typeof view) => {
+        copy.snapshots[1]!.state.lastInputSequence = 99;
+      },
+      (copy: typeof view) => {
+        copy.snapshots[1]!.state.matchId = 'other-match';
+      },
+      (copy: typeof view) => {
+        delete copy.finalState.phase;
+      },
+      (copy: typeof view) => {
+        delete (copy.initialState.players as Record<string, unknown>[])[0]!.hp;
+      },
+    ];
+    for (const change of invalidViews) {
+      const copy = structuredClone(view);
+      change(copy);
+      (copy as { projectionChecksum: string }).projectionChecksum =
+        calculatePlayerReplayProjectionChecksumV2(copy);
+      expect(verifyPlayerReplayViewV2(copy)).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_PROJECTION' },
+      });
+    }
+  });
 });
 
 const v2Fixture = JSON.parse(

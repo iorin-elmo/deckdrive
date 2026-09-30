@@ -215,7 +215,14 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
     !validProjectedState(view.initialState, view.viewerPlayerId, true) ||
     !validProjectedState(view.finalState, view.viewerPlayerId, true) ||
     view.initialState.matchId !== view.matchId ||
-    view.finalState.matchId !== view.matchId
+    view.finalState.matchId !== view.matchId ||
+    ![view.initialState, view.finalState].every(
+      (state) =>
+        state.engineVersion === view.engineVersion &&
+        state.rulesVersion === view.rulesVersion &&
+        state.cardDataVersion === view.cardDataVersion,
+    ) ||
+    view.initialState.lastInputSequence !== 0
   )
     return invalid('Invalid projected battle state.');
   if (
@@ -253,13 +260,20 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
         isNonNegativeSafeInteger(snapshot.inputSequence) &&
         isNonNegativeSafeInteger(snapshot.eventSequence) &&
         (snapshot.eventSequence as number) <= view.events.length &&
-        validProjectedState(snapshot.state, view.viewerPlayerId, false),
+        validProjectedState(snapshot.state, view.viewerPlayerId, false) &&
+        snapshot.state.matchId === view.matchId &&
+        snapshot.state.engineVersion === view.engineVersion &&
+        snapshot.state.rulesVersion === view.rulesVersion &&
+        snapshot.state.cardDataVersion === view.cardDataVersion &&
+        snapshot.state.lastInputSequence === snapshot.inputSequence,
     )
   )
     return invalid('Invalid projected snapshot.');
   if (
     view.snapshots[0]?.inputSequence !== 0 ||
+    view.snapshots[0]?.eventSequence !== (view.initialState.events as unknown[]).length ||
     view.snapshots.at(-1)?.inputSequence !== view.finalState.lastInputSequence ||
+    view.snapshots.at(-1)?.eventSequence !== view.events.length ||
     view.snapshots.some(
       (snapshot, index) =>
         index > 0 &&
@@ -303,9 +317,59 @@ function validProjectedState(
 ): value is Record<string, unknown> {
   if (
     !isRecord(value) ||
+    !onlyKeys(value, [
+      'matchId',
+      'engineVersion',
+      'rulesVersion',
+      'cardDataVersion',
+      'battleProtocolVersion',
+      'turn',
+      'activePlayerId',
+      'phase',
+      'turnDrawCount',
+      'initialDrawCount',
+      'players',
+      'chantQueue',
+      'chantEntrySequence',
+      'generatedCardSequence',
+      'nextChoiceRequestSequence',
+      'pendingEffectSequence',
+      'pendingCardChoice',
+      'terminalResult',
+      'lastInputSequence',
+      'events',
+    ]) ||
+    typeof value.matchId !== 'string' ||
+    typeof value.engineVersion !== 'string' ||
+    typeof value.rulesVersion !== 'string' ||
+    typeof value.cardDataVersion !== 'string' ||
+    value.battleProtocolVersion !== battleProtocolVersion ||
+    !isNonNegativeSafeInteger(value.turn) ||
+    value.turn === 0 ||
+    typeof value.activePlayerId !== 'string' ||
+    !['PLAYER_TURN', 'PENDING_CARD_CHOICE', 'MATCH_END'].includes(String(value.phase)) ||
+    ![
+      'turnDrawCount',
+      'initialDrawCount',
+      'chantEntrySequence',
+      'generatedCardSequence',
+      'nextChoiceRequestSequence',
+      'pendingEffectSequence',
+      'lastInputSequence',
+    ].every((key) => isNonNegativeSafeInteger(value[key])) ||
+    value.nextChoiceRequestSequence === 0 ||
+    !Array.isArray(value.chantQueue) ||
+    !dense(value.chantQueue) ||
+    !value.chantQueue.every(validProjectedChant) ||
     !Array.isArray(value.players) ||
     value.players.length !== 2 ||
+    !dense(value.players) ||
+    new Set(value.players.map((player) => (isRecord(player) ? player.id : undefined))).size !== 2 ||
     !value.players.some((player) => isRecord(player) && player.id === viewerId) ||
+    !value.players.some((player) => isRecord(player) && player.id === value.activePlayerId) ||
+    (value.phase === 'PENDING_CARD_CHOICE') !== (value.pendingCardChoice !== undefined) ||
+    (value.phase === 'MATCH_END') !== (value.terminalResult !== undefined) ||
+    !validProjectedTerminal(value.terminalResult) ||
     (withEvents
       ? !Array.isArray(value.events) ||
         !dense(value.events) ||
@@ -316,7 +380,77 @@ function validProjectedState(
   )
     return false;
   for (const player of value.players) {
-    if (!isRecord(player) || typeof player.id !== 'string') return false;
+    if (
+      !isRecord(player) ||
+      !onlyKeys(player, [
+        'id',
+        'hp',
+        'maxHp',
+        'energy',
+        'maxEnergy',
+        'block',
+        'drawPile',
+        'hand',
+        'discard',
+        'exhaust',
+        'statuses',
+        'pendingEffects',
+        'synthesisCount',
+        'alchemyStage',
+      ]) ||
+      typeof player.id !== 'string' ||
+      player.id.length === 0 ||
+      !['hp', 'maxHp', 'energy', 'maxEnergy', 'block', 'synthesisCount'].every((key) =>
+        isNonNegativeSafeInteger(player[key]),
+      ) ||
+      ![0, 1, 2, 3].includes(player.alchemyStage as number) ||
+      !Array.isArray(player.statuses) ||
+      !dense(player.statuses) ||
+      !player.statuses.every(
+        (status) =>
+          isRecord(status) &&
+          onlyKeys(status, ['id', 'stacks']) &&
+          typeof status.id === 'string' &&
+          isNonNegativeSafeInteger(status.stacks),
+      ) ||
+      !Array.isArray(player.pendingEffects) ||
+      !dense(player.pendingEffects) ||
+      !player.pendingEffects.every(
+        (effect) =>
+          isRecord(effect) &&
+          onlyKeys(effect, [
+            'pendingEffectId',
+            'ownerPlayerId',
+            'targetPlayerId',
+            'sourceCardInstanceId',
+            'sourceDefinitionId',
+            'sourceDefinitionVersion',
+            'effectType',
+            'trigger',
+            'expiresOn',
+            'createdSequence',
+            'amount',
+            'remainingTriggers',
+            'visibility',
+          ]) &&
+          [
+            'pendingEffectId',
+            'ownerPlayerId',
+            'targetPlayerId',
+            'sourceCardInstanceId',
+            'sourceDefinitionId',
+            'sourceDefinitionVersion',
+          ].every((key) => typeof effect[key] === 'string') &&
+          effect.effectType === 'MAGE_GRIMOIRE_SEAL' &&
+          effect.trigger === 'NEXT_DAMAGE_HIT' &&
+          effect.expiresOn === 'MATCH_END' &&
+          isNonNegativeSafeInteger(effect.createdSequence) &&
+          effect.amount === 5 &&
+          effect.remainingTriggers === 1 &&
+          effect.visibility === 'allPlayers',
+      )
+    )
+      return false;
     for (const zone of ['drawPile', 'hand', 'discard', 'exhaust']) {
       const cards = player[zone];
       if (!Array.isArray(cards) || !dense(cards)) return false;
@@ -325,23 +459,134 @@ function validProjectedState(
           (card) =>
             !isRecord(card) ||
             !['ownerOnly', 'allPlayers'].includes(String(card.visibility)) ||
-            (player.id !== viewerId &&
-              (zone === 'drawPile' || card.visibility === 'ownerOnly') &&
-              !onlyKeys(card, ['visibility'])),
+            (player.id !== viewerId && (zone === 'drawPile' || card.visibility === 'ownerOnly')
+              ? !onlyKeys(card, ['visibility']) || card.visibility !== 'ownerOnly'
+              : !validProjectedCard(card)),
         )
       )
         return false;
     }
   }
   const pending = value.pendingCardChoice;
-  if (pending !== undefined && !isRecord(pending)) return false;
+  if (pending !== undefined && !validProjectedPending(pending, viewerId)) return false;
+  return true;
+}
+
+function validProjectedCard(card: Record<string, unknown>): boolean {
+  return (
+    onlyKeys(card, ['id', 'definitionId', 'definitionVersion', 'costModifier', 'visibility']) &&
+    typeof card.id === 'string' &&
+    card.id.length > 0 &&
+    typeof card.definitionId === 'string' &&
+    card.definitionId.length > 0 &&
+    typeof card.definitionVersion === 'string' &&
+    card.definitionVersion.length > 0 &&
+    Number.isSafeInteger(card.costModifier)
+  );
+}
+
+function validProjectedPending(value: unknown, viewerId: PlayerId): boolean {
   if (
-    isRecord(pending) &&
-    pending.ownerPlayerId !== viewerId &&
-    !onlyKeys(pending, ['ownerPlayerId', 'choiceKind'])
+    !isRecord(value) ||
+    typeof value.ownerPlayerId !== 'string' ||
+    !['CARD', 'CARDS', 'RECIPE'].includes(String(value.choiceKind))
   )
     return false;
-  return true;
+  if (value.ownerPlayerId !== viewerId) return onlyKeys(value, ['ownerPlayerId', 'choiceKind']);
+  return (
+    onlyKeys(value, [
+      'choiceRequestId',
+      'ownerPlayerId',
+      'sourceInputSequence',
+      'sourceCardInstanceId',
+      'sourceDefinitionId',
+      'sourceDefinitionVersion',
+      'choiceKind',
+      'candidateIds',
+      'minSelections',
+      'maxSelections',
+      'resolution',
+      'deadlineCommandSequence',
+      'continuation',
+    ]) &&
+    typeof value.choiceRequestId === 'string' &&
+    value.choiceRequestId.length > 0 &&
+    typeof value.sourceCardInstanceId === 'string' &&
+    typeof value.sourceDefinitionId === 'string' &&
+    typeof value.sourceDefinitionVersion === 'string' &&
+    isNonNegativeSafeInteger(value.sourceInputSequence) &&
+    Array.isArray(value.candidateIds) &&
+    dense(value.candidateIds) &&
+    value.candidateIds.every((id: unknown) => typeof id === 'string') &&
+    isNonNegativeSafeInteger(value.minSelections) &&
+    isNonNegativeSafeInteger(value.maxSelections) &&
+    (value.maxSelections as number) >= (value.minSelections as number) &&
+    isRecord(value.resolution) &&
+    onlyKeys(value.resolution, ['type']) &&
+    ['MOVE_DRAW_PILE_CARD_TO_HAND', 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE', 'NONE'].includes(
+      String(value.resolution.type),
+    ) &&
+    (value.deadlineCommandSequence === undefined ||
+      isNonNegativeSafeInteger(value.deadlineCommandSequence)) &&
+    (value.continuation === undefined || validProjectedContinuation(value.continuation))
+  );
+}
+
+function validProjectedContinuation(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    onlyKeys(value, ['sourceCard', 'sourceDefinition', 'action', 'nextEffectIndex']) &&
+    isRecord(value.sourceCard) &&
+    validProjectedCard(value.sourceCard) &&
+    ['ownerOnly', 'allPlayers'].includes(String(value.sourceCard.visibility)) &&
+    isValidCardDefinitionV2(value.sourceDefinition) &&
+    isGameActionV2(value.action) &&
+    value.action.type === 'PLAY_CARD' &&
+    isNonNegativeSafeInteger(value.nextEffectIndex)
+  );
+}
+
+function validProjectedTerminal(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  if (value.status === 'DRAW')
+    return onlyKeys(value, ['status', 'reason']) && value.reason === 'SIMULTANEOUS_HP_DEPLETION';
+  if (value.status !== 'WIN' || typeof value.winnerId !== 'string') return false;
+  if (value.reason === 'HP_DEPLETION') return onlyKeys(value, ['status', 'winnerId', 'reason']);
+  return (
+    value.reason === 'SPECIAL_VICTORY' &&
+    onlyKeys(value, ['status', 'winnerId', 'reason', 'specialVictoryId']) &&
+    ['MAGE_GRAND_WISH', 'ALCHEMY_SAGE_STONE'].includes(String(value.specialVictoryId))
+  );
+}
+
+function validProjectedChant(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    onlyKeys(value, [
+      'chantEntryId',
+      'ownerPlayerId',
+      'visibility',
+      'sourceDefinitionId',
+      'sourceDefinitionVersion',
+      'remaining',
+      'completionEffects',
+      'damageDelay',
+      'sequence',
+    ]) &&
+    value.visibility === 'allPlayers' &&
+    typeof value.chantEntryId === 'string' &&
+    typeof value.ownerPlayerId === 'string' &&
+    typeof value.sourceDefinitionId === 'string' &&
+    typeof value.sourceDefinitionVersion === 'string' &&
+    isNonNegativeSafeInteger(value.remaining) &&
+    isNonNegativeSafeInteger(value.sequence) &&
+    isNonNegativeSafeInteger(value.damageDelay) &&
+    Array.isArray(value.completionEffects) &&
+    value.completionEffects.length > 0 &&
+    dense(value.completionEffects) &&
+    value.completionEffects.every(isPersistedChantCompletionEffect)
+  );
 }
 
 function validProjectedEvent(event: Record<string, unknown>, viewerId: PlayerId): boolean {
