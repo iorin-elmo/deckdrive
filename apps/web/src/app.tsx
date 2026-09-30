@@ -43,6 +43,7 @@ import {
   ApiError,
   previewApi,
   type BattleState,
+  type BattleHandCard,
   type CardSummary,
   type CpuMatch,
   type Deck,
@@ -1579,7 +1580,7 @@ export function BattleBoard({
               {t('noCardsInHandDescription')}
             </AsyncNotice>
           ) : (
-            player.hand.map((card) => (
+            player.hand.filter(isVisibleHandCard).map((card) => (
               <article className="hand-card" key={card.id}>
                 <p className="text-xs font-semibold text-amber-200">{t('card')}</p>
                 <p className="mt-5 font-bold text-stone-50">
@@ -1613,6 +1614,10 @@ export function BattleBoard({
       </div>
     </>
   );
+}
+
+function isVisibleHandCard(card: BattleHandCard): card is Extract<BattleHandCard, { id: string }> {
+  return 'id' in card && typeof card.id === 'string' && typeof card.definitionId === 'string';
 }
 
 function Combatant({

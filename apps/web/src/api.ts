@@ -69,6 +69,19 @@ export interface PackOpening {
   readonly exchangePoints: number;
 }
 
+export interface VisibleBattleHandCard {
+  readonly id: string;
+  readonly definitionId: string;
+  readonly definitionVersion?: string;
+  readonly visibility?: 'ownerOnly' | 'allPlayers';
+}
+
+export interface HiddenBattleHandCard {
+  readonly visibility: 'ownerOnly';
+}
+
+export type BattleHandCard = VisibleBattleHandCard | HiddenBattleHandCard;
+
 export interface BattlePlayer {
   readonly id: string;
   readonly hp: number;
@@ -76,11 +89,7 @@ export interface BattlePlayer {
   readonly energy: number;
   readonly maxEnergy: number;
   readonly block: number;
-  readonly hand: readonly {
-    readonly id: string;
-    readonly definitionId: string;
-    readonly definitionVersion?: string;
-  }[];
+  readonly hand: readonly BattleHandCard[];
   readonly statuses: readonly { readonly id: string; readonly stacks: number }[];
   readonly synthesisCount?: number;
   readonly alchemyStage?: 0 | 1 | 2 | 3;
