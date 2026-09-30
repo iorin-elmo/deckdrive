@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { createJSONStorage } from 'zustand/middleware';
 
 import { maximumCardCopies } from '@deck-drive/card-definitions';
 
@@ -70,6 +71,15 @@ describe('BattleBoard participant identity', () => {
         },
       ],
     };
+    const memoryStorage = createJSONStorage(() => ({
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    }));
+    const originalLocaleStorage = useLocaleStore.persist.getOptions().storage;
+    const originalSessionStorage = useSessionStore.persist.getOptions().storage;
+    useLocaleStore.persist.setOptions({ storage: memoryStorage });
+    useSessionStore.persist.setOptions({ storage: memoryStorage });
     const originalLocale = useLocaleStore.getState().locale;
     useLocaleStore.getState().setLocale('en');
     useSessionStore.getState().setPlayerId('seat-two');
@@ -104,6 +114,8 @@ describe('BattleBoard participant identity', () => {
       await act(async () => root.unmount());
       useSessionStore.getState().clearPlayerId();
       useLocaleStore.getState().setLocale(originalLocale);
+      useLocaleStore.persist.setOptions({ storage: originalLocaleStorage });
+      useSessionStore.persist.setOptions({ storage: originalSessionStorage });
       delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
     }
   });
