@@ -8,6 +8,11 @@ import {
 import { finished } from 'node:stream/promises';
 
 import { ApiApplication, type ApiRequest } from './application.js';
+import {
+  attachPvpWebSocket,
+  type PvpWebSocketOptions,
+  type PvpWebSocketRegistry,
+} from '../pvp/websocket.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
@@ -16,14 +21,22 @@ const corsHeaders = 'content-type, idempotency-key, x-deckdrive-player-id';
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly developmentLoginLoopbackOnly?: boolean;
+  readonly pvpWebSocket?: {
+    readonly registry: PvpWebSocketRegistry;
+    readonly options?: PvpWebSocketOptions;
+  };
 }
 
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
 export function createApiHttpServer(
   application: ApiApplication,
-  { allowedOrigins = [], developmentLoginLoopbackOnly = false }: ApiHttpServerOptions = {},
+  {
+    allowedOrigins = [],
+    developmentLoginLoopbackOnly = false,
+    pvpWebSocket,
+  }: ApiHttpServerOptions = {},
 ): Server {
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const responseHeaders = {
       ...corsResponseHeaders(request, allowedOrigins),
       ...authenticatedResponseHeaders(request),
@@ -73,6 +86,9 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
+  if (pvpWebSocket !== undefined)
+    attachPvpWebSocket(server, pvpWebSocket.registry, pvpWebSocket.options);
+  return server;
 }
 
 export function isLoopbackAddress(address: string | undefined): boolean {

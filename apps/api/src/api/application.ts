@@ -26,6 +26,7 @@ import {
   packProducts,
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
+import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
 
 export interface ApiRequest {
   readonly method: string;
@@ -44,6 +45,7 @@ export class ApiApplication {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly environment: NodeJS.ProcessEnv = process.env,
+    private readonly pvp: PvpMatchService | undefined = undefined,
   ) {}
 
   async handle(request: ApiRequest): Promise<ApiResponse> {
@@ -58,6 +60,7 @@ export class ApiApplication {
 
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
+      const privateJoin = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/join$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
       const authenticatedRoute =
         (request.method === 'GET' &&
@@ -68,6 +71,9 @@ export class ApiApplication {
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
+            path === '/api/v1/matches/casual' ||
+            path === '/api/v1/matches/private' ||
+            privateJoin !== undefined ||
             packProductId !== undefined)) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
@@ -90,6 +96,12 @@ export class ApiApplication {
         return await this.deleteDeck(player.id, deckId);
       if (request.method === 'POST' && path === '/api/v1/matches')
         return await this.startCpuMatch(player.id, request.body);
+      if (request.method === 'POST' && path === '/api/v1/matches/casual')
+        return await this.startCasualMatch(player.id, request.body);
+      if (request.method === 'POST' && path === '/api/v1/matches/private')
+        return await this.createPrivateMatch(player.id, request.body);
+      if (request.method === 'POST' && privateJoin !== undefined)
+        return await this.joinPrivateMatch(player.id, privateJoin, request.body);
       if (matchId !== undefined && request.method === 'GET')
         return await this.getMatch(player.id, matchId);
       return { status: 404, body: { error: 'NOT_FOUND' } };
@@ -341,6 +353,33 @@ export class ApiApplication {
       : { status: 200, body: match };
   }
 
+  private async startCasualMatch(playerId: string, body: unknown): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.enqueueCasual(playerId, string(value.deckId, 'deckId'));
+    return result.status === 'QUEUED'
+      ? { status: 202, body: result }
+      : { status: 201, body: { status: result.status, matchId: result.matchId } };
+  }
+
+  private async createPrivateMatch(playerId: string, body: unknown): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.createPrivate(playerId, string(value.deckId, 'deckId'));
+    return { status: 201, body: { inviteCode: result.inviteCode } };
+  }
+
+  private async joinPrivateMatch(
+    playerId: string,
+    inviteCode: string,
+    body: unknown,
+  ): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.joinPrivate(playerId, inviteCode, string(value.deckId, 'deckId'));
+    return { status: 201, body: { status: 'MATCHED', matchId: result.matchId } };
+  }
+
   private async validateOwnedDeck(
     playerId: string,
     cardDataVersion: string,
@@ -417,12 +456,22 @@ export class ApiApplication {
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
     if (error instanceof DevelopmentAuthenticationDisabledError)
       return { status: 404, body: { error: 'NOT_FOUND' } };
+    if (error instanceof PvpRequestError) {
+      if (error.code === 'DECK_NOT_FOUND' || error.code === 'PRIVATE_INVITE_NOT_FOUND')
+        return { status: 404, body: { error: error.code } };
+      if (error.code === 'PRIVATE_INVITE_SELF_JOIN')
+        return { status: 409, body: { error: error.code } };
+      return { status: 400, body: { error: error.code } };
+    }
+    if (error instanceof PvpUnavailableError)
+      return { status: 503, body: { error: 'PVP_UNAVAILABLE' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };
   }
 }
 
 class UnauthorizedError extends Error {}
 class BadRequestError extends Error {}
+class PvpUnavailableError extends Error {}
 
 function sortVersionedCards<T extends { readonly cardId: string; readonly version: string }>(
   cards: readonly T[],

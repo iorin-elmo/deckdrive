@@ -4,6 +4,7 @@ import { ApiApplication } from './api/application.js';
 import { createApiHttpServer } from './api/http.js';
 import { loadRootEnvironment } from './database/load-environment.js';
 import { PrismaClient } from './generated/prisma/client.js';
+import { PvpMatchService } from './pvp/service.js';
 import { apiCorsOrigins, apiHost, apiPort } from './server-config.js';
 
 loadRootEnvironment();
@@ -13,9 +14,14 @@ if (databaseUrl === undefined || databaseUrl.length === 0)
   throw new Error('DATABASE_URL is required to start the API.');
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
-const server = createApiHttpServer(new ApiApplication(prisma), {
+const pvp = new PvpMatchService(prisma);
+const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp), {
   allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
   developmentLoginLoopbackOnly: true,
+  pvpWebSocket: {
+    registry: pvp,
+    options: { allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS) },
+  },
 });
 const host = apiHost(process.env.HOST);
 const port = apiPort(process.env.PORT);
