@@ -1488,7 +1488,7 @@ function ResultPage() {
   );
 }
 
-function BattleBoard({
+export function BattleBoard({
   state,
   difficulty,
 }: {
@@ -1497,13 +1497,14 @@ function BattleBoard({
 }) {
   const { locale, t } = useI18n();
   const client = useApiClient();
+  const playerId = useSessionStore((session) => session.playerId);
   const previewMode = useSessionStore((session) => session.previewMode);
   const cards = useQuery({
     queryKey: ['cards', previewMode],
     queryFn: () => client.cards(),
   });
-  const player = state.players[0];
-  const opponent = state.players[1];
+  const player = state.players.find((combatant) => combatant.id === playerId);
+  const opponent = state.players.find((combatant) => combatant.id !== playerId);
   if (player === undefined || opponent === undefined)
     return (
       <AsyncNotice kind="error" title={t('invalidBattleState')}>

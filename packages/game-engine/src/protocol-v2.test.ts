@@ -489,6 +489,15 @@ describe('battle protocol 2 special victory routes', () => {
     expect(state.events).toContainEqual(
       expect.objectContaining({ type: 'DECK_SHUFFLED', reason: 'ALCHEMY_TRANSFORM' }),
     );
+    const submitted = state.events.find((event) => event.type === 'CARD_CHOICE_SUBMITTED')!;
+    const moved = state.events.find(
+      (event) => event.type === 'CARD_MOVED' && event.reason === 'CARD_CHOICE',
+    )!;
+    const shuffled = state.events.find(
+      (event) => event.type === 'DECK_SHUFFLED' && event.reason === 'ALCHEMY_TRANSFORM',
+    )!;
+    expect(submitted.sequence).toBeLessThan(moved.sequence);
+    expect(moved.sequence).toBeLessThan(shuffled.sequence);
     const opponentProjection = projectBattleStateV2(state, playerTwo) as {
       readonly events: readonly Record<string, unknown>[];
     };

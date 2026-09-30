@@ -601,6 +601,14 @@
         "sequence": 10
       },
       {
+        "type": "CARD_CHOICE_SUBMITTED",
+        "choiceRequestId": "choice:1",
+        "playerId": "golden-player-one",
+        "selectedIds": ["candidate"],
+        "visibility": "ownerOnly",
+        "sequence": 11
+      },
+      {
         "type": "CARD_MOVED",
         "playerId": "golden-player-one",
         "ownerPlayerId": "golden-player-one",
@@ -618,14 +626,6 @@
         "sourceDefinitionVersion": "1.0.0",
         "positionVisibility": "ownerOnly",
         "reason": "CARD_CHOICE",
-        "visibility": "ownerOnly",
-        "sequence": 11
-      },
-      {
-        "type": "CARD_CHOICE_SUBMITTED",
-        "choiceRequestId": "choice:1",
-        "playerId": "golden-player-one",
-        "selectedIds": ["candidate"],
         "visibility": "ownerOnly",
         "sequence": 12
       },
@@ -2167,6 +2167,14 @@
           "sequence": 10
         },
         {
+          "type": "CARD_CHOICE_SUBMITTED",
+          "choiceRequestId": "choice:1",
+          "playerId": "golden-player-one",
+          "selectedIds": ["candidate"],
+          "visibility": "ownerOnly",
+          "sequence": 11
+        },
+        {
           "type": "CARD_MOVED",
           "playerId": "golden-player-one",
           "ownerPlayerId": "golden-player-one",
@@ -2184,14 +2192,6 @@
           "sourceDefinitionVersion": "1.0.0",
           "positionVisibility": "ownerOnly",
           "reason": "CARD_CHOICE",
-          "visibility": "ownerOnly",
-          "sequence": 11
-        },
-        {
-          "type": "CARD_CHOICE_SUBMITTED",
-          "choiceRequestId": "choice:1",
-          "playerId": "golden-player-one",
-          "selectedIds": ["candidate"],
           "visibility": "ownerOnly",
           "sequence": 12
         },
@@ -2437,6 +2437,6 @@
       }
     },
     "snapshotInterval": 1,
-    "checksum": "sha256:31312c5cdcb8d80a26d6261a5448feb710d53c4e6fb2e2240cacdb7d5608027f"
+    "checksum": "sha256:4b25389632b4ba84c9cef51a2a31bad0a20c0452142fbe32e7a322c06cead1e8"
   }
 }

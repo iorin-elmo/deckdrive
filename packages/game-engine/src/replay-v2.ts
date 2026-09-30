@@ -3,6 +3,7 @@ import {
   battleProtocolVersion,
   createInitialBattleStateV2,
   isValidCardDefinitionV2,
+  isGameActionV2,
   projectBattleStateV2,
   projectGameEventV2,
 } from './protocol-v2.js';
@@ -232,10 +233,12 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
   if (
     !dense(view.actions) ||
     !view.actions.every(
-      (action) =>
+      (action, index) =>
         isRecord(action) &&
         onlyKeys(action, ['inputSequence', 'payload']) &&
         isNonNegativeSafeInteger(action.inputSequence) &&
+        action.inputSequence > 0 &&
+        (index === 0 || action.inputSequence > view.actions[index - 1]!.inputSequence) &&
         isRecord(action.payload) &&
         validProjectedAction(action.payload, view.viewerPlayerId),
     )
@@ -361,12 +364,16 @@ function validProjectedEvent(event: Record<string, unknown>, viewerId: PlayerId)
 }
 
 function validProjectedAction(action: Record<string, unknown>, viewerId: PlayerId): boolean {
-  if (typeof action.playerId !== 'string') return false;
-  if (action.playerId === viewerId)
-    return ['END_TURN', 'PLAY_CARD', 'SUBMIT_CARD_CHOICE'].includes(String(action.type));
+  if (typeof action.playerId !== 'string' || action.playerId.length === 0) return false;
+  if (action.playerId === viewerId) return isGameActionV2(action);
   if (action.type === 'END_TURN') return onlyKeys(action, ['type', 'playerId']);
   if (action.type === 'PLAY_CARD')
-    return onlyKeys(action, ['type', 'playerId', 'cardInstanceId', 'targetId']);
+    return (
+      onlyKeys(action, ['type', 'playerId', 'cardInstanceId', 'targetId']) &&
+      typeof action.cardInstanceId === 'string' &&
+      action.cardInstanceId.length > 0 &&
+      (action.targetId === undefined || typeof action.targetId === 'string')
+    );
   return (
     action.type === 'SUBMIT_CARD_CHOICE' &&
     action.redacted === true &&

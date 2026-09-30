@@ -1080,6 +1080,13 @@ function submitChoice(
   }
   const emitter = eventEmitter(state.events);
   const mutable = mutableFrom(state);
+  emitter.emit({
+    type: 'CARD_CHOICE_SUBMITTED',
+    choiceRequestId: pending.choiceRequestId,
+    playerId: action.playerId,
+    selectedIds: selected,
+    visibility: 'ownerOnly',
+  });
   if (
     (pending.resolution.type === 'MOVE_DRAW_PILE_CARD_TO_HAND' ||
       pending.resolution.type === 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE') &&
@@ -1122,13 +1129,6 @@ function submitChoice(
       });
     }
   }
-  emitter.emit({
-    type: 'CARD_CHOICE_SUBMITTED',
-    choiceRequestId: pending.choiceRequestId,
-    playerId: action.playerId,
-    selectedIds: selected,
-    visibility: 'ownerOnly',
-  });
   mutable.pendingCardChoice = undefined;
   resumeChoiceEffects(state, mutable, pending, definitions, emitter);
   return finishResolution(state, inputSequence, mutable, emitter);
@@ -2532,7 +2532,7 @@ function isBattleInputShape(value: unknown): value is BattleInput {
   return false;
 }
 
-function isGameActionV2(value: unknown): value is GameActionV2 {
+export function isGameActionV2(value: unknown): value is GameActionV2 {
   if (!isRecord(value) || typeof value.playerId !== 'string' || value.playerId.length === 0)
     return false;
   if (value.type === 'END_TURN') return hasOnlyKeys(value, ['type', 'playerId']);

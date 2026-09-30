@@ -97,6 +97,40 @@ describe('Replay regression gate', () => {
       });
     }
   });
+
+  it('rejects reordered, repeated, zero, or incomplete projected actions', () => {
+    const view = projectReplayV2(
+      v2Fixture.expectedReplay,
+      () => v2Fixture.definitions,
+      () => true,
+      v2Fixture.initial.players[0]!.id,
+    );
+    const invalidViews = [
+      (copy: typeof view) => {
+        (copy.actions[0] as { inputSequence: number }).inputSequence = 0;
+      },
+      (copy: typeof view) => {
+        (copy.actions[1] as { inputSequence: number }).inputSequence = 1;
+      },
+      (copy: typeof view) => {
+        (copy.actions[1] as { inputSequence: number }).inputSequence = 10;
+        (copy.actions[2] as { inputSequence: number }).inputSequence = 9;
+      },
+      (copy: typeof view) => {
+        delete (copy.actions[0]!.payload as Record<string, unknown>).cardInstanceId;
+      },
+    ];
+    for (const change of invalidViews) {
+      const copy = structuredClone(view);
+      change(copy);
+      (copy as { projectionChecksum: string }).projectionChecksum =
+        calculatePlayerReplayProjectionChecksumV2(copy);
+      expect(verifyPlayerReplayViewV2(copy)).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_PROJECTION' },
+      });
+    }
+  });
 });
 
 const v2Fixture = JSON.parse(
