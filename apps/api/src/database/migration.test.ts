@@ -52,3 +52,20 @@ describe('Phase 4 currency ledger migration', () => {
     expect(ledgerMigration).not.toMatch(/\bDROP\b/u);
   });
 });
+
+describe('Replay V2 migration', () => {
+  const replayV2Migration = readFileSync(
+    new URL('../../prisma/migrations/20260929000000_add_replay_v2/migration.sql', import.meta.url),
+    'utf8',
+  );
+
+  it('adds versioned server inputs and keeps legacy action boundaries', () => {
+    expect(replayV2Migration).toContain('ADD COLUMN "battle_protocol_version"');
+    expect(replayV2Migration).toContain('ADD COLUMN "draft_definition_revision"');
+    expect(replayV2Migration).toContain('CREATE TABLE "match_server_commands"');
+    expect(replayV2Migration).toContain('ADD COLUMN "input_sequence" INTEGER');
+    expect(replayV2Migration).toContain('match_snapshots_exactly_one_boundary_check');
+    expect(replayV2Migration).toContain('matches_replay_version_fields_check');
+    expect(replayV2Migration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
+  });
+});

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   basicCardDefinitions,
   maximumCardCopies,
+  specialVictoryCardDefinitions,
   validateCardDefinition,
   validateCardDefinitions,
 } from './index.js';
@@ -62,6 +63,33 @@ describe('card-definition public contracts', () => {
     expect(basicCardDefinitions.every((card) => card.deckLimit === maximumCardCopies)).toBe(true);
   });
 
+  it('provides valid version 1.0.0 cards for both special-victory routes', () => {
+    expect(validateCardDefinitions(specialVictoryCardDefinitions)).toEqual({ ok: true });
+    expect(specialVictoryCardDefinitions.every((card) => card.version === '1.0.0')).toBe(true);
+    expect(specialVictoryCardDefinitions.some((card) => card.id === 'mage_017')).toBe(true);
+    expect(specialVictoryCardDefinitions.some((card) => card.id === 'alchemist_017')).toBe(true);
+    for (const [id, color] of [
+      ['alchemist_001', 'red'],
+      ['alchemist_002', 'blue'],
+      ['alchemist_004', 'white'],
+    ]) {
+      expect(specialVictoryCardDefinitions.find((card) => card.id === id)?.keywords).toEqual(
+        expect.arrayContaining(['material', 'reagent', `reagent:${color}`]),
+      );
+    }
+  });
+
+  it('rejects sparse completion effects before card serialization', () => {
+    const sparseChant = {
+      ...specialVictoryCardDefinitions.find((card) => card.id === 'mage_017')!,
+      effects: [{ type: 'START_CHANT', countdown: 1, completionEffects: new Array(1) }],
+    };
+    expect(validateCardDefinition(sparseChant)).toMatchObject({
+      ok: false,
+      errors: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_EFFECT' })]),
+    });
+  });
+
   it('keeps the development database fixture aligned with the canonical catalog', async () => {
     const fixtureUrl = new URL(
       '../../../tests/fixtures/database/development-seed.json',
@@ -106,6 +134,12 @@ describe('card-definition public contracts', () => {
       ok: false,
       errors: expect.arrayContaining([expect.objectContaining({ code: 'DUPLICATE_ID' })]),
     });
+    expect(
+      validateCardDefinitions([
+        basicCardDefinitions[0]!,
+        { ...basicCardDefinitions[0]!, version: '2.0.0' },
+      ]),
+    ).toEqual({ ok: true });
   });
 
   it('rejects non-semver versions, invalid rarities, and malformed effects', () => {

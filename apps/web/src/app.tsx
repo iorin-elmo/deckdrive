@@ -43,6 +43,7 @@ import {
   ApiError,
   previewApi,
   type BattleState,
+  type BattleHandCard,
   type CardSummary,
   type CpuMatch,
   type Deck,
@@ -1488,7 +1489,7 @@ function ResultPage() {
   );
 }
 
-function BattleBoard({
+export function BattleBoard({
   state,
   difficulty,
 }: {
@@ -1497,13 +1498,14 @@ function BattleBoard({
 }) {
   const { locale, t } = useI18n();
   const client = useApiClient();
+  const playerId = useSessionStore((session) => session.playerId);
   const previewMode = useSessionStore((session) => session.previewMode);
   const cards = useQuery({
     queryKey: ['cards', previewMode],
     queryFn: () => client.cards(),
   });
-  const player = state.players[0];
-  const opponent = state.players[1];
+  const player = state.players.find((combatant) => combatant.id === playerId);
+  const opponent = state.players.find((combatant) => combatant.id !== playerId);
   if (player === undefined || opponent === undefined)
     return (
       <AsyncNotice kind="error" title={t('invalidBattleState')}>
@@ -1529,6 +1531,39 @@ function BattleBoard({
           <p className="eyebrow">{t('battleField')}</p>
           <div className="battle-ring" aria-hidden="true" />
           <p className="mt-4 text-center text-sm text-stone-300">{t('battleFieldDescription')}</p>
+          {(state.chantQueue?.length ?? 0) > 0 ? (
+            <div className="mt-5" aria-label={t('chantQueue')}>
+              <p className="text-center text-xs font-bold uppercase tracking-widest text-violet-200">
+                {t('chantQueue')}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {state.chantQueue?.map((entry) => (
+                  <li
+                    className="rounded-lg border border-violet-300/25 bg-violet-950/45 px-3 py-2 text-xs"
+                    key={entry.chantEntryId}
+                  >
+                    <span className="font-semibold text-violet-100">
+                      {localizedCardName(
+                        entry.sourceDefinitionId,
+                        entry.sourceDefinitionVersion ?? state.cardDataVersion,
+                        locale,
+                        cards.data?.find(
+                          (candidate) =>
+                            candidate.cardId === entry.sourceDefinitionId &&
+                            candidate.version ===
+                              (entry.sourceDefinitionVersion ?? state.cardDataVersion),
+                        )?.definition,
+                      )}
+                    </span>{' '}
+                    <span className="text-stone-300">
+                      {t('chantRemaining').replace('{count}', String(entry.remaining))}
+                    </span>
+                    <span className="block text-stone-500">{entry.ownerPlayerId}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
         <Combatant label={t('you')} player={player} tone="player" />
       </section>
@@ -1545,18 +1580,18 @@ function BattleBoard({
               {t('noCardsInHandDescription')}
             </AsyncNotice>
           ) : (
-            player.hand.map((card) => (
+            player.hand.filter(isVisibleHandCard).map((card) => (
               <article className="hand-card" key={card.id}>
                 <p className="text-xs font-semibold text-amber-200">{t('card')}</p>
                 <p className="mt-5 font-bold text-stone-50">
                   {localizedCardName(
                     card.definitionId,
-                    state.cardDataVersion,
+                    card.definitionVersion ?? state.cardDataVersion,
                     locale,
                     cards.data?.find(
                       (candidate) =>
                         candidate.cardId === card.definitionId &&
-                        candidate.version === state.cardDataVersion,
+                        candidate.version === (card.definitionVersion ?? state.cardDataVersion),
                     )?.definition,
                   )}
                 </p>
@@ -1579,6 +1614,10 @@ function BattleBoard({
       </div>
     </>
   );
+}
+
+function isVisibleHandCard(card: BattleHandCard): card is Extract<BattleHandCard, { id: string }> {
+  return 'id' in card && typeof card.id === 'string' && typeof card.definitionId === 'string';
 }
 
 function Combatant({
@@ -1620,6 +1659,13 @@ function Combatant({
           {player.statuses
             .map((status) => `${localizeValue(status.id, locale)} x${String(status.stacks)}`)
             .join(', ')}
+        </p>
+      ) : null}
+      {player.alchemyStage !== undefined || player.synthesisCount !== undefined ? (
+        <p className="mt-4 text-xs text-amber-100">
+          {t('alchemyProgress')
+            .replace('{stage}', String(player.alchemyStage ?? 0))
+            .replace('{count}', String(player.synthesisCount ?? 0))}
         </p>
       ) : null}
     </article>
