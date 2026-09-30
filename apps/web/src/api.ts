@@ -94,6 +94,29 @@ export interface CpuMatch {
   readonly state: BattleState;
 }
 
+export interface PvpMatchQueue {
+  readonly status: 'QUEUED' | 'MATCHED';
+  readonly queueId: string;
+  readonly matchId?: string;
+}
+
+export interface PvpInvite {
+  readonly inviteCode: string;
+}
+
+export type PvpPrivateStatus =
+  | { readonly status: 'INVITED'; readonly inviteCode: string }
+  | { readonly status: 'MATCHED'; readonly inviteCode: string; readonly matchId: string };
+
+export interface PvpProjectedMatchState {
+  readonly matchId: string;
+  readonly cardDataVersion: string;
+  readonly turn: number;
+  readonly phase: string;
+  readonly activePlayerId: string;
+  readonly players: readonly BattlePlayer[];
+}
+
 export interface Mission {
   readonly id: string;
   readonly cadence: 'DAILY' | 'WEEKLY';
@@ -145,6 +168,15 @@ export interface DeckDriveClient {
     deckId: string,
     difficulty: CpuMatch['difficulty'],
   ): Promise<CpuMatch>;
+  startCasualMatch(playerId: string, deckId: string): Promise<PvpMatchQueue>;
+  casualMatchStatus(playerId: string, queueId: string): Promise<PvpMatchQueue>;
+  createPrivateMatch(playerId: string, deckId: string): Promise<PvpInvite>;
+  joinPrivateMatch(
+    playerId: string,
+    inviteCode: string,
+    deckId: string,
+  ): Promise<{ readonly status: 'MATCHED'; readonly matchId: string }>;
+  privateMatchStatus(playerId: string, inviteCode: string): Promise<PvpPrivateStatus>;
   match(playerId: string, matchId: string): Promise<MatchState>;
   missions(playerId: string): Promise<readonly Mission[]>;
   claimMission(playerId: string, missionId: string): Promise<unknown>;
@@ -156,8 +188,9 @@ export interface DeckDriveClient {
 export interface MatchState {
   readonly id: string;
   readonly status: string;
-  readonly initialState: BattleState;
-  readonly finalState: BattleState | null;
+  readonly initialState?: BattleState;
+  readonly finalState?: BattleState | null;
+  readonly state?: PvpProjectedMatchState;
 }
 
 export class ApiError extends Error {
@@ -281,6 +314,44 @@ export class DeckDriveApi implements DeckDriveClient {
       method: 'POST',
       playerId,
       body: { deckId, difficulty },
+    });
+  }
+
+  async startCasualMatch(playerId: string, deckId: string): Promise<PvpMatchQueue> {
+    return this.request('/api/v1/matches/casual', {
+      method: 'POST',
+      playerId,
+      body: { deckId },
+    });
+  }
+
+  async casualMatchStatus(playerId: string, queueId: string): Promise<PvpMatchQueue> {
+    return this.request(`/api/v1/matches/queue/${encodeURIComponent(queueId)}`, { playerId });
+  }
+
+  async createPrivateMatch(playerId: string, deckId: string): Promise<PvpInvite> {
+    return this.request('/api/v1/matches/private', {
+      method: 'POST',
+      playerId,
+      body: { deckId },
+    });
+  }
+
+  async joinPrivateMatch(
+    playerId: string,
+    inviteCode: string,
+    deckId: string,
+  ): Promise<{ readonly status: 'MATCHED'; readonly matchId: string }> {
+    return this.request(`/api/v1/matches/private/${encodeURIComponent(inviteCode)}/join`, {
+      method: 'POST',
+      playerId,
+      body: { deckId },
+    });
+  }
+
+  async privateMatchStatus(playerId: string, inviteCode: string): Promise<PvpPrivateStatus> {
+    return this.request(`/api/v1/matches/private/${encodeURIComponent(inviteCode)}/status`, {
+      playerId,
     });
   }
 
@@ -567,6 +638,21 @@ export const previewApi: DeckDriveClient = {
   async startCpuMatch(_playerId, _deckId, difficulty) {
     const id = 'preview-cpu-match';
     return { id, difficulty, state: previewBattle(id) };
+  },
+  async startCasualMatch() {
+    return { status: 'QUEUED' as const, queueId: 'preview-queue' };
+  },
+  async casualMatchStatus() {
+    return { status: 'MATCHED' as const, queueId: 'preview-queue', matchId: 'preview-pvp-match' };
+  },
+  async createPrivateMatch() {
+    return { inviteCode: 'PREVIEW' };
+  },
+  async joinPrivateMatch() {
+    return { status: 'MATCHED' as const, matchId: 'preview-pvp-match' };
+  },
+  async privateMatchStatus() {
+    return { status: 'MATCHED' as const, inviteCode: 'PREVIEW', matchId: 'preview-pvp-match' };
   },
   async match(_playerId, matchId) {
     const state = previewBattle(matchId);

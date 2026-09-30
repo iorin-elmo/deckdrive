@@ -48,6 +48,7 @@ export class PvpSocketClient {
   private reconnectAttempt = 0;
   private closed = false;
   private lastEventSequence = 0;
+  private lastActionSequence = 0;
 
   constructor(matchId: string, handlers: PvpSocketHandlers, options: PvpSocketClientOptions = {}) {
     this.socketFactory =
@@ -66,31 +67,46 @@ export class PvpSocketClient {
   private bindSocket(socket: PvpSocketLike, reconnecting: boolean): void {
     this.handlers.onStatus?.(reconnecting ? 'RECONNECTING' : 'CONNECTING');
     socket.onopen = () => {
+      if (socket !== this.currentSocket) return;
       this.reconnectAttempt = 0;
       this.handlers.onStatus?.('OPEN');
       this.sendRaw({ type: 'RESYNC', afterEventSequence: this.lastEventSequence });
       while (this.outbound.length > 0) this.sendRaw(this.outbound.shift()!);
     };
     socket.onmessage = (event) => {
+      if (socket !== this.currentSocket) return;
       const message = parseServerMessage(event.data);
       if (message === null) {
         this.handlers.onMalformedMessage?.();
         return;
       }
-      if (message.type === 'STATE' && typeof message.eventSequence === 'number')
-        this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
+      if (message.type === 'STATE') {
+        if (
+          typeof message.actionSequence === 'number' &&
+          message.actionSequence < this.lastActionSequence
+        )
+          return;
+        if (typeof message.actionSequence === 'number')
+          this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
+        if (typeof message.eventSequence === 'number')
+          this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
+      }
       if (message.type === 'EVENT' && typeof message.sequence === 'number')
         this.lastEventSequence = Math.max(this.lastEventSequence, message.sequence);
       this.handlers.onMessage(message);
     };
     socket.onclose = () => {
+      if (socket !== this.currentSocket) return;
       if (this.closed) {
         this.handlers.onStatus?.('CLOSED');
         return;
       }
       this.scheduleReconnect();
     };
-    socket.onerror = () => this.scheduleReconnect();
+    socket.onerror = () => {
+      if (socket !== this.currentSocket) return;
+      this.scheduleReconnect();
+    };
   }
 
   sendAction(action: PvpAction, sequence: number, requestId = this.requestId()): string {
@@ -130,7 +146,8 @@ export class PvpSocketClient {
     this.outbound.push(payload);
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(socket = this.currentSocket): void {
+    if (socket !== this.currentSocket) return;
     if (this.closed || this.reconnectTimer !== undefined) return;
     this.handlers.onStatus?.('RECONNECTING');
     const delay = this.reconnectDelayMs * Math.min(8, 2 ** this.reconnectAttempt);
@@ -141,6 +158,11 @@ export class PvpSocketClient {
       this.currentSocket = this.socketFactory(this.url);
       this.bindSocket(this.currentSocket, true);
     }, delay);
+    try {
+      socket.close();
+    } catch {
+      // The close event will be delivered by the socket implementation when available.
+    }
   }
 
   private requestId(): string {

@@ -15,6 +15,7 @@ import {
 } from '../pvp/websocket.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
+const pvpCleanupByServer = new WeakMap<Server, () => void>();
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
 const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id';
 
@@ -98,9 +99,19 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
-  if (pvpWebSocket !== undefined)
-    attachPvpWebSocket(server, pvpWebSocket.registry, pvpWebSocket.options);
+  if (pvpWebSocket !== undefined) {
+    const cleanup = attachPvpWebSocket(server, pvpWebSocket.registry, pvpWebSocket.options);
+    pvpCleanupByServer.set(server, cleanup);
+    server.once('close', () => {
+      cleanup();
+      pvpCleanupByServer.delete(server);
+    });
+  }
   return server;
+}
+
+export function closePvpWebSocket(server: Server): void {
+  pvpCleanupByServer.get(server)?.();
 }
 
 /** Uses forwarded client addresses only when the direct peer is explicitly trusted. */

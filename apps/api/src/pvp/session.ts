@@ -97,7 +97,7 @@ export class MatchSession {
   private readonly snapshotInterval: number;
   private readonly onAction: ((accepted: AcceptedAction) => Promise<void> | void) | undefined;
   private readonly onAbandoned: ((matchId: string) => Promise<void> | void) | undefined;
-  private readonly clients = new Map<string, ConnectedPlayer>();
+  private readonly clients = new Map<string, Set<ConnectedPlayer>>();
   private readonly requests = new Map<string, CachedRequest>();
   private readonly pendingActions = new Map<string, number>();
   private readonly actionTimestamps = new Map<string, number[]>();
@@ -170,6 +170,10 @@ export class MatchSession {
     return this.requests.has(requestKey('CLIENT', playerId, requestId));
   }
 
+  hasParticipant(playerId: PlayerId): boolean {
+    return this.isParticipant(playerId);
+  }
+
   connect(client: ConnectedPlayer): readonly ServerMessage[] {
     if (!this.isParticipant(client.playerId)) {
       const error = this.error('FORBIDDEN', 'Player is not part of this match.');
@@ -181,7 +185,9 @@ export class MatchSession {
       client.send(error);
       return [error];
     }
-    this.clients.set(client.playerId, client);
+    const clients = this.clients.get(client.playerId) ?? new Set<ConnectedPlayer>();
+    clients.add(client);
+    this.clients.set(client.playerId, clients);
     this.disconnectedAt.delete(client.playerId);
     const state = this.stateMessage(client.playerId, this.latestSnapshot());
     client.send(state);
@@ -195,10 +201,16 @@ export class MatchSession {
   disconnect(clientOrPlayerId: ConnectedPlayer | PlayerId, at = this.now()): void {
     const playerId =
       typeof clientOrPlayerId === 'string' ? clientOrPlayerId : clientOrPlayerId.playerId;
-    const current = this.clients.get(playerId);
-    if (typeof clientOrPlayerId !== 'string' && current !== clientOrPlayerId) return;
-    this.clients.delete(playerId);
-    this.disconnectedAt.set(playerId, at);
+    const clients = this.clients.get(playerId);
+    if (clients === undefined) return;
+    if (typeof clientOrPlayerId === 'string') clients.clear();
+    else {
+      if (!clients.delete(clientOrPlayerId)) return;
+    }
+    if (clients.size === 0) {
+      this.clients.delete(playerId);
+      this.disconnectedAt.set(playerId, at);
+    }
   }
 
   /** Called by the server's scheduler; keeping time outside the engine makes it testable. */
@@ -253,6 +265,8 @@ export class MatchSession {
     if (message.type === 'RESYNC') return Promise.resolve(this.resync(playerId, message));
     if (this.abandoned || this.abandonRequested)
       return Promise.resolve([this.error('MATCH_ABANDONED', 'This match is no longer active.')]);
+    if (!this.isActive)
+      return Promise.resolve([this.error('MATCH_FINISHED', 'This match has already finished.')]);
     return this.enqueueAction(playerId, message.requestId, message, 'CLIENT');
   }
 
@@ -452,20 +466,21 @@ export class MatchSession {
   }
 
   private broadcastEvents(events: readonly GameEvent[]): void {
-    for (const client of this.clients.values()) {
-      for (const event of events)
-        client.send(this.eventMessage(client.playerId as PlayerId, event));
+    for (const clients of this.clients.values()) {
+      for (const client of clients)
+        for (const event of events) client.send(this.eventMessage(client.playerId, event));
     }
   }
 
   private broadcastState(): void {
     const snapshot = this.latestSnapshot();
-    for (const client of this.clients.values())
-      client.send(this.stateMessage(client.playerId as PlayerId, snapshot, this.state));
+    for (const clients of this.clients.values())
+      for (const client of clients)
+        client.send(this.stateMessage(client.playerId, snapshot, this.state));
   }
 
   private broadcast(message: ServerMessage): void {
-    for (const client of this.clients.values()) client.send(message);
+    for (const clients of this.clients.values()) for (const client of clients) client.send(message);
   }
 
   private error(

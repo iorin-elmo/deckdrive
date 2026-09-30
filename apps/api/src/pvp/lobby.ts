@@ -23,6 +23,7 @@ export interface PvpLobbyOptions<TDeck> {
   readonly session?: Omit<MatchSessionOptions, 'state'>;
   readonly now?: () => number;
   readonly statusRetentionMs?: number;
+  readonly maxOpenInvitesPerPlayer?: number;
 }
 
 export interface RestoredPvpMatch {
@@ -89,6 +90,10 @@ export class PvpLobby<TDeck> {
     }
   >();
   private readonly activeSessions = new Map<string, MatchSession>();
+  private readonly retainedSessions = new Map<
+    string,
+    { session: MatchSession; expiresAt: number }
+  >();
 
   constructor(private readonly options: PvpLobbyOptions<TDeck>) {
     if ((options.statusRetentionMs ?? 5 * 60_000) <= 0)
@@ -135,6 +140,11 @@ export class PvpLobby<TDeck> {
 
   createPrivate(host: LobbyPlayer<TDeck>): PrivateMatchResult<TDeck> {
     this.pruneStatuses();
+    const openInvites = [...this.invites.values()].filter(
+      (invite) => invite.player.playerId === host.playerId,
+    ).length;
+    if (openInvites >= (this.options.maxOpenInvitesPerPlayer ?? 3))
+      throw new Error('PRIVATE_INVITE_LIMIT');
     let inviteCode = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
     while (this.invites.has(inviteCode))
       inviteCode = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
@@ -253,7 +263,8 @@ export class PvpLobby<TDeck> {
   }
 
   find(matchId: string): MatchSession | undefined {
-    return this.activeSessions.get(matchId);
+    this.pruneStatuses();
+    return this.activeSessions.get(matchId) ?? this.retainedSessions.get(matchId)?.session;
   }
 
   sessions(): readonly MatchSession[] {
@@ -283,6 +294,7 @@ export class PvpLobby<TDeck> {
 
   remove(matchId: string): void {
     this.activeSessions.delete(matchId);
+    this.retainedSessions.delete(matchId);
   }
 
   private createSession(
@@ -304,7 +316,7 @@ export class PvpLobby<TDeck> {
       onAction: async (accepted) => {
         await baseOptions.onAction?.(accepted);
         await specificOptions.onAction?.(accepted);
-        if (accepted.state.phase === 'MATCH_END') this.remove(matchId);
+        if (accepted.state.phase === 'MATCH_END') this.retain(matchId, session);
       },
       onAbandoned: async (abandonedMatchId) => {
         await baseOptions.onAbandoned?.(abandonedMatchId);
@@ -319,6 +331,14 @@ export class PvpLobby<TDeck> {
 
   private now(): number {
     return this.options.now?.() ?? Date.now();
+  }
+
+  private retain(matchId: string, session: MatchSession): void {
+    this.activeSessions.delete(matchId);
+    this.retainedSessions.set(matchId, {
+      session,
+      expiresAt: this.now() + (this.options.statusRetentionMs ?? 5 * 60_000),
+    });
   }
 
   private pruneStatuses(): void {
@@ -342,6 +362,9 @@ export class PvpLobby<TDeck> {
     for (const [inviteCode, status] of this.privateStatuses) {
       if (status.status === 'MATCHED' && status.updatedAt < cutoff)
         this.privateStatuses.delete(inviteCode);
+    }
+    for (const [matchId, retained] of this.retainedSessions) {
+      if (retained.expiresAt < this.now()) this.retainedSessions.delete(matchId);
     }
   }
 }

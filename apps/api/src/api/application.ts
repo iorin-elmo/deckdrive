@@ -647,7 +647,6 @@ export class ApiApplication {
       },
     });
     if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
-    const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
     if (match.players.length === 1) {
       return {
         status: 200,
@@ -660,6 +659,7 @@ export class ApiApplication {
         },
       };
     }
+    const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
     const liveState = liveSession?.currentState;
     const state = liveState ?? match.finalState ?? match.initialState;
     return {
@@ -843,6 +843,9 @@ export class ApiApplication {
         return { status: 404, body: { error: error.code } };
       if (error.code === 'PRIVATE_INVITE_SELF_JOIN')
         return { status: 409, body: { error: error.code } };
+      if (error.code === 'PRIVATE_INVITE_LIMIT')
+        return { status: 409, body: { error: error.code } };
+      if (error.code === 'RATE_LIMITED') return { status: 429, body: { error: error.code } };
       return { status: 400, body: { error: error.code } };
     }
     if (error instanceof PvpUnavailableError)

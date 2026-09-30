@@ -18,6 +18,8 @@ export interface PvpWebSocketOptions {
   readonly tickIntervalMs?: number;
   readonly maxPendingActionsPerPlayer?: number;
   readonly maxActionsPerSecond?: number;
+  readonly maxMessagesPerSecond?: number;
+  readonly maxOutboundBytes?: number;
   /** Browser origins allowed to use cookie-backed WebSocket authentication. */
   readonly allowedOrigins?: readonly string[];
 }
@@ -32,6 +34,8 @@ export function attachPvpWebSocket(
   const tickIntervalMs = options.tickIntervalMs ?? 1_000;
   const maxPendingActionsPerPlayer = options.maxPendingActionsPerPlayer ?? 32;
   const maxActionsPerSecond = options.maxActionsPerSecond ?? 30;
+  const maxMessagesPerSecond = options.maxMessagesPerSecond ?? 60;
+  const maxOutboundBytes = options.maxOutboundBytes ?? 256 * 1024;
   const connections = new Set<PvpWebSocketConnection>();
   const onUpgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
     void acceptUpgrade(
@@ -44,6 +48,8 @@ export function attachPvpWebSocket(
       options.allowedOrigins ?? [],
       maxPendingActionsPerPlayer,
       maxActionsPerSecond,
+      maxMessagesPerSecond,
+      maxOutboundBytes,
       (connection) => connections.delete(connection),
     ).catch(() => {
       if (!socket.destroyed) rejectUpgrade(socket, 500, 'WebSocket upgrade failed.');
@@ -54,6 +60,8 @@ export function attachPvpWebSocket(
     const sessions =
       registry.sessions?.() ?? [...connections].map((connection) => connection.session);
     for (const session of new Set(sessions)) session.tick();
+    for (const connection of connections)
+      void connection.revalidate(registry.authenticate).catch(() => connection.close(1011));
   }, tickIntervalMs);
   timer.unref();
   return () => {
@@ -74,6 +82,8 @@ async function acceptUpgrade(
   allowedOrigins: readonly string[],
   maxPendingActionsPerPlayer: number,
   maxActionsPerSecond: number,
+  maxMessagesPerSecond: number,
+  maxOutboundBytes: number,
   onClosed: (connection: PvpWebSocketConnection) => void,
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost');
@@ -107,13 +117,20 @@ async function acceptUpgrade(
     rejectUpgrade(socket, 404, 'Match not found.');
     return;
   }
+  if (!session.hasParticipant(playerId)) {
+    rejectUpgrade(socket, 403, 'Player is not part of this match.');
+    return;
+  }
   const connection = new PvpWebSocketConnection(
     socket,
+    request,
     session,
     playerId,
     maxMessageBytes,
     maxPendingActionsPerPlayer,
     maxActionsPerSecond,
+    maxMessagesPerSecond,
+    maxOutboundBytes,
     onClosed,
   );
   socket.write(
@@ -133,15 +150,19 @@ class PvpWebSocketConnection {
   private buffer = Buffer.alloc(0);
   private closed = false;
   private disconnected = false;
+  private readonly controlTimestamps: number[] = [];
   private client: ConnectedPlayer | undefined;
 
   constructor(
     private readonly socket: Socket,
+    private readonly request: IncomingMessage,
     readonly session: MatchSession,
     private readonly playerId: PlayerId,
     private readonly maxMessageBytes: number,
     private readonly maxPendingActions: number,
     private readonly maxActionsPerSecond: number,
+    private readonly maxMessagesPerSecond: number,
+    private readonly maxOutboundBytes: number,
     private readonly onClosed: (connection: PvpWebSocketConnection) => void,
   ) {}
 
@@ -158,6 +179,14 @@ class PvpWebSocketConnection {
       this.disconnect();
     });
     if (head.length > 0) this.onData(head);
+  }
+
+  async revalidate(
+    authenticate: (request: IncomingMessage) => Promise<PlayerId | null> | PlayerId | null,
+  ): Promise<void> {
+    if (this.closed) return;
+    const playerId = await authenticate(this.request);
+    if (playerId !== this.playerId) this.close(1008, 'Authentication expired.');
   }
 
   sendJson(message: ServerMessage): void {
@@ -234,6 +263,22 @@ class PvpWebSocketConnection {
         });
         continue;
       }
+      const messageType =
+        typeof value === 'object' &&
+        value !== null &&
+        'type' in value &&
+        typeof value.type === 'string'
+          ? value.type
+          : undefined;
+      if ((messageType === 'PING' || messageType === 'RESYNC') && !this.allowControlMessage()) {
+        this.sendJson({
+          type: 'ERROR',
+          protocolVersion: 1,
+          code: 'RATE_LIMITED',
+          message: 'Too many control messages.',
+        });
+        continue;
+      }
       const actionRequest =
         typeof value === 'object' &&
         value !== null &&
@@ -284,6 +329,15 @@ class PvpWebSocketConnection {
     );
   }
 
+  private allowControlMessage(): boolean {
+    const now = Date.now();
+    while (this.controlTimestamps[0] !== undefined && now - this.controlTimestamps[0] >= 1_000)
+      this.controlTimestamps.shift();
+    if (this.controlTimestamps.length >= this.maxMessagesPerSecond) return false;
+    this.controlTimestamps.push(now);
+    return true;
+  }
+
   private sendFrame(opcode: number, payload: Buffer): void {
     const length = payload.length;
     let header: Buffer;
@@ -301,7 +355,17 @@ class PvpWebSocketConnection {
       header.writeUInt32BE(0, 2);
       header.writeUInt32BE(length, 6);
     }
-    this.socket.write(Buffer.concat([header, payload]));
+    const frame = Buffer.concat([header, payload]);
+    if (
+      this.socket.destroyed ||
+      this.socket.writableLength + frame.length > this.maxOutboundBytes
+    ) {
+      this.closed = true;
+      this.socket.destroy();
+      this.disconnect();
+      return;
+    }
+    this.socket.write(frame);
   }
 }
 

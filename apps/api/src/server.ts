@@ -2,15 +2,24 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import type { PlayerId } from '@deck-drive/game-engine';
 
 import { ApiApplication } from './api/application.js';
-import { createApiHttpServer } from './api/http.js';
+import { closePvpWebSocket, createApiHttpServer } from './api/http.js';
 import { parseCookies, sessionCookieName } from './auth/cookies.js';
 import { OAuthService } from './auth/oauth-service.js';
 import { loadRootEnvironment } from './database/load-environment.js';
 import { PrismaClient } from './generated/prisma/client.js';
 import { PvpMatchService } from './pvp/service.js';
-import { apiCorsOrigins, apiHost, apiPort, apiTrustedProxyAddresses } from './server-config.js';
+import {
+  apiCorsOrigins,
+  apiHost,
+  apiPort,
+  apiTrustedProxyAddresses,
+  pvpWorkerCount,
+} from './server-config.js';
 
 loadRootEnvironment();
+
+if (pvpWorkerCount(process.env.PVP_WORKER_COUNT) !== 1)
+  throw new Error('PvP requires PVP_WORKER_COUNT=1 until shared matchmaking is enabled.');
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.length === 0)
@@ -53,6 +62,7 @@ server.listen(port, host, () => {
 });
 
 async function shutdown(): Promise<void> {
+  closePvpWebSocket(server);
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error === undefined) resolve();

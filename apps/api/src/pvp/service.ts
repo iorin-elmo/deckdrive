@@ -15,7 +15,7 @@ import {
 import type { IncomingMessage } from 'node:http';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { deckSize } from '../decks/deck-validation.js';
-import { PrismaPvpMatchPersistence } from './persistence.js';
+import { PrismaPvpMatchPersistence, PvpConcurrentMatchError } from './persistence.js';
 import { PvpLobby, type LobbyPlayer, type RestoredPvpMatch } from './lobby.js';
 import {
   MatchSession,
@@ -25,6 +25,18 @@ import {
 } from './session.js';
 
 const pvpStatusRetentionMs = 5 * 60_000;
+
+class PvpRateLimiter {
+  private readonly attempts = new Map<string, number[]>();
+
+  consume(key: string, maximum: number, windowMs: number): void {
+    const now = Date.now();
+    const attempts = (this.attempts.get(key) ?? []).filter((attempt) => now - attempt < windowMs);
+    if (attempts.length >= maximum) throw new PvpRequestError('RATE_LIMITED');
+    attempts.push(now);
+    this.attempts.set(key, attempts);
+  }
+}
 
 interface PvpDeck {
   readonly cardDataVersion: string;
@@ -42,6 +54,7 @@ export class PvpMatchService {
   private readonly persistence: PrismaPvpMatchPersistence;
   private readonly lobby: PvpLobby<PvpDeck>;
   private readonly loading = new Map<string, Promise<MatchSession | undefined>>();
+  private readonly matchmakingRateLimiter = new PvpRateLimiter();
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -62,6 +75,7 @@ export class PvpMatchService {
   }
 
   async enqueueCasual(playerId: string, deckId: string) {
+    this.matchmakingRateLimiter.consume(`${playerId}:casual`, 10, 10_000);
     const existing = this.lobby.casualStatusForPlayer(playerId as PlayerId);
     if (existing?.status === 'QUEUED') return existing;
     if (existing?.status === 'MATCHED' && this.lobby.find(existing.matchId)?.isActive)
@@ -97,10 +111,18 @@ export class PvpMatchService {
   }
 
   async createPrivate(playerId: string, deckId: string) {
-    return this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
+    this.matchmakingRateLimiter.consume(`${playerId}:private-create`, 5, 60_000);
+    try {
+      return this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PRIVATE_INVITE_LIMIT')
+        throw new PvpRequestError('PRIVATE_INVITE_LIMIT');
+      throw error;
+    }
   }
 
   async joinPrivate(playerId: string, inviteCode: string, deckId: string) {
+    this.matchmakingRateLimiter.consume(`${playerId}:private-join`, 20, 60_000);
     const normalizedCode = inviteCode.trim().toUpperCase();
     const existing = await this.findPersistedPrivateMatch(playerId, normalizedCode);
     if (existing !== undefined) return existing;
@@ -183,7 +205,7 @@ export class PvpMatchService {
 
   async restoreActive(): Promise<void> {
     const matches = await this.prisma.match.findMany({
-      where: { status: 'IN_PROGRESS' },
+      where: { status: 'IN_PROGRESS', mode: { in: ['CASUAL', 'PRIVATE'] } },
       select: { id: true },
     });
     await Promise.all(matches.map((match) => this.find(match.id)));
@@ -329,7 +351,7 @@ export class PvpMatchService {
     try {
       await this.persistence.append(accepted);
     } catch (error) {
-      await this.restore(accepted.matchId);
+      if (error instanceof PvpConcurrentMatchError) await this.restore(accepted.matchId);
       throw error;
     }
   }
@@ -370,7 +392,9 @@ export class PvpRequestError extends Error {
       | 'PRIVATE_INVITE_NOT_FOUND'
       | 'PRIVATE_INVITE_SELF_JOIN'
       | 'QUEUE_NOT_FOUND'
-      | 'PRIVATE_STATUS_NOT_FOUND',
+      | 'PRIVATE_STATUS_NOT_FOUND'
+      | 'PRIVATE_INVITE_LIMIT'
+      | 'RATE_LIMITED',
   ) {
     super(code);
     this.name = 'PvpRequestError';

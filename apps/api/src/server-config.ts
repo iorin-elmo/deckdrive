@@ -6,6 +6,15 @@ export function apiPort(value: string | undefined): number {
   return port;
 }
 
+/** PvP currently keeps matchmaking and WebSocket sessions in process memory. */
+export function pvpWorkerCount(value: string | undefined): number {
+  if (value === undefined || value.length === 0) return 1;
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1)
+    throw new Error('PVP_WORKER_COUNT must be a positive integer.');
+  return count;
+}
+
 export function apiHost(value: string | undefined): string {
   if (value === undefined || value.length === 0) return '127.0.0.1';
   const host = value.trim();
