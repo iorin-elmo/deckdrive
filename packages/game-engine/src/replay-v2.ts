@@ -14,6 +14,7 @@ import type {
   CardDefinitionV2,
   GameActionV2,
   GameEventV2,
+  GameEventV2Type,
   ServerCommand,
   ServerCommandAuthorizer,
 } from './protocol-v2.js';
@@ -589,13 +590,305 @@ function validProjectedChant(value: unknown): boolean {
   );
 }
 
+const projectedEventFields: Record<GameEventV2Type, readonly string[]> = {
+  CARD_PLAYED: ['playerId', 'cardInstanceId', 'definitionId', 'definitionVersion', 'visibility'],
+  EFFECT_STARTED: ['effectId'],
+  DAMAGE_DEALT: ['sourceId', 'targetId', 'amount', 'attemptedAmount'],
+  BLOCK_REDUCED: ['targetId', 'amount'],
+  ENTITY_DAMAGED: ['targetId', 'amount'],
+  HEALED: ['targetId', 'amount'],
+  BLOCK_GAINED: ['targetId', 'amount'],
+  ENERGY_GAINED: ['targetId', 'amount'],
+  CARD_DRAWN: ['playerId', 'cardInstanceId', 'visibility'],
+  CARD_DISCARDED: ['playerId', 'cardInstanceId', 'definitionId', 'definitionVersion', 'visibility'],
+  CARD_EXHAUSTED: [
+    'playerId',
+    'ownerPlayerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'from',
+    'fromZone',
+    'fromIndex',
+    'toZone',
+    'toIndex',
+    'reason',
+    'visibility',
+  ],
+  CARD_CREATED: [
+    'playerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'sourceCardInstanceId',
+    'destination',
+    'costModifier',
+    'visibility',
+  ],
+  DECK_CARD_REVEALED: [
+    'playerId',
+    'ownerPlayerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'zone',
+    'index',
+    'position',
+    'positionVisibility',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'reason',
+    'visibility',
+  ],
+  DECK_SHUFFLED: [
+    'playerId',
+    'ownerPlayerId',
+    'pile',
+    'reason',
+    'cardInstanceIds',
+    'cardInstanceIdsBefore',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'visibility',
+  ],
+  TURN_STARTED: ['playerId'],
+  TURN_ENDED: ['playerId'],
+  CHANT_STARTED: [
+    'chantEntryId',
+    'ownerPlayerId',
+    'visibility',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'before',
+    'after',
+    'queueIndex',
+  ],
+  CHANT_ADVANCED: [
+    'chantEntryId',
+    'ownerPlayerId',
+    'visibility',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'before',
+    'after',
+    'queueIndex',
+  ],
+  CHANT_DELAYED: [
+    'chantEntryId',
+    'ownerPlayerId',
+    'visibility',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'before',
+    'after',
+    'queueIndex',
+  ],
+  CHANT_COMPLETED: [
+    'chantEntryId',
+    'ownerPlayerId',
+    'visibility',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'before',
+    'after',
+    'queueIndex',
+  ],
+  CHANT_CANCELLED: [
+    'chantEntryId',
+    'ownerPlayerId',
+    'visibility',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'before',
+    'after',
+    'queueIndex',
+  ],
+  SYNTHESIS_RESOLVED: [
+    'playerId',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'materialCardInstanceIds',
+    'materialZones',
+    'result',
+    'recipeId',
+    'beforeCount',
+    'afterCount',
+    'visibility',
+  ],
+  ALCHEMY_STAGE_CHANGED: ['playerId', 'before', 'after'],
+  CARD_CHOICE_REQUESTED: [
+    'choiceRequestId',
+    'playerId',
+    'choiceKind',
+    'candidateIds',
+    'visibility',
+  ],
+  CARD_CHOICE_SUBMITTED: ['choiceRequestId', 'playerId', 'selectedIds', 'visibility'],
+  CARD_CHOICE_TIMED_OUT: ['choiceRequestId', 'playerId', 'visibility'],
+  CARD_MOVED: [
+    'playerId',
+    'ownerPlayerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'from',
+    'fromZone',
+    'fromIndex',
+    'to',
+    'toZone',
+    'toIndex',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'positionVisibility',
+    'reason',
+    'visibility',
+  ],
+  DAMAGE_PREVENTED: ['targetId', 'pendingEffectIds', 'amount'],
+  STATUS_APPLIED: ['targetId', 'statusId', 'stacks'],
+  STATUS_CONSUMED: ['targetId', 'statusId', 'stacks'],
+  PENDING_EFFECT_CREATED: [
+    'pendingEffectId',
+    'ownerPlayerId',
+    'targetPlayerId',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'effectType',
+    'trigger',
+    'expiresOn',
+    'createdSequence',
+    'amount',
+    'remainingTriggers',
+    'visibility',
+  ],
+  PENDING_EFFECT_CONSUMED: [
+    'pendingEffectId',
+    'ownerPlayerId',
+    'targetPlayerId',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'effectType',
+    'trigger',
+    'expiresOn',
+    'createdSequence',
+    'amount',
+    'remainingTriggers',
+    'visibility',
+  ],
+  PENDING_EFFECT_EXPIRED: [
+    'pendingEffectId',
+    'ownerPlayerId',
+    'targetPlayerId',
+    'sourceCardInstanceId',
+    'sourceDefinitionId',
+    'sourceDefinitionVersion',
+    'effectType',
+    'trigger',
+    'expiresOn',
+    'createdSequence',
+    'amount',
+    'remainingTriggers',
+    'visibility',
+  ],
+  MATCH_FINISHED: ['result'],
+};
+
 function validProjectedEvent(event: Record<string, unknown>, viewerId: PlayerId): boolean {
-  if (event.redacted === true)
+  if (
+    typeof event.type !== 'string' ||
+    !Object.hasOwn(projectedEventFields, event.type) ||
+    !isNonNegativeSafeInteger(event.sequence) ||
+    event.sequence === 0
+  )
+    return false;
+  if (event.redacted === true) {
+    const visibility = event.visibility;
     return (
+      typeof event.ownerPlayerId === 'string' &&
+      event.ownerPlayerId.length > 0 &&
       event.ownerPlayerId !== viewerId &&
+      projectedEventFields[event.type as GameEventV2Type].includes('visibility') &&
+      !event.type.startsWith('CHANT_') &&
+      !event.type.startsWith('PENDING_EFFECT_') &&
+      (visibility === 'ownerOnly' ||
+        (event.type === 'CARD_MOVED' && visibility === 'allPlayers')) &&
       onlyKeys(event, ['type', 'sequence', 'visibility', 'ownerPlayerId', 'redacted'])
     );
+  }
+  if ('redacted' in event) return false;
+  const fields = projectedEventFields[event.type as GameEventV2Type];
   const owner = event.ownerPlayerId ?? event.playerId;
+  const hiddenPosition = owner !== viewerId && event.positionVisibility === 'ownerOnly';
+  const positionFields = [
+    'zone',
+    'from',
+    'to',
+    'fromZone',
+    'toZone',
+    'index',
+    'position',
+    'fromIndex',
+    'toIndex',
+  ];
+  const required = hiddenPosition ? fields.filter((key) => !positionFields.includes(key)) : fields;
+  if (
+    !onlyKeys(event, ['type', 'sequence', ...required]) ||
+    !required.every((key) => key in event && validProjectedEventField(key, event[key]))
+  )
+    return false;
+  if (
+    'visibility' in event &&
+    event.visibility !== 'ownerOnly' &&
+    event.visibility !== 'allPlayers'
+  )
+    return false;
+  if (
+    [
+      'CARD_PLAYED',
+      'CARD_DRAWN',
+      'CARD_DISCARDED',
+      'CARD_CREATED',
+      'CARD_MOVED',
+      'CARD_EXHAUSTED',
+      'DECK_CARD_REVEALED',
+      'DECK_SHUFFLED',
+      'CARD_CHOICE_REQUESTED',
+      'CARD_CHOICE_SUBMITTED',
+      'CARD_CHOICE_TIMED_OUT',
+      'SYNTHESIS_RESOLVED',
+    ].includes(event.type) &&
+    (typeof event.playerId !== 'string' || event.playerId.length === 0)
+  )
+    return false;
+  if (event.type.startsWith('CHANT_') || event.type.startsWith('PENDING_EFFECT_')) {
+    if (event.visibility !== 'allPlayers') return false;
+  }
+  if (event.type === 'DECK_SHUFFLED' || event.type.startsWith('CARD_CHOICE_')) {
+    if (event.visibility !== 'ownerOnly') return false;
+  }
+  if (
+    event.type === 'MATCH_FINISHED' &&
+    (!isRecord(event.result) || !validProjectedTerminal(event.result))
+  )
+    return false;
+  if (
+    event.type === 'SYNTHESIS_RESOLVED' &&
+    !['SUCCESS', 'FAILURE', 'SPECIAL'].includes(String(event.result))
+  )
+    return false;
+  if (
+    ['CARD_MOVED', 'CARD_EXHAUSTED', 'DECK_CARD_REVEALED', 'DECK_SHUFFLED'].includes(event.type) &&
+    event.ownerPlayerId !== event.playerId
+  )
+    return false;
   if (owner !== viewerId && event.visibility === 'ownerOnly') return false;
   if (owner !== viewerId && event.type === 'CARD_MOVED' && event.toZone === 'drawPile')
     return false;
@@ -606,6 +899,51 @@ function validProjectedEvent(event: Record<string, unknown>, viewerId: PlayerId)
       (key) => !(key in event),
     )
   );
+}
+
+function validProjectedEventField(key: string, value: unknown): boolean {
+  if (
+    [
+      'cardInstanceIds',
+      'cardInstanceIdsBefore',
+      'candidateIds',
+      'selectedIds',
+      'materialCardInstanceIds',
+      'materialZones',
+      'pendingEffectIds',
+    ].includes(key)
+  )
+    return Array.isArray(value) && dense(value) && value.every((item) => typeof item === 'string');
+  if (
+    [
+      'amount',
+      'attemptedAmount',
+      'beforeCount',
+      'afterCount',
+      'queueIndex',
+      'fromIndex',
+      'toIndex',
+      'index',
+      'position',
+      'createdSequence',
+      'remainingTriggers',
+      'stacks',
+      'costModifier',
+    ].includes(key)
+  )
+    return Number.isSafeInteger(value);
+  if (key === 'before' || key === 'after') return value === null || Number.isSafeInteger(value);
+  if (key === 'result')
+    return value !== undefined && (typeof value === 'string' || validProjectedTerminal(value));
+  if (
+    ['sourceCardInstanceId', 'sourceDefinitionId', 'sourceDefinitionVersion', 'recipeId'].includes(
+      key,
+    )
+  )
+    return value === null || typeof value === 'string';
+  if (key === 'visibility' || key === 'positionVisibility')
+    return value === 'ownerOnly' || value === 'allPlayers';
+  return typeof value === 'string' && value.length > 0;
 }
 
 function validProjectedAction(action: Record<string, unknown>, viewerId: PlayerId): boolean {

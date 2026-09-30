@@ -176,6 +176,44 @@ describe('Replay regression gate', () => {
       });
     }
   });
+
+  it('rejects malformed projected events even with a recalculated checksum', () => {
+    const view = projectReplayV2(
+      v2Fixture.expectedReplay,
+      () => v2Fixture.definitions,
+      () => true,
+      v2Fixture.initial.players[0]!.id,
+    );
+    const malformedEvents: Record<string, unknown>[] = [
+      { sequence: 1 },
+      {
+        type: 'CARD_DRAWN',
+        sequence: 1,
+        playerId: 'golden-player-two',
+        cardInstanceId: 'private-opponent-card',
+      },
+      {
+        type: 'CARD_DRAWN',
+        sequence: 1,
+        playerId: 'golden-player-two',
+        cardInstanceId: 'private-opponent-card',
+        visibility: 'ownerOnly',
+      },
+      { type: 'CARD_DRAWN', sequence: 1, visibility: 'ownerOnly', redacted: true },
+    ];
+    for (const malformed of malformedEvents) {
+      const copy = structuredClone(view);
+      (copy.events as Record<string, unknown>[])[0] = malformed;
+      (copy.finalState.events as Record<string, unknown>[])[0] = structuredClone(malformed);
+      (copy.initialState.events as Record<string, unknown>[])[0] = structuredClone(malformed);
+      (copy as { projectionChecksum: string }).projectionChecksum =
+        calculatePlayerReplayProjectionChecksumV2(copy);
+      expect(verifyPlayerReplayViewV2(copy)).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_PROJECTION' },
+      });
+    }
+  });
 });
 
 const v2Fixture = JSON.parse(
