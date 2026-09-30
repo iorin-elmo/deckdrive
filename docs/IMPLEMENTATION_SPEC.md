@@ -60,12 +60,12 @@ seed
 +
 initial state
 +
-action sequence
+complete input sequence (GameAction + ServerCommand)
 =
 same result
 ```
 
-を保証する。
+を保証する。`ServerCommand` を持たない旧Replay formatではinput sequenceは従来のaction sequenceと同じである。timeoutなど結果を変えるサーバー入力を導入するformatでは、プレイヤーactionだけを同一にして決定性を主張せず、共通sequenceで順序付けた完全な `BattleInput` 列を同一条件として扱う。
 
 ---
 
@@ -595,10 +595,15 @@ rulesVersion
 cardDataVersion
 seed
 initialState
+draftDefinitionRevision (リリース前定義を使う新formatでは必須)
+battleProtocolVersion (format version 2では値2を必須とする)
 actions
+serverCommands (format version 2では必須。format version 1には存在しない)
 events
 finalState
 ```
+
+Replayの記録・検証APIは永続フィールド `formatVersion` で入力schemaを切り替える。ServerCommandを導入したformatでは、`actions: BattleInputRecord<GameAction>[]` と `serverCommands: BattleInputRecord<ServerCommand>[]` を永続化し、共通 `inputSequence` でmergeした完全な `BattleInput` 列を再生する。player actionだけを渡す旧APIで検証してはならない。`draftDefinitionRevision` と `battleProtocolVersion` はReplayのtop-level fieldとしてcanonical checksumに含める。同じrevisionで登録された不変なcard definition snapshotだけをrecord/verifyへ渡し、protocol versionはinitial state・全snapshot・各inputの許可variantと一致させる。
 
 CLI:
 
@@ -1060,10 +1065,11 @@ missions
 OAuth Provider Adapter:
 
 ```text
-Google
 Discord
-X
 ```
+
+Provider scope is governed by [ADR 0002](architecture/adr/0002-authentication-provider-scope.md):
+Discord is the only supported social provider. Google and X are explicitly out of scope.
 
 DB:
 
@@ -2288,15 +2294,11 @@ Production OAuth secretをlocalへ持ち込まない。
 ```text
 DATABASE_URL
 SESSION_SECRET
-
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
+OAUTH_REDIRECT_BASE_URL
+APP_BASE_URL
 
 DISCORD_CLIENT_ID
 DISCORD_CLIENT_SECRET
-
-X_CLIENT_ID
-X_CLIENT_SECRET
 
 PUBLIC_BASE_URL
 ```
@@ -2310,7 +2312,11 @@ secretはcommit禁止。
 # 94. API
 
 ```text
-POST /api/v1/auth/oauth/:provider
+GET  /api/v1/auth/oauth/discord/start
+GET  /api/v1/auth/oauth/discord/callback
+POST /api/v1/auth/oauth/discord/link
+GET  /api/v1/auth/session
+POST /api/v1/auth/logout
 GET  /api/v1/me
 
 GET  /api/v1/cards
@@ -2622,13 +2628,13 @@ UIなしでもテスト可能にする。
 
 ```text
 seed
-action recording
+input recording (format version 1はactionのみ)
 event recording
 snapshot
 replay CLI
 ```
 
-同一seedで同一結果になることをテスト。
+同一seed・初期state・完全なinput sequenceで同一結果になることをテスト。
 
 ---
 
@@ -2719,12 +2725,10 @@ Cosmetics
 実装:
 
 ```text
-Google
 Discord
-X
 ```
 
-Provider Adapterを使用。
+Provider Adapterを使用。対応プロバイダーは ADR 0002 に従い Discord のみとする。
 
 ---
 

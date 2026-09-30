@@ -10,6 +10,7 @@ import {
   deckBuilderCardsForVersion,
   deckBuilderCopyLimit,
   deckBuilderInput,
+  hasOwnedCosmetics,
   isCpuReadyDeck,
   isUnauthorizedApiError,
   loginReturnPath,
@@ -107,6 +108,13 @@ describe('isCpuReadyDeck', () => {
   });
 });
 
+describe('hasOwnedCosmetics', () => {
+  it('uses ownership state rather than catalog size for an empty cosmetics state', () => {
+    expect(hasOwnedCosmetics([{ acquiredAt: null }, { acquiredAt: null }])).toBe(false);
+    expect(hasOwnedCosmetics([{ acquiredAt: '2026-09-25T00:00:00.000Z' }])).toBe(true);
+  });
+});
+
 describe('deckBuilderInput', () => {
   const collection: readonly OwnedCard[] = [
     { cardVersionId: 'version-1', quantity: 3, cardVersion: cards[0]! },
@@ -160,6 +168,9 @@ describe('isUnauthorizedApiError', () => {
 });
 
 describe('loginReturnPath', () => {
+  it.each(['\n', '\r', '\t', '\u0000', '\u007f'])('rejects control characters: %j', (control) => {
+    expect(loginReturnPath('/' + control + '//evil.example')).toBe('/home');
+  });
   it('preserves a local destination and rejects external return paths', () => {
     expect(loginReturnPath('/cards?version=1.0.0')).toBe('/cards?version=1.0.0');
     expect(loginReturnPath('//example.test')).toBe('/home');

@@ -23,3 +23,12 @@ export function apiCorsOrigins(value: string | undefined): readonly string[] {
   if (origins.length === 0) throw new Error('CORS_ORIGINS must include at least one origin.');
   return origins;
 }
+
+/** Comma-separated direct proxy addresses allowed to supply X-Forwarded-For. */
+export function apiTrustedProxyAddresses(value: string | undefined): readonly string[] {
+  if (value === undefined || value.trim().length === 0) return [];
+  return value
+    .split(',')
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
+}

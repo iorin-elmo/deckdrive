@@ -57,6 +57,28 @@ describe('RewardService', () => {
     expect(ledger.entries).toHaveLength(1);
   });
 
+  it('uses the same validation and idempotency path inside an existing transaction', async () => {
+    const repository = new InMemoryLedger();
+    const transaction = new InMemoryLedger();
+    const service = new RewardService(repository);
+    const grant = {
+      playerId: 'player',
+      currency: 'GEM' as const,
+      amount: 10,
+      reason: 'MISSION:daily.cpu-battle',
+      idempotencyKey: 'mission:daily.cpu-battle:2026-09-25',
+    };
+
+    await expect(service.grantInTransaction(transaction, grant)).resolves.toMatchObject({
+      id: '1',
+    });
+    await expect(service.grantInTransaction(transaction, grant)).resolves.toMatchObject({
+      id: '1',
+    });
+    expect(transaction.entries).toHaveLength(1);
+    expect(repository.entries).toHaveLength(0);
+  });
+
   it('rejects reuse of an idempotency key for a changed reward', async () => {
     const service = new RewardService(new InMemoryLedger());
     await service.grant({

@@ -7,6 +7,24 @@ import {
   DevelopmentAuthenticationDisabledError,
   assertDevelopmentAuthentication,
 } from '../auth/development-auth.js';
+import { CosmeticIdempotencyConflictError } from '../cosmetics/prisma-cosmetic-service.js';
+import {
+  csrfCookieName,
+  parseCookies,
+  sessionCookieName,
+  serializeCookie,
+} from '../auth/cookies.js';
+import {
+  OAuthRateLimitError,
+  OAuthRequestError,
+  OAuthSecurityConfigurationError,
+  OAuthService,
+  oauthStateCookieNameFor,
+} from '../auth/oauth-service.js';
+import {
+  OAuthProviderConfigurationError,
+  OAuthProviderExchangeError,
+} from '../auth/providers/provider.js';
 import type { CpuDifficulty } from '../cpu/strategy.js';
 import {
   DeckValidationError,
@@ -27,33 +45,66 @@ import {
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
 import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
+import { RewardValidationError } from '../rewards/reward-ledger.js';
+import {
+  LoginRewardConfigurationError,
+  MissionNotFoundError,
+  MissionNotReadyError,
+  PrismaMissionService,
+} from '../missions/prisma-mission-service.js';
+import {
+  lockPlayerForUpdate,
+  PrismaProgressionService,
+} from '../missions/prisma-progression-service.js';
 
 export interface ApiRequest {
   readonly method: string;
   readonly path: string;
   readonly headers: Readonly<Record<string, string | undefined>>;
+  readonly query?: Readonly<Record<string, string | undefined>>;
+  readonly clientAddress?: string;
   readonly body?: unknown;
 }
 
 export interface ApiResponse {
   readonly status: number;
   readonly body: unknown;
+  readonly headers?: Readonly<Record<string, string | string[]>>;
 }
 
 /** Framework-neutral `/api/v1` controller. A Node or edge adapter can call it directly. */
 export class ApiApplication {
+  private readonly oauth: OAuthService;
+
   constructor(
     private readonly prisma: PrismaClient,
     private readonly environment: NodeJS.ProcessEnv = process.env,
     private readonly pvp: PvpMatchService | undefined = undefined,
-  ) {}
+  ) {
+    this.oauth = new OAuthService(prisma, environment);
+  }
 
   async handle(request: ApiRequest): Promise<ApiResponse> {
     try {
       const path = request.path;
       if (request.method === 'POST' && path === '/api/v1/auth/development') {
-        return await this.developmentLogin(request.body);
+        return await this.developmentLogin(request);
       }
+      if (request.method === 'GET' && path === '/api/v1/auth/session')
+        return await this.currentSession(request);
+      if (request.method === 'POST' && path === '/api/v1/auth/logout')
+        return await this.logout(request);
+      const oauthStartProvider = path.match(/^\/api\/v1\/auth\/oauth\/(discord)\/start$/u)?.[1];
+      if (request.method === 'GET' && oauthStartProvider !== undefined)
+        return await this.startOAuth(oauthStartProvider, request);
+      const oauthCallbackProvider = path.match(
+        /^\/api\/v1\/auth\/oauth\/(discord)\/callback$/u,
+      )?.[1];
+      if (request.method === 'GET' && oauthCallbackProvider !== undefined)
+        return await this.completeOAuth(oauthCallbackProvider, request);
+      const oauthLinkProvider = path.match(/^\/api\/v1\/auth\/oauth\/(discord)\/link$/u)?.[1];
+      if (request.method === 'POST' && oauthLinkProvider !== undefined)
+        return await this.startOAuthLink(oauthLinkProvider, request);
       if (request.method === 'GET' && path === '/api/v1/cards') return await this.listCards();
       const cardId = path.match(/^\/api\/v1\/cards\/([^/]+)$/u)?.[1];
       if (request.method === 'GET' && cardId !== undefined) return await this.getCard(cardId);
@@ -62,19 +113,25 @@ export class ApiApplication {
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const privateJoin = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/join$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
+      const missionId = path.match(/^\/api\/v1\/missions\/([^/]+)\/claim$/u)?.[1];
       const authenticatedRoute =
         (request.method === 'GET' &&
           (path === '/api/v1/me' ||
             path === '/api/v1/collection' ||
             path === '/api/v1/decks' ||
-            path === '/api/v1/packs')) ||
+            path === '/api/v1/packs' ||
+            path === '/api/v1/missions' ||
+            path === '/api/v1/progression' ||
+            path === '/api/v1/cosmetics')) ||
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
             path === '/api/v1/matches/casual' ||
             path === '/api/v1/matches/private' ||
             privateJoin !== undefined ||
-            packProductId !== undefined)) ||
+            path === '/api/v1/login-rewards/claim' ||
+            packProductId !== undefined ||
+            missionId !== undefined)) ||
         (deckId !== undefined && (request.method === 'PUT' || request.method === 'DELETE')) ||
         (matchId !== undefined && request.method === 'GET');
       if (!authenticatedRoute) return { status: 404, body: { error: 'NOT_FOUND' } };
@@ -86,8 +143,18 @@ export class ApiApplication {
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
       if (request.method === 'GET' && path === '/api/v1/packs') return this.listPacks();
+      if (request.method === 'GET' && path === '/api/v1/missions')
+        return await this.listMissions(player.id);
+      if (request.method === 'GET' && path === '/api/v1/progression')
+        return await this.progression(player.id);
+      if (request.method === 'GET' && path === '/api/v1/cosmetics')
+        return await this.listCosmetics(player.id);
       if (request.method === 'POST' && packProductId !== undefined)
         return await this.openPack(player.id, packProductId, request);
+      if (request.method === 'POST' && missionId !== undefined)
+        return await this.claimMission(player.id, missionId);
+      if (request.method === 'POST' && path === '/api/v1/login-rewards/claim')
+        return await this.claimLoginReward(player.id);
       if (request.method === 'POST' && path === '/api/v1/decks')
         return await this.createDeck(player.id, request.body);
       if (deckId !== undefined && request.method === 'PUT')
@@ -110,9 +177,9 @@ export class ApiApplication {
     }
   }
 
-  private async developmentLogin(body: unknown): Promise<ApiResponse> {
+  private async developmentLogin(request: ApiRequest): Promise<ApiResponse> {
     assertDevelopmentAuthentication(this.environment);
-    const value = object(body);
+    const value = object(request.body);
     const email = string(value.email, 'email');
     const displayName = string(value.displayName, 'displayName');
     const user = await this.prisma.user.upsert({
@@ -125,7 +192,154 @@ export class ApiApplication {
       update: {},
       create: { userId: user.id },
     });
-    return { status: 200, body: { playerId: player.id, displayName: user.displayName } };
+    const session = await this.oauth.session().create(user.id);
+    return {
+      status: 200,
+      body: { playerId: player.id, displayName: user.displayName, csrfToken: session.csrfToken },
+      headers: { 'set-cookie': this.oauth.sessionCookie(session) },
+    };
+  }
+
+  private async currentSession(request: ApiRequest): Promise<ApiResponse> {
+    const session = await this.oauth.session().authenticate(this.sessionToken(request));
+    if (session === undefined) throw new UnauthorizedError();
+    const player = await this.prisma.player.findUniqueOrThrow({
+      where: { id: session.playerId },
+      select: { id: true, user: { select: { displayName: true } } },
+    });
+    const existingCsrfToken = parseCookies(header(request.headers, 'cookie'))[csrfCookieName];
+    if (this.oauth.session().verifiesCsrf(session, existingCsrfToken)) {
+      return {
+        status: 200,
+        body: {
+          playerId: player.id,
+          displayName: player.user.displayName,
+          csrfToken: existingCsrfToken,
+        },
+      };
+    }
+    if (!this.trustedCsrfRecoveryRequest(request)) throw new CsrfError();
+    // Recover only when the shared CSRF cookie is unavailable or invalid. A
+    // normal restoration must not invalidate token copies held in other tabs.
+    // Cross-site navigations cannot enter this branch and invalidate active tabs.
+    const csrfToken = await this.oauth
+      .session()
+      .recoverCsrfToken(session, this.sessionToken(request)!);
+    if (csrfToken === undefined) throw new UnauthorizedError();
+    return {
+      status: 200,
+      body: { playerId: player.id, displayName: player.user.displayName, csrfToken },
+      headers: { 'set-cookie': this.oauth.csrfCookie(csrfToken, session.expiresAt) },
+    };
+  }
+
+  private async logout(request: ApiRequest): Promise<ApiResponse> {
+    await this.requirePlayer(request);
+    await this.oauth.session().revoke(this.sessionToken(request));
+    const secure = this.environment.NODE_ENV === 'production';
+    return {
+      status: 204,
+      body: null,
+      headers: {
+        'set-cookie': [
+          serializeCookie(sessionCookieName, '', {
+            httpOnly: true,
+            secure,
+            sameSite: secure ? 'None' : 'Lax',
+            maxAge: 0,
+          }),
+          serializeCookie(csrfCookieName, '', {
+            secure,
+            sameSite: secure ? 'None' : 'Strict',
+            maxAge: 0,
+          }),
+        ],
+      },
+    };
+  }
+
+  private async startOAuth(provider: string, request: ApiRequest): Promise<ApiResponse> {
+    try {
+      const result = await this.oauth.start(
+        provider,
+        request.clientAddress,
+        undefined,
+        request.query?.returnTo,
+      );
+      return {
+        status: 302,
+        body: { redirect: result.location },
+        headers: { location: result.location, 'set-cookie': result.stateCookie },
+      };
+    } catch (error) {
+      return this.oauthFailureResponse(error, undefined);
+    }
+  }
+
+  private async startOAuthLink(provider: string, request: ApiRequest): Promise<ApiResponse> {
+    const session = await this.requirePlayer(request);
+    if (session.userId === undefined) throw new UnauthorizedError();
+    const result = await this.oauth.start(
+      provider,
+      request.clientAddress,
+      session.userId,
+      request.query?.returnTo,
+      session.sessionId,
+    );
+    return {
+      status: 200,
+      body: { authorizationUrl: result.location },
+      headers: { 'set-cookie': result.stateCookie },
+    };
+  }
+
+  private async completeOAuth(provider: string, request: ApiRequest): Promise<ApiResponse> {
+    const state = request.query?.state;
+    const stateCookie =
+      state === undefined
+        ? undefined
+        : parseCookies(header(request.headers, 'cookie'))[oauthStateCookieNameFor(state)];
+    try {
+      const result = await this.oauth.complete(
+        provider,
+        request.query ?? {},
+        stateCookie,
+        request.clientAddress,
+        this.sessionToken(request),
+      );
+      return {
+        status: 302,
+        body: { authenticated: true },
+        headers: {
+          location: this.oauth.completionLocation(result.returnTo),
+          'set-cookie': [
+            ...(result.session === undefined ? [] : this.oauth.sessionCookie(result.session)),
+            this.oauth.expiredStateCookie(result.state),
+          ],
+        },
+      };
+    } catch (error) {
+      return this.oauthFailureResponse(error, state);
+    }
+  }
+
+  private trustedCsrfRecoveryRequest(request: ApiRequest): boolean {
+    return (
+      this.oauth.isApplicationOrigin(header(request.headers, 'origin')) ||
+      header(request.headers, 'sec-fetch-site') === 'same-origin'
+    );
+  }
+
+  private oauthFailureResponse(error: unknown, state: string | undefined): ApiResponse {
+    const code = oauthFailureCode(error);
+    return {
+      status: 302,
+      body: { authenticated: false, error: code },
+      headers: {
+        location: this.oauth.failureLocation(code),
+        ...(state === undefined ? {} : { 'set-cookie': this.oauth.expiredStateCookie(state) }),
+      },
+    };
   }
 
   private async listCards(): Promise<ApiResponse> {
@@ -212,6 +426,58 @@ export class ApiApplication {
           id: product.id,
           gemCost: product.gemCost,
           limit: product.limit,
+        })),
+      },
+    };
+  }
+
+  private async listMissions(playerId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: { missions: await new PrismaMissionService(this.prisma).list(playerId) },
+    };
+  }
+
+  private async claimMission(playerId: string, missionId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: await new PrismaMissionService(this.prisma).claim(playerId, missionId),
+    };
+  }
+
+  private async claimLoginReward(playerId: string): Promise<ApiResponse> {
+    return {
+      status: 200,
+      body: await new PrismaMissionService(this.prisma).claimLoginReward(playerId),
+    };
+  }
+
+  private async progression(playerId: string): Promise<ApiResponse> {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const [player, lastLoginClaim] = await Promise.all([
+      this.prisma.player.findUniqueOrThrow({
+        where: { id: playerId },
+        select: { experience: true, level: true },
+      }),
+      this.prisma.loginRewardClaim.findUnique({
+        where: { playerId_day: { playerId, day: today } },
+      }),
+    ]);
+    return { status: 200, body: { ...player, loginClaimedToday: lastLoginClaim !== null } };
+  }
+
+  private async listCosmetics(playerId: string): Promise<ApiResponse> {
+    const cosmetics = await this.prisma.cosmetic.findMany({
+      orderBy: [{ kind: 'asc' }, { id: 'asc' }],
+      include: { owners: { where: { playerId }, select: { acquiredAt: true } } },
+    });
+    return {
+      status: 200,
+      body: {
+        cosmetics: cosmetics.map(({ owners, ...cosmetic }) => ({
+          ...cosmetic,
+          acquiredAt: owners[0]?.acquiredAt ?? null,
         })),
       },
     };
@@ -329,16 +595,33 @@ export class ApiApplication {
         },
       ],
     });
-    await this.prisma.match.create({
-      data: {
-        id: matchId,
-        engineVersion: state.engineVersion,
-        rulesVersion: state.rulesVersion,
-        cardDataVersion: state.cardDataVersion,
-        seed: state.seed,
-        initialState: json(state),
-        players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
-      },
+    await this.prisma.$transaction(async (transaction) => {
+      // Lock before creating match/mission child records so every per-player write
+      // in this authoritative transaction has a consistent lock order.
+      await lockPlayerForUpdate(transaction, playerId);
+      await transaction.match.create({
+        data: {
+          id: matchId,
+          engineVersion: state.engineVersion,
+          rulesVersion: state.rulesVersion,
+          cardDataVersion: state.cardDataVersion,
+          seed: state.seed,
+          initialState: json(state),
+          players: { create: { playerId, seat: 1, deckSnapshot: json(deck) } },
+        },
+      });
+      await new PrismaMissionService(this.prisma).recordProgressInTransaction(
+        transaction,
+        playerId,
+        'CPU_BATTLE',
+        1,
+      );
+      await new PrismaProgressionService(this.prisma).grantExperienceInTransaction(transaction, {
+        playerId,
+        amount: 10,
+        reason: 'CPU_MATCH_STARTED',
+        idempotencyKey: `match:${matchId}:xp`,
+      });
     });
     return { status: 201, body: { id: matchId, difficulty, state } };
   }
@@ -430,18 +713,55 @@ export class ApiApplication {
   }
 
   private async requirePlayer(request: ApiRequest) {
+    const session = await this.oauth.session().authenticate(this.sessionToken(request));
+    if (session !== undefined) {
+      if (
+        isUnsafeMethod(request.method) &&
+        !this.oauth.session().verifiesCsrf(session, header(request.headers, 'x-csrf-token'))
+      )
+        throw new CsrfError();
+      return { id: session.playerId, userId: session.userId, sessionId: session.sessionId };
+    }
     const playerId = header(request.headers, 'x-deckdrive-player-id');
-    if (playerId === undefined || playerId.length === 0) throw new UnauthorizedError();
+    if (
+      !developmentPlayerHeaderAllowed(this.environment) ||
+      playerId === undefined ||
+      playerId.length === 0
+    )
+      throw new UnauthorizedError();
     const player = await this.prisma.player.findUnique({
       where: { id: playerId },
       select: { id: true },
     });
     if (player === null) throw new UnauthorizedError();
-    return player;
+    return { ...player, userId: undefined, sessionId: undefined };
+  }
+
+  private sessionToken(request: ApiRequest): string | undefined {
+    return parseCookies(header(request.headers, 'cookie'))[sessionCookieName];
   }
 
   private errorResponse(error: unknown): ApiResponse {
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
+    if (error instanceof CsrfError)
+      return { status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } };
+    if (error instanceof OAuthRateLimitError)
+      return { status: 429, body: { error: 'OAUTH_RATE_LIMITED' } };
+    if (error instanceof OAuthSecurityConfigurationError)
+      return { status: 503, body: { error: 'OAUTH_NOT_CONFIGURED' } };
+    if (error instanceof OAuthProviderConfigurationError)
+      return { status: 503, body: { error: 'OAUTH_PROVIDER_NOT_CONFIGURED' } };
+    if (error instanceof OAuthProviderExchangeError)
+      return {
+        status:
+          error.code === 'OAUTH_INVALID_REQUEST'
+            ? 400
+            : error.code === 'OAUTH_PROVIDER_NOT_CONFIGURED'
+              ? 503
+              : 502,
+        body: { error: error.code },
+      };
+    if (error instanceof OAuthRequestError) return { status: 400, body: { error: error.code } };
     if (error instanceof BadRequestError)
       return { status: 400, body: { error: 'INVALID_REQUEST' } };
     if (error instanceof PackOpeningValidationError)
@@ -451,6 +771,16 @@ export class ApiApplication {
     if (error instanceof PackPurchaseLimitError)
       return { status: 409, body: { error: 'PACK_PURCHASE_LIMIT_REACHED' } };
     if (error instanceof IdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof RewardValidationError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof CosmeticIdempotencyConflictError)
+      return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
+    if (error instanceof MissionNotFoundError)
+      return { status: 404, body: { error: 'MISSION_NOT_FOUND' } };
+    if (error instanceof MissionNotReadyError)
+      return { status: 409, body: { error: 'MISSION_NOT_READY' } };
+    if (error instanceof LoginRewardConfigurationError)
       return { status: 409, body: { error: 'IDEMPOTENCY_KEY_CONFLICT' } };
     if (error instanceof PackPoolUnavailableError)
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
@@ -470,8 +800,26 @@ export class ApiApplication {
 }
 
 class UnauthorizedError extends Error {}
+class CsrfError extends Error {}
 class BadRequestError extends Error {}
 class PvpUnavailableError extends Error {}
+
+function oauthFailureCode(error: unknown): string {
+  if (error instanceof OAuthRateLimitError) return 'OAUTH_RATE_LIMITED';
+  if (error instanceof OAuthSecurityConfigurationError) return 'OAUTH_NOT_CONFIGURED';
+  if (error instanceof OAuthProviderConfigurationError) return 'OAUTH_PROVIDER_NOT_CONFIGURED';
+  if (error instanceof OAuthProviderExchangeError) return error.code;
+  if (error instanceof OAuthRequestError) return error.code;
+  return 'OAUTH_FAILED';
+}
+
+function isUnsafeMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'DELETE';
+}
+
+function developmentPlayerHeaderAllowed(environment: NodeJS.ProcessEnv): boolean {
+  return environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test';
+}
 
 function sortVersionedCards<T extends { readonly cardId: string; readonly version: string }>(
   cards: readonly T[],

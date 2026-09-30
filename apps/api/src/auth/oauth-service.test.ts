@@ -1,0 +1,542 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
+import { parseCookies } from './cookies.js';
+import { sha256 } from './crypto.js';
+import {
+  OAuthRateLimiter,
+  OAuthRequestError,
+  OAuthService,
+  oauthReturnPath,
+  oauthStateCookieNameFor,
+} from './oauth-service.js';
+import type { OAuthIdentity, OAuthProviderAdapter } from './providers/provider.js';
+
+describe('OAuthRateLimiter', () => {
+  it('evicts the least recently accepted client while retaining active limits', () => {
+    const limiter = new OAuthRateLimiter(2, 100, () => new Date(0), 2);
+    limiter.consume('first');
+    limiter.consume('second');
+    limiter.consume('first');
+    limiter.consume('third');
+    expect(() => limiter.consume('first')).toThrow();
+    expect(() => limiter.consume('second')).not.toThrow();
+  });
+  it('rejects a request that exceeds its rolling window and permits it after expiry', () => {
+    let timestamp = 0;
+    const limiter = new OAuthRateLimiter(2, 100, () => new Date(timestamp));
+    limiter.consume('client');
+    limiter.consume('client');
+    expect(() => limiter.consume('client')).toThrow();
+    timestamp = 101;
+    expect(() => limiter.consume('client')).not.toThrow();
+  });
+
+  it('bounds retained client keys while continuing to rate-limit each active key', () => {
+    let timestamp = 0;
+    const limiter = new OAuthRateLimiter(1, 100, () => new Date(timestamp), 2);
+    limiter.consume('first');
+    timestamp = 1;
+    limiter.consume('second');
+    timestamp = 2;
+    limiter.consume('third');
+    expect(() => limiter.consume('first')).not.toThrow();
+    expect(() => limiter.consume('third')).toThrow();
+  });
+});
+
+describe('oauthReturnPath', () => {
+  it.each(['\n', '\r', '\t', '\u0000', '\u007f'])('rejects control characters: %j', (control) => {
+    expect(oauthReturnPath('/' + control + '//evil.example')).toBe('/home');
+  });
+  it('bounds UTF-8 destinations before encoding the state cookie', () => {
+    expect(oauthReturnPath('/' + 'a'.repeat(255))).toHaveLength(256);
+    expect(oauthReturnPath('/' + 'a'.repeat(256))).toBe('/home');
+    expect(oauthReturnPath('/' + '\u0001'.repeat(255))).toBe('/home');
+    expect(oauthReturnPath('/' + 'あ'.repeat(86))).toBe('/home');
+  });
+  it('permits application-local routes and rejects external destinations', () => {
+    expect(oauthReturnPath('/decks/deck-1/edit')).toBe('/decks/deck-1/edit');
+    expect(oauthReturnPath('//example.test')).toBe('/home');
+    expect(oauthReturnPath('/\\example.test')).toBe('/home');
+  });
+});
+
+describe('OAuthService', () => {
+  it.each([
+    'replace-me',
+    'replace-with-a-long-random-development-secret',
+    'development-only-oauth-state-secret-not-for-production',
+  ])('rejects public secret placeholders in production: %s', async (SESSION_SECRET) => {
+    const create = vi.fn();
+    const service = new OAuthService(
+      { oAuthAuthorization: { create } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET,
+        APP_BASE_URL: 'https://app.example.test',
+        OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+        DISCORD_CLIENT_ID: 'client',
+        DISCORD_CLIENT_SECRET: 'secret',
+      },
+    );
+    await expect(service.start('discord', 'client')).rejects.toThrow('SESSION_SECRET');
+    expect(create).not.toHaveBeenCalled();
+  });
+  it.each(['production', 'development'])(
+    'uses the appropriate state cookie policy for linking in %s',
+    async (NODE_ENV) => {
+      const service = new OAuthService(
+        { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+        {
+          NODE_ENV,
+          SESSION_SECRET: 'a'.repeat(32),
+          APP_BASE_URL: 'https://app.example.test',
+          OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+          DISCORD_CLIENT_ID: 'client',
+          DISCORD_CLIENT_SECRET: 'secret',
+        },
+      );
+      const result = await service.start('discord', 'client', 'user-1', '/settings', 'session-1');
+      const state = new URL(result.location).searchParams.get('state')!;
+      for (const cookie of [result.stateCookie, service.expiredStateCookie(state)]) {
+        expect(cookie).toContain(NODE_ENV === 'production' ? 'SameSite=None' : 'SameSite=Lax');
+        expect(cookie).toContain('HttpOnly');
+        expect(cookie).toContain('Path=/api/v1/auth/oauth');
+        if (NODE_ENV === 'production') expect(cookie).toContain('Secure');
+        else expect(cookie).not.toContain('Secure');
+      }
+      expect(service.expiredStateCookie(state)).toContain('Max-Age=0');
+    },
+  );
+  it.each(['matching', 'different-user', 'expired', 'missing'])(
+    'handles an existing login session: %s',
+    async (kind) => {
+      const create = vi.fn();
+      const service = new OAuthService(
+        {
+          oAuthAuthorization: {
+            create: vi.fn(),
+            deleteMany: vi.fn(),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUnique: vi.fn().mockResolvedValue({ linkUserId: null }),
+          },
+          oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'user-1' }) },
+          session: {
+            create,
+            deleteMany: vi.fn(),
+            findUnique: vi.fn().mockResolvedValue({
+              id: 'session-1',
+              userId: kind === 'different-user' ? 'other-user' : 'user-1',
+              csrfTokenHash: 'hash',
+              revokedAt: null,
+              expiresAt: new Date(kind === 'expired' ? '2000-01-01' : '2099-01-01'),
+              user: { player: { id: 'player-1' } },
+            }),
+          },
+        } as unknown as PrismaClient,
+        { SESSION_SECRET: 'a'.repeat(32) },
+        new OAuthRateLimiter(),
+        () => new Date('2026-09-27'),
+        [
+          {
+            id: 'discord',
+            authorizationUrl: ({ state }) =>
+              new URL(`https://discord.com/authorize?state=${state}`),
+            exchangeCode: vi.fn().mockResolvedValue({
+              providerUserId: 'discord-user',
+              displayName: 'Player',
+              emailVerified: false,
+            }),
+          },
+        ],
+      );
+      const start = await service.start('discord', 'client');
+      const state = new URL(start.location).searchParams.get('state')!;
+      const result = await service.complete(
+        'discord',
+        { code: 'code', state },
+        parseCookies(start.stateCookie)[oauthStateCookieNameFor(state)],
+        'client',
+        kind === 'missing' ? undefined : 'token',
+      );
+      if (kind === 'matching') {
+        expect(result.session).toBeUndefined();
+        expect(create).not.toHaveBeenCalled();
+      } else {
+        expect(result.session).toBeDefined();
+        expect(create).toHaveBeenCalledOnce();
+      }
+    },
+  );
+  it('keeps ten maximum-size link state cookies within an 8 KiB budget', async () => {
+    const service = new OAuthService(
+      { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+      {
+        SESSION_SECRET: 'a'.repeat(32),
+        DISCORD_CLIENT_ID: 'client',
+        DISCORD_CLIENT_SECRET: 'secret',
+      },
+    );
+    const cookies: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const result = await service.start(
+        'discord',
+        '127.0.0.1',
+        'user-1',
+        '/' + 'a'.repeat(255),
+        '12345678-1234-1234-1234-123456789012',
+      );
+      cookies.push(result.stateCookie.split(';')[0]!);
+    }
+    expect(Buffer.byteLength(cookies.join('; '), 'utf8')).toBeLessThan(8192);
+  });
+  it.each(['APP_BASE_URL', 'OAUTH_REDIRECT_BASE_URL'])(
+    'rejects a production HTTP %s before creating state',
+    async (key) => {
+      const create = vi.fn();
+      const service = new OAuthService(
+        { oAuthAuthorization: { create } } as unknown as PrismaClient,
+        {
+          NODE_ENV: 'production',
+          SESSION_SECRET: 'a'.repeat(32),
+          APP_BASE_URL: 'https://app.example.test',
+          OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+          [key]: 'http://unsafe.example.test',
+          DISCORD_CLIENT_ID: 'client',
+          DISCORD_CLIENT_SECRET: 'secret',
+        },
+      );
+      await expect(service.start('discord', '127.0.0.1')).rejects.toThrow(key);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['production', 'development'])('sets the session cookie policy for %s', (NODE_ENV) => {
+    const service = new OAuthService({} as PrismaClient, { NODE_ENV });
+    const cookie = service.sessionCookie({
+      token: 'token',
+      csrfToken: 'csrf',
+      expiresAt: new Date('2099-01-01'),
+    })[0];
+    expect(cookie).toContain(NODE_ENV === 'production' ? 'SameSite=None' : 'SameSite=Lax');
+    if (NODE_ENV === 'production') expect(cookie).toContain('Secure');
+    expect(cookie).toContain('HttpOnly');
+  });
+  it.each(['missing', 'revoked', 'expired', 'different-session', 'different-user', 'valid'])(
+    'checks the initiating link session at callback: %s',
+    async (kind) => {
+      const exchangeCode = vi.fn().mockResolvedValue({
+        providerUserId: 'discord-user',
+        displayName: 'Player',
+        emailVerified: false,
+      });
+      const now = new Date('2026-09-27T00:00:00Z');
+      const createSession = vi.fn();
+      const service = new OAuthService(
+        {
+          oAuthAuthorization: {
+            deleteMany: vi.fn(),
+            create: vi.fn(),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUnique: vi.fn().mockResolvedValue({ linkUserId: 'user-1' }),
+          },
+          session: {
+            findUnique: vi.fn().mockResolvedValue({
+              id: kind === 'different-session' ? 'other-session' : 'session-1',
+              userId: kind === 'different-user' ? 'other-user' : 'user-1',
+              csrfTokenHash: 'hash',
+              expiresAt: new Date(kind === 'expired' ? '2026-09-26' : '2099-01-01'),
+              revokedAt: kind === 'revoked' ? now : null,
+              user: { player: { id: 'player-1' } },
+            }),
+            deleteMany: vi.fn(),
+            create: createSession,
+          },
+          oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'user-1' }) },
+        } as unknown as PrismaClient,
+        { SESSION_SECRET: 'a'.repeat(32) },
+        new OAuthRateLimiter(),
+        () => now,
+        [
+          {
+            id: 'discord',
+            authorizationUrl: ({ state }) =>
+              new URL(`https://discord.com/authorize?state=${state}`),
+            exchangeCode,
+          },
+        ],
+      );
+      const start = await service.start('discord', '127.0.0.1', 'user-1', '/settings', 'session-1');
+      const state = new URL(start.location).searchParams.get('state')!;
+      const cookie = parseCookies(start.stateCookie)[oauthStateCookieNameFor(state)];
+      const result = service.complete(
+        'discord',
+        { state, code: 'code' },
+        cookie,
+        '127.0.0.1',
+        kind === 'missing' ? undefined : 'token',
+      );
+      if (kind === 'valid') {
+        await expect(result).resolves.toMatchObject({ returnTo: '/settings' });
+        expect((await result).session).toBeUndefined();
+        expect(createSession).not.toHaveBeenCalled();
+        expect(exchangeCode).toHaveBeenCalledOnce();
+      } else {
+        await expect(result).rejects.toMatchObject({ code: 'OAUTH_INVALID_REQUEST' });
+        expect(exchangeCode).not.toHaveBeenCalled();
+      }
+    },
+  );
+  it('stores hashes only and sends state plus an S256 PKCE challenge to the provider', async () => {
+    const create = vi.fn().mockResolvedValue({});
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn().mockImplementation(({ state, codeChallenge }) => {
+        const url = new URL('https://provider.example/authorize');
+        url.searchParams.set('state', state);
+        url.searchParams.set('code_challenge', codeChallenge);
+        return url;
+      }),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { create, deleteMany } } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    const result = await service.start('discord', '127.0.0.1', undefined, '/decks/deck-1/edit');
+
+    expect(result.location).toContain('state=');
+    expect(result.location).toContain('code_challenge=');
+    expect(result.stateCookie).toContain('HttpOnly');
+    expect(result.stateCookie).toContain('SameSite=Lax');
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        provider: 'DISCORD',
+        stateHash: expect.any(String),
+        codeVerifierHash: expect.any(String),
+      }),
+    });
+    const data = create.mock.calls[0]?.[0].data as Record<string, unknown>;
+    const state = new URL(result.location).searchParams.get('state');
+    expect(state).not.toBeNull();
+    expect(data.stateHash).toBe(sha256(state!));
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(deleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lte: expect.any(Date) } } });
+    const signedState = parseCookies(result.stateCookie)[oauthStateCookieNameFor(state!)];
+    const payload = signedState?.split('.')[0];
+    expect(payload).toBeDefined();
+    expect(JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8'))).toMatchObject({
+      returnTo: '/decks/deck-1/edit',
+    });
+  });
+
+  it('keeps signed OAuth state cookies independent for concurrent login attempts', async () => {
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn().mockImplementation(({ state }) => {
+        const url = new URL('https://provider.example/authorize');
+        url.searchParams.set('state', state);
+        return url;
+      }),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { create: vi.fn(), deleteMany: vi.fn() } } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    const first = await service.start('discord', '127.0.0.1');
+    const second = await service.start('discord', '127.0.0.1');
+    const firstState = new URL(first.location).searchParams.get('state');
+    const secondState = new URL(second.location).searchParams.get('state');
+
+    expect(firstState).not.toBeNull();
+    expect(secondState).not.toBeNull();
+    expect(oauthStateCookieNameFor(firstState!)).not.toBe(oauthStateCookieNameFor(secondState!));
+    expect(parseCookies(first.stateCookie)[oauthStateCookieNameFor(firstState!)]).toBeDefined();
+    expect(parseCookies(second.stateCookie)[oauthStateCookieNameFor(secondState!)]).toBeDefined();
+  });
+
+  it('rejects a callback without the matching signed state cookie before token exchange', async () => {
+    const exchangeCode = vi.fn();
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode,
+    };
+    const service = new OAuthService(
+      {} as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(
+      service.complete('discord', { code: 'code', state: 'state' }, undefined, '127.0.0.1'),
+    ).rejects.toEqual(expect.any(OAuthRequestError));
+    expect(exchangeCode).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when production has no stable session secret', async () => {
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      {} as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+        APP_BASE_URL: 'https://app.example.test',
+      },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(service.start('discord', '127.0.0.1')).rejects.toThrow(
+      'SESSION_SECRET must be at least 32 characters',
+    );
+  });
+
+  it('validates the application callback destination before persisting or consuming state', async () => {
+    const create = vi.fn();
+    const updateMany = vi.fn();
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { create, updateMany } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET: 'a'.repeat(32),
+        OAUTH_REDIRECT_BASE_URL: 'https://api.example.test',
+      },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(service.start('discord', '127.0.0.1')).rejects.toThrow('APP_BASE_URL is required');
+    await expect(
+      service.complete('discord', { code: 'code', state: 'state' }, 'invalid-cookie', '127.0.0.1'),
+    ).rejects.toThrow('APP_BASE_URL is required');
+    expect(create).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('validates the OAuth callback URL before consuming authorization state', async () => {
+    const updateMany = vi.fn();
+    const adapter: OAuthProviderAdapter = {
+      id: 'discord',
+      authorizationUrl: vi.fn(),
+      exchangeCode: vi.fn(),
+    };
+    const service = new OAuthService(
+      { oAuthAuthorization: { updateMany } } as unknown as PrismaClient,
+      {
+        NODE_ENV: 'production',
+        SESSION_SECRET: 'a'.repeat(32),
+        APP_BASE_URL: 'https://app.example.test',
+      },
+      new OAuthRateLimiter(),
+      () => new Date('2026-09-27T00:00:00.000Z'),
+      [adapter],
+    );
+
+    await expect(
+      service.complete('discord', { code: 'code', state: 'state' }, 'invalid-cookie', '127.0.0.1'),
+    ).rejects.toThrow('OAUTH_REDIRECT_BASE_URL is required');
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects linking an OAuth identity that is already owned by another user', async () => {
+    const service = new OAuthService(
+      {
+        oAuthAccount: { findUnique: vi.fn().mockResolvedValue({ userId: 'other-user' }) },
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(
+        service,
+        { providerUserId: 'discord-user', displayName: 'Discord User', emailVerified: false },
+        'link-user',
+      ),
+    ).rejects.toMatchObject({ code: 'OAUTH_ACCOUNT_LINK_REQUIRED' });
+  });
+
+  it('requires an explicit link when a verified OAuth email belongs to an existing user', async () => {
+    const service = new OAuthService(
+      {
+        oAuthAccount: { findUnique: vi.fn().mockResolvedValue(null) },
+        user: { findUnique: vi.fn().mockResolvedValue({ id: 'email-owner' }) },
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(service, {
+        providerUserId: 'discord-user',
+        displayName: 'Discord User',
+        email: 'player@example.test',
+        emailVerified: true,
+      }),
+    ).rejects.toMatchObject({ code: 'OAUTH_ACCOUNT_LINK_REQUIRED' });
+  });
+
+  it('uses the OAuth account created by a concurrent callback after a unique conflict', async () => {
+    const uniqueConflict = new Prisma.PrismaClientKnownRequestError('unique', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+    const service = new OAuthService(
+      {
+        oAuthAccount: {
+          findUnique: vi
+            .fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ userId: 'concurrent-winner' }),
+        },
+        $transaction: vi.fn((operation) =>
+          operation({ user: { create: vi.fn().mockRejectedValue(uniqueConflict) } }),
+        ),
+      } as unknown as PrismaClient,
+      { SESSION_SECRET: 'a'.repeat(32) },
+    );
+
+    await expect(
+      resolveUser(service, {
+        providerUserId: 'discord-user',
+        displayName: 'Discord User',
+        emailVerified: false,
+      }),
+    ).resolves.toBe('concurrent-winner');
+  });
+});
+
+function resolveUser(
+  service: OAuthService,
+  identity: OAuthIdentity,
+  linkUserId: string | null = null,
+): Promise<string> {
+  const resolve = Reflect.get(service, 'resolveUser') as (
+    provider: 'discord',
+    value: OAuthIdentity,
+    linkUser: string | null,
+  ) => Promise<string>;
+  return resolve.call(service, 'discord', identity, linkUserId);
+}

@@ -82,6 +82,7 @@ export interface BattlePlayer {
 
 export interface BattleState {
   readonly matchId: string;
+  readonly cardDataVersion: string;
   readonly turn: number;
   readonly phase: string;
   readonly players: readonly BattlePlayer[];
@@ -93,8 +94,40 @@ export interface CpuMatch {
   readonly state: BattleState;
 }
 
+export interface Mission {
+  readonly id: string;
+  readonly cadence: 'DAILY' | 'WEEKLY';
+  readonly metric: string;
+  readonly target: number;
+  readonly progress: number;
+  readonly claimedAt: string | null;
+  readonly periodStart: string;
+  readonly reward: { readonly currency: 'GEM' | 'EXCHANGE_POINT'; readonly amount: number };
+}
+
+export interface Progression {
+  readonly experience: number;
+  readonly level: number;
+  readonly loginClaimedToday: boolean;
+}
+
+export interface Cosmetic {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly description: string;
+  readonly acquiredAt: string | null;
+}
+
 export interface DeckDriveClient {
-  developmentLogin(email: string, displayName: string): Promise<{ playerId: string }>;
+  developmentLogin(
+    email: string,
+    displayName: string,
+  ): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
+  session(): Promise<{ playerId: string; displayName: string; csrfToken: string }>;
+  logout(): Promise<void>;
+  oauthStartUrl(provider: 'discord', returnTo?: string): string;
+  startOAuthLink(provider: 'discord', returnTo?: string): Promise<{ authorizationUrl: string }>;
   me(playerId: string): Promise<Player>;
   cards(): Promise<readonly CardSummary[]>;
   collection(playerId: string): Promise<Collection>;
@@ -113,6 +146,11 @@ export interface DeckDriveClient {
     difficulty: CpuMatch['difficulty'],
   ): Promise<CpuMatch>;
   match(playerId: string, matchId: string): Promise<MatchState>;
+  missions(playerId: string): Promise<readonly Mission[]>;
+  claimMission(playerId: string, missionId: string): Promise<unknown>;
+  progression(playerId: string): Promise<Progression>;
+  claimLoginReward(playerId: string): Promise<unknown>;
+  cosmetics(playerId: string): Promise<readonly Cosmetic[]>;
 }
 
 export interface MatchState {
@@ -133,16 +171,54 @@ export class ApiError extends Error {
 
 export class DeckDriveApi implements DeckDriveClient {
   private readonly baseUrl: string;
+  private csrfTokenValue: string | undefined;
 
   constructor(baseUrl = '') {
     this.baseUrl = baseUrl.replace(/\/+$/u, '');
   }
 
-  async developmentLogin(email: string, displayName: string): Promise<{ playerId: string }> {
-    return this.request('/api/v1/auth/development', {
-      method: 'POST',
-      body: { email, displayName },
-    });
+  async developmentLogin(
+    email: string,
+    displayName: string,
+  ): Promise<{ playerId: string; displayName: string; csrfToken: string }> {
+    const result = await this.request<{ playerId: string; displayName: string; csrfToken: string }>(
+      '/api/v1/auth/development',
+      {
+        method: 'POST',
+        body: { email, displayName },
+      },
+    );
+    this.csrfTokenValue = result.csrfToken;
+    return result;
+  }
+
+  async session(): Promise<{ playerId: string; displayName: string; csrfToken: string }> {
+    const result = await this.request<{ playerId: string; displayName: string; csrfToken: string }>(
+      '/api/v1/auth/session',
+    );
+    this.csrfTokenValue = result.csrfToken;
+    return result;
+  }
+
+  async logout(): Promise<void> {
+    await this.request('/api/v1/auth/logout', { method: 'POST' });
+    this.csrfTokenValue = undefined;
+  }
+
+  oauthStartUrl(provider: 'discord', returnTo = '/home'): string {
+    return `${this.baseUrl}/api/v1/auth/oauth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  async startOAuthLink(
+    provider: 'discord',
+    returnTo = '/settings',
+  ): Promise<{ authorizationUrl: string }> {
+    return this.request(
+      `/api/v1/auth/oauth/${provider}/link?returnTo=${encodeURIComponent(returnTo)}`,
+      {
+        method: 'POST',
+      },
+    );
   }
 
   async me(playerId: string): Promise<Player> {
@@ -212,6 +288,35 @@ export class DeckDriveApi implements DeckDriveClient {
     return this.request(`/api/v1/matches/${encodeURIComponent(matchId)}`, { playerId });
   }
 
+  async missions(playerId: string): Promise<readonly Mission[]> {
+    const response = await this.request<{ missions: readonly Mission[] }>('/api/v1/missions', {
+      playerId,
+    });
+    return response.missions;
+  }
+
+  async claimMission(playerId: string, missionId: string): Promise<unknown> {
+    return this.request(`/api/v1/missions/${encodeURIComponent(missionId)}/claim`, {
+      method: 'POST',
+      playerId,
+    });
+  }
+
+  async progression(playerId: string): Promise<Progression> {
+    return this.request('/api/v1/progression', { playerId });
+  }
+
+  async claimLoginReward(playerId: string): Promise<unknown> {
+    return this.request('/api/v1/login-rewards/claim', { method: 'POST', playerId });
+  }
+
+  async cosmetics(playerId: string): Promise<readonly Cosmetic[]> {
+    const response = await this.request<{ cosmetics: readonly Cosmetic[] }>('/api/v1/cosmetics', {
+      playerId,
+    });
+    return response.cosmetics;
+  }
+
   private async request<Result>(
     path: string,
     options: {
@@ -222,6 +327,7 @@ export class DeckDriveApi implements DeckDriveClient {
     } = {},
   ): Promise<Result> {
     let response: Response;
+    const csrf = this.csrfTokenValue ?? csrfToken();
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         method: options.method ?? 'GET',
@@ -231,7 +337,11 @@ export class DeckDriveApi implements DeckDriveClient {
             ? {}
             : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...((options.method === 'POST' || options.method === 'PUT') && csrf !== undefined
+            ? { 'X-CSRF-Token': csrf }
+            : {}),
         },
+        credentials: 'include',
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });
     } catch {
@@ -253,6 +363,20 @@ export class DeckDriveApi implements DeckDriveClient {
 }
 
 export const api = new DeckDriveApi(import.meta.env.VITE_API_URL ?? '');
+
+function csrfToken(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const cookie = document.cookie
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith('deckdrive_csrf='));
+  if (cookie === undefined) return undefined;
+  try {
+    return decodeURIComponent(cookie.slice('deckdrive_csrf='.length));
+  } catch {
+    return undefined;
+  }
+}
 
 const previewCards: readonly CardSummary[] = [...basicCardDefinitions, ...packCardDefinitions].map(
   (definition) => ({
@@ -320,6 +444,7 @@ function previewDeckFromInput(id: string, input: DeckInput): Deck {
 function previewBattle(matchId: string): BattleState {
   return {
     matchId,
+    cardDataVersion: '1.0.0',
     turn: 1,
     phase: 'PLAYER_TURN',
     players: [
@@ -353,7 +478,25 @@ function previewBattle(matchId: string): BattleState {
 /** Explicit local-only fixture client for inspecting Phase 5 UI without a database. */
 export const previewApi: DeckDriveClient = {
   async developmentLogin() {
-    return { playerId: 'preview-player' };
+    return {
+      playerId: 'preview-player',
+      displayName: 'Offline preview',
+      csrfToken: 'preview-csrf-token',
+    };
+  },
+  async session() {
+    return {
+      playerId: 'preview-player',
+      displayName: 'Offline preview',
+      csrfToken: 'preview-csrf-token',
+    };
+  },
+  async logout() {},
+  oauthStartUrl() {
+    return '/api/v1/auth/oauth/discord/start';
+  },
+  async startOAuthLink() {
+    return { authorizationUrl: '' };
   },
   async me() {
     return {
@@ -428,5 +571,31 @@ export const previewApi: DeckDriveClient = {
   async match(_playerId, matchId) {
     const state = previewBattle(matchId);
     return { id: matchId, status: 'IN_PROGRESS', initialState: state, finalState: null };
+  },
+  async missions() {
+    return [
+      {
+        id: 'daily.cpu-battle',
+        cadence: 'DAILY' as const,
+        metric: 'CPU_BATTLE',
+        target: 1,
+        progress: 0,
+        claimedAt: null,
+        periodStart: new Date().toISOString(),
+        reward: { currency: 'GEM' as const, amount: 20 },
+      },
+    ];
+  },
+  async claimMission() {
+    return {};
+  },
+  async progression() {
+    return { experience: 0, level: 1, loginClaimedToday: false };
+  },
+  async claimLoginReward() {
+    return {};
+  },
+  async cosmetics() {
+    return [];
   },
 };

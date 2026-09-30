@@ -5,7 +5,7 @@ import { createApiHttpServer } from './api/http.js';
 import { loadRootEnvironment } from './database/load-environment.js';
 import { PrismaClient } from './generated/prisma/client.js';
 import { PvpMatchService } from './pvp/service.js';
-import { apiCorsOrigins, apiHost, apiPort } from './server-config.js';
+import { apiCorsOrigins, apiHost, apiPort, apiTrustedProxyAddresses } from './server-config.js';
 
 loadRootEnvironment();
 
@@ -18,6 +18,7 @@ const pvp = new PvpMatchService(prisma);
 const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp), {
   allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
   developmentLoginLoopbackOnly: true,
+  trustedProxyAddresses: apiTrustedProxyAddresses(process.env.TRUSTED_PROXY_ADDRESSES),
   pvpWebSocket: {
     registry: pvp,
     options: { allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS) },

@@ -5,8 +5,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { packCardDefinitions } from '@deck-drive/card-definitions';
 
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
+import { cosmeticCatalog } from '../src/cosmetics/catalog.js';
 import { loadRootEnvironment } from '../src/database/load-environment.js';
 import { assertDevelopmentSeedEnvironment } from '../src/database/seed-environment.js';
+import { missionCatalog } from '../src/missions/catalog.js';
 
 loadRootEnvironment();
 
@@ -93,6 +95,37 @@ async function main(): Promise<void> {
           create: { userId: user.id },
         });
         players.set(userFixture.email, player.id);
+      }
+
+      for (const mission of missionCatalog) {
+        await transaction.mission.upsert({
+          where: { id: mission.id },
+          update: {
+            cadence: mission.cadence,
+            metric: mission.metric,
+            target: mission.target,
+            rewardCurrency: mission.reward.currency,
+            rewardAmount: mission.reward.amount,
+            active: mission.active,
+          },
+          create: {
+            id: mission.id,
+            cadence: mission.cadence,
+            metric: mission.metric,
+            target: mission.target,
+            rewardCurrency: mission.reward.currency,
+            rewardAmount: mission.reward.amount,
+            active: mission.active,
+          },
+        });
+      }
+
+      for (const cosmetic of cosmeticCatalog) {
+        await transaction.cosmetic.upsert({
+          where: { id: cosmetic.id },
+          update: { kind: cosmetic.kind, name: cosmetic.name, description: cosmetic.description },
+          create: cosmetic,
+        });
       }
 
       const cardVersions = new Map<string, string>();
