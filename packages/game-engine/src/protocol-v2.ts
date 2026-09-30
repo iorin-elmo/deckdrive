@@ -1490,8 +1490,8 @@ function synthesize(
     }
   } else if (mode === 'SAGE_RECIPE') {
     const flattened = keywords.flat();
-    recipeId = 'ALCHEMY_SAGE_STONE';
     if (['reagent:red', 'reagent:blue', 'reagent:white'].every((tag) => flattened.includes(tag))) {
+      recipeId = 'ALCHEMY_SAGE_STONE';
       synthesisResult = 'SUCCESS';
       if (player.alchemyStage === 0) {
         mutable.players[actorIndex] = { ...player, alchemyStage: 1 };
