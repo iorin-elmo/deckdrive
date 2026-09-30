@@ -8,10 +8,40 @@ export type PvpAction =
     };
 
 export type PvpServerMessage =
-  | { readonly type: 'STATE'; readonly [key: string]: unknown }
-  | { readonly type: 'EVENT'; readonly [key: string]: unknown }
-  | { readonly type: 'ERROR'; readonly [key: string]: unknown }
-  | { readonly type: 'PONG'; readonly [key: string]: unknown };
+  | {
+      readonly type: 'STATE';
+      readonly protocolVersion: 1;
+      readonly matchId: string;
+      readonly actionSequence: number;
+      readonly eventSequence: number;
+      readonly snapshotActionIndex: number;
+      readonly requestId?: string;
+      readonly state: Record<string, unknown>;
+      readonly [key: string]: unknown;
+    }
+  | {
+      readonly type: 'EVENT';
+      readonly protocolVersion: 1;
+      readonly matchId: string;
+      readonly sequence: number;
+      readonly event: Record<string, unknown>;
+      readonly [key: string]: unknown;
+    }
+  | {
+      readonly type: 'ERROR';
+      readonly protocolVersion: 1;
+      readonly code: string;
+      readonly message: string;
+      readonly requestId?: string;
+      readonly [key: string]: unknown;
+    }
+  | {
+      readonly type: 'PONG';
+      readonly protocolVersion: 1;
+      readonly serverTime: string;
+      readonly requestId?: string;
+      readonly [key: string]: unknown;
+    };
 
 export interface PvpSocketLike {
   onopen: (() => void) | null;
@@ -58,7 +88,7 @@ export class PvpSocketClient {
       options.socketFactory ?? ((url: string) => new WebSocket(url) as unknown as PvpSocketLike);
     this.url = webSocketUrl(options.baseUrl, matchId);
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 8;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 12;
     this.handlers = handlers;
     this.currentSocket = this.socketFactory(this.url);
     this.bindSocket(this.currentSocket, false);
@@ -96,13 +126,9 @@ export class PvpSocketClient {
           return;
         if (typeof message.actionSequence === 'number')
           this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
-        if (typeof message.actionSequence === 'number') {
-          for (const [requestId, pending] of this.pendingActions) {
-            if (message.actionSequence > pending.sequence) this.pendingActions.delete(requestId);
-          }
-        }
         if (typeof message.eventSequence === 'number')
           this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
+        if (typeof message.requestId === 'string') this.pendingActions.delete(message.requestId);
       }
       if (message.type === 'ERROR' && typeof message.requestId === 'string') {
         if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);
@@ -234,16 +260,43 @@ function parseServerMessage(value: unknown): PvpServerMessage | null {
       return null;
     }
   }
-  if (
-    parsed === null ||
-    typeof parsed !== 'object' ||
-    Array.isArray(parsed) ||
-    !('type' in parsed) ||
-    (parsed.type !== 'STATE' &&
-      parsed.type !== 'EVENT' &&
-      parsed.type !== 'ERROR' &&
-      parsed.type !== 'PONG')
-  )
+  if (!isRecord(parsed) || typeof parsed.type !== 'string' || parsed.protocolVersion !== 1)
     return null;
-  return parsed as PvpServerMessage;
+  if (parsed.type === 'STATE') {
+    return isNonNegativeInteger(parsed.actionSequence) &&
+      isNonNegativeInteger(parsed.eventSequence) &&
+      isNonNegativeInteger(parsed.snapshotActionIndex) &&
+      typeof parsed.matchId === 'string' &&
+      isRecord(parsed.state) &&
+      (parsed.requestId === undefined || typeof parsed.requestId === 'string')
+      ? (parsed as PvpServerMessage)
+      : null;
+  }
+  if (parsed.type === 'EVENT') {
+    return isNonNegativeInteger(parsed.sequence) &&
+      typeof parsed.matchId === 'string' &&
+      isRecord(parsed.event)
+      ? (parsed as PvpServerMessage)
+      : null;
+  }
+  if (parsed.type === 'ERROR') {
+    return typeof parsed.code === 'string' &&
+      typeof parsed.message === 'string' &&
+      (parsed.requestId === undefined || typeof parsed.requestId === 'string')
+      ? (parsed as PvpServerMessage)
+      : null;
+  }
+  return parsed.type === 'PONG' &&
+    typeof parsed.serverTime === 'string' &&
+    (parsed.requestId === undefined || typeof parsed.requestId === 'string')
+    ? (parsed as PvpServerMessage)
+    : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }

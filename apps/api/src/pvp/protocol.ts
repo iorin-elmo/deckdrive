@@ -67,6 +67,8 @@ export interface StateMessage {
   readonly actionSequence: number;
   readonly eventSequence: number;
   readonly snapshotActionIndex: number;
+  /** Present only on the direct response to the accepted action request. */
+  readonly requestId?: string;
   readonly state: PlayerBattleStateProjection;
 }
 

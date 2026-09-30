@@ -645,6 +645,7 @@ export class ApiApplication {
       select: {
         id: true,
         status: true,
+        mode: true,
         initialState: true,
         finalState: true,
         createdAt: true,
@@ -652,7 +653,7 @@ export class ApiApplication {
       },
     });
     if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
-    if (match.players === undefined || match.players.length === 1) {
+    if (match.mode !== 'CASUAL' && match.mode !== 'PRIVATE') {
       return {
         status: 200,
         body: {

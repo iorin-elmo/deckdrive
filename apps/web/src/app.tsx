@@ -1520,14 +1520,18 @@ function PvpSetupPage() {
     if (matchId !== undefined) navigate(`/battle/pvp/${matchId}`);
   }, [casualStatus.data?.matchId, navigate, privateStatus.data]);
   useEffect(() => {
-    if (casualStatus.isError) setQueueId('');
-  }, [casualStatus.isError]);
+    if (casualStatus.error instanceof ApiError && casualStatus.error.code === 'QUEUE_NOT_FOUND')
+      setQueueId('');
+  }, [casualStatus.error]);
   useEffect(() => {
-    if (privateStatus.isError) {
+    if (
+      privateStatus.error instanceof ApiError &&
+      privateStatus.error.code === 'PRIVATE_STATUS_NOT_FOUND'
+    ) {
       setCreatedInvite('');
       setInviteCode('');
     }
-  }, [privateStatus.isError]);
+  }, [privateStatus.error]);
 
   return (
     <>
@@ -1669,6 +1673,10 @@ function PvpBattlePage() {
 
   useEffect(() => {
     if (previewMode) return;
+    setStateMessage(undefined);
+    setError(undefined);
+    setSelectedTargetId(undefined);
+    setConnectionStatus('CONNECTING');
     const client = new PvpSocketClient(matchId, {
       onStatus: (status) => {
         setConnectionStatus(status);

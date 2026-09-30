@@ -387,6 +387,7 @@ export class MatchSession {
         nextState,
         nextActionSequence,
         lastEventSequence(nextEvents),
+        requestId,
       ),
     );
     await this.onAction?.({
@@ -422,7 +423,7 @@ export class MatchSession {
     if (message.action.type === 'END_TURN') this.turnStartedAt = this.now();
     this.requests.set(key, { messages: responses });
     this.broadcastEvents(outgoing);
-    this.broadcastState();
+    this.broadcastState(requestId, playerId);
     return responses;
   }
 
@@ -450,6 +451,7 @@ export class MatchSession {
     sourceState: BattleState = snapshot.state,
     actionSequence = this.actions.length,
     eventSequence = this.eventSequence,
+    requestId?: string,
   ): StateMessage {
     return {
       type: 'STATE',
@@ -460,6 +462,7 @@ export class MatchSession {
       actionSequence,
       eventSequence,
       snapshotActionIndex: snapshot.actionIndex,
+      ...(requestId === undefined ? {} : { requestId }),
       state: projectBattleState(sourceState, playerId),
     };
   }
@@ -481,11 +484,20 @@ export class MatchSession {
     }
   }
 
-  private broadcastState(): void {
+  private broadcastState(requestId?: string, requester?: PlayerId): void {
     const snapshot = this.latestSnapshot();
     for (const clients of this.clients.values())
       for (const client of clients)
-        client.send(this.stateMessage(client.playerId, snapshot, this.state));
+        client.send(
+          this.stateMessage(
+            client.playerId,
+            snapshot,
+            this.state,
+            this.actions.length,
+            this.eventSequence,
+            client.playerId === requester ? requestId : undefined,
+          ),
+        );
   }
 
   private broadcast(message: ServerMessage): void {

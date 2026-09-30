@@ -45,6 +45,10 @@ interface PvpDeck {
   readonly snapshot: unknown;
 }
 
+type CasualMatchResult =
+  | { readonly status: 'QUEUED'; readonly queueId: string }
+  | { readonly status: 'MATCHED'; readonly queueId: string; readonly matchId: string };
+
 export type PvpAuthenticator = (
   request: IncomingMessage,
 ) => Promise<PlayerId | null> | PlayerId | null;
@@ -54,6 +58,7 @@ export class PvpMatchService {
   private readonly persistence: PrismaPvpMatchPersistence;
   private readonly lobby: PvpLobby<PvpDeck>;
   private readonly loading = new Map<string, Promise<MatchSession | undefined>>();
+  private readonly casualInFlight = new Map<string, Promise<CasualMatchResult>>();
   private readonly matchmakingRateLimiter = new PvpRateLimiter();
 
   constructor(
@@ -77,6 +82,18 @@ export class PvpMatchService {
   }
 
   async enqueueCasual(playerId: string, deckId: string) {
+    const inFlight = this.casualInFlight.get(playerId);
+    if (inFlight !== undefined) return inFlight;
+    const operation = this.enqueueCasualLocked(playerId, deckId);
+    this.casualInFlight.set(playerId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.casualInFlight.get(playerId) === operation) this.casualInFlight.delete(playerId);
+    }
+  }
+
+  private async enqueueCasualLocked(playerId: string, deckId: string) {
     this.matchmakingRateLimiter.consume(`${playerId}:casual`, 10, 10_000);
     const existing = this.lobby.casualStatusForPlayer(playerId as PlayerId);
     if (existing?.status === 'QUEUED') return existing;
@@ -250,7 +267,7 @@ export class PvpMatchService {
         players: { select: { playerId: true, seat: true, deckSnapshot: true } },
         actions: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
-        snapshots: { orderBy: { actionIndex: 'asc' } },
+        snapshots: { orderBy: { actionIndex: 'desc' }, take: 1 },
       },
     });
     if (
@@ -283,8 +300,9 @@ export class PvpMatchService {
         },
       ];
     });
-    const snapshots: MatchSnapshot[] = match.snapshots.flatMap((snapshot) =>
-      snapshot.actionIndex === null
+    const snapshot = match.snapshots[0];
+    const snapshots: MatchSnapshot[] =
+      snapshot?.actionIndex === null || snapshot === undefined
         ? []
         : [
             {
@@ -295,8 +313,7 @@ export class PvpMatchService {
                 events: events.filter((event) => event.sequence <= snapshot.eventSequence),
               } as unknown as BattleState,
             },
-          ],
-    );
+          ];
     const turnStartedAt =
       [...match.actions]
         .reverse()

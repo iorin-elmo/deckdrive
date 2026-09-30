@@ -20,6 +20,7 @@ export interface PvpWebSocketOptions {
   readonly maxActionsPerSecond?: number;
   readonly maxMessagesPerSecond?: number;
   readonly maxOutboundBytes?: number;
+  readonly sessionRevalidationIntervalMs?: number;
   /** Browser origins allowed to use cookie-backed WebSocket authentication. */
   readonly allowedOrigins?: readonly string[];
 }
@@ -36,6 +37,7 @@ export function attachPvpWebSocket(
   const maxActionsPerSecond = options.maxActionsPerSecond ?? 30;
   const maxMessagesPerSecond = options.maxMessagesPerSecond ?? 60;
   const maxOutboundBytes = options.maxOutboundBytes ?? 256 * 1024;
+  const sessionRevalidationIntervalMs = options.sessionRevalidationIntervalMs ?? 30_000;
   const connections = new Set<PvpWebSocketConnection>();
   const onUpgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
     void acceptUpgrade(
@@ -56,16 +58,20 @@ export function attachPvpWebSocket(
     });
   };
   server.on('upgrade', onUpgrade);
-  const timer = setInterval(() => {
+  const tickTimer = setInterval(() => {
     const sessions =
       registry.sessions?.() ?? [...connections].map((connection) => connection.session);
     for (const session of new Set(sessions)) session.tick();
+  }, tickIntervalMs);
+  const revalidationTimer = setInterval(() => {
     for (const connection of connections)
       void connection.revalidate(registry.authenticate).catch(() => connection.close(1011));
-  }, tickIntervalMs);
-  timer.unref();
+  }, sessionRevalidationIntervalMs);
+  tickTimer.unref();
+  revalidationTimer.unref();
   return () => {
-    clearInterval(timer);
+    clearInterval(tickTimer);
+    clearInterval(revalidationTimer);
     server.off('upgrade', onUpgrade);
     for (const connection of connections) connection.close(1001, 'Server stopped.');
     connections.clear();

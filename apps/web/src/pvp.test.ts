@@ -56,6 +56,18 @@ describe('PvP socket client', () => {
     expect(malformed).toBe(1);
   });
 
+  it('rejects incomplete state messages before they reach UI state', () => {
+    const socket = new FakeSocket();
+    let malformed = 0;
+    new PvpSocketClient(
+      'match-1',
+      { onMessage: () => {}, onMalformedMessage: () => (malformed += 1) },
+      { socketFactory: () => socket },
+    );
+    socket.onmessage?.({ data: JSON.stringify({ type: 'STATE', protocolVersion: 1 }) });
+    expect(malformed).toBe(1);
+  });
+
   it('reconnects and resumes from the last event cursor', () => {
     vi.useFakeTimers();
     try {
@@ -72,7 +84,17 @@ describe('PvP socket client', () => {
           },
         },
       );
-      sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'STATE', eventSequence: 7 }) });
+      sockets[0]!.onmessage?.({
+        data: JSON.stringify({
+          type: 'STATE',
+          protocolVersion: 1,
+          matchId: 'match-1',
+          actionSequence: 0,
+          eventSequence: 7,
+          snapshotActionIndex: 0,
+          state: {},
+        }),
+      });
       sockets[0]!.onclose?.();
       vi.advanceTimersByTime(10);
       expect(sockets).toHaveLength(2);
@@ -81,6 +103,51 @@ describe('PvP socket client', () => {
         type: 'RESYNC',
         afterEventSequence: 7,
       });
+      client.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps an unacknowledged action across a newer state and retries it after reconnect', () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeSocket[] = [];
+      const client = new PvpSocketClient(
+        'match-1',
+        { onMessage: () => {} },
+        {
+          reconnectDelayMs: 10,
+          socketFactory: () => {
+            const socket = new FakeSocket();
+            sockets.push(socket);
+            return socket;
+          },
+        },
+      );
+      client.sendAction({ type: 'END_TURN', playerId: 'player-1' }, 0, 'request-1');
+      sockets[0]!.onmessage?.({
+        data: JSON.stringify({
+          type: 'STATE',
+          protocolVersion: 1,
+          matchId: 'match-1',
+          actionSequence: 1,
+          eventSequence: 1,
+          snapshotActionIndex: 0,
+          state: {},
+        }),
+      });
+      sockets[0]!.onclose?.();
+      vi.advanceTimersByTime(10);
+      sockets[1]!.onopen?.();
+      expect(sockets[1]!.sent).toContain(
+        JSON.stringify({
+          type: 'ACTION',
+          requestId: 'request-1',
+          sequence: 0,
+          action: { type: 'END_TURN', playerId: 'player-1' },
+        }),
+      );
       client.close();
     } finally {
       vi.useRealTimers();
