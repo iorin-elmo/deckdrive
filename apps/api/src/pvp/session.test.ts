@@ -3,6 +3,7 @@ import { createInitialBattleState } from '@deck-drive/game-engine';
 import type { BattleState, CardInstanceId, MatchId, PlayerId } from '@deck-drive/game-engine';
 
 import { MatchSession } from './session.js';
+import type { ServerMessage } from './protocol.js';
 
 function state(): BattleState {
   return createInitialBattleState({
@@ -95,6 +96,50 @@ describe('MatchSession', () => {
       }),
     ]);
     expect(session.actionSequence).toBe(1);
+  });
+
+  it('replays a restored action for the client sequence before the action', async () => {
+    const restoredResponse = [
+      {
+        type: 'STATE' as const,
+        protocolVersion: 1 as const,
+        matchId: 'match-1' as MatchId,
+        actionSequence: 1,
+        eventSequence: 1,
+        snapshotActionIndex: 1,
+        state: {},
+      },
+    ] as unknown as readonly ServerMessage[];
+    const session = new MatchSession({
+      state: {
+        ...state(),
+        activePlayerId: 'player-2' as PlayerId,
+        events: [],
+      },
+      history: {
+        actions: [{ type: 'END_TURN', playerId: 'player-1' as PlayerId }],
+        events: [],
+        snapshots: [],
+        requests: [
+          {
+            playerId: 'player-1' as PlayerId,
+            requestId: 'restored',
+            source: 'CLIENT',
+            sequence: 0,
+            action: { type: 'END_TURN', playerId: 'player-1' as PlayerId },
+            messages: restoredResponse,
+          },
+        ],
+      },
+    });
+    await expect(
+      session.receive('player-1' as PlayerId, {
+        type: 'ACTION',
+        requestId: 'restored',
+        sequence: 0,
+        action: { type: 'END_TURN', playerId: 'player-1' },
+      }),
+    ).resolves.toEqual(restoredResponse);
   });
 
   it('does not advance memory when the persistence callback fails', async () => {

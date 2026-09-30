@@ -1,12 +1,16 @@
-import { createServer } from 'node:http';
 import { connect, type Socket } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 import { createInitialBattleState } from '@deck-drive/game-engine';
 import type { BattleState, MatchId, PlayerId } from '@deck-drive/game-engine';
 
+import { parseCookies, sessionCookieName } from '../auth/cookies.js';
+import { sha256 } from '../auth/crypto.js';
+import { OAuthService } from '../auth/oauth-service.js';
+import { ApiApplication } from '../api/application.js';
 import { MatchSession } from './session.js';
-import { attachPvpWebSocket } from './websocket.js';
+import type { PvpWebSocketRegistry } from './websocket.js';
+import { closePvpWebSocket, createApiHttpServer } from '../api/http.js';
 
 type WireMessage = { readonly type?: string; readonly [key: string]: unknown };
 
@@ -155,21 +159,66 @@ function battleState(): BattleState {
 
 describe('PvP WebSocket adapter', () => {
   it('recovers projected state and missing events over a real authenticated socket', async () => {
-    const server = createServer();
     let session = new MatchSession({ state: battleState(), now: () => 0, snapshotInterval: 10 });
-    const stop = attachPvpWebSocket(
-      server,
+    const persisted = new Map<
+      string,
       {
-        find: (matchId) => (matchId === 'match-1' ? session : undefined),
-        authenticate: (request) => {
-          const cookie = request.headers.cookie;
-          const playerId = cookie?.match(/(?:^|;\s*)deckdrive_session=session-([^;]+)/u)?.[1];
-          return playerId === 'player-1' || playerId === 'player-2' ? (playerId as PlayerId) : null;
+        readonly matchId: string;
+        readonly state: BattleState;
+        readonly actions: readonly unknown[];
+      }
+    >();
+    const sessionRows = new Map([
+      ['session-player-1', 'player-1'],
+      ['session-player-2', 'player-2'],
+    ]);
+    const prisma = {
+      session: {
+        findUnique: async ({ where }: { readonly where: { readonly tokenHash: string } }) => {
+          const token = [...sessionRows.keys()].find(
+            (candidate) => sha256(candidate) === where.tokenHash,
+          );
+          const playerId = token === undefined ? undefined : sessionRows.get(token);
+          return playerId === undefined
+            ? null
+            : {
+                id: `db-${playerId}`,
+                userId: `user-${playerId}`,
+                csrfTokenHash: sha256(`csrf-${playerId}`),
+                expiresAt: new Date(Date.now() + 60_000),
+                revokedAt: null,
+                user: { player: { id: playerId } },
+              };
         },
-        sessions: () => [session],
       },
-      { tickIntervalMs: 60_000, sessionRevalidationIntervalMs: 60_000 },
-    );
+    };
+    const oauth = new OAuthService(prisma as never, { NODE_ENV: 'test' });
+    const pvp = {
+      enqueueCasual: async () => {
+        persisted.set('match-1', {
+          matchId: 'match-1',
+          state: session.currentState,
+          actions: [],
+        });
+        return { status: 'MATCHED' as const, queueId: 'queue-1', matchId: 'match-1' };
+      },
+    };
+    const registry: PvpWebSocketRegistry = {
+      find: (matchId) => (matchId === 'match-1' ? session : undefined),
+      authenticate: async (request) => {
+        const token = parseCookies(request.headers.cookie)[sessionCookieName];
+        const authenticated = await oauth.session().authenticate(token);
+        return authenticated?.playerId as PlayerId | null;
+      },
+      sessions: () => [session],
+    };
+    const application = new ApiApplication(prisma as never, { NODE_ENV: 'test' }, pvp as never);
+    const server = createApiHttpServer(application, {
+      pvpWebSocket: {
+        registry,
+        options: { tickIntervalMs: 60_000, sessionRevalidationIntervalMs: 60_000 },
+      },
+    });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('Server has no port.');
@@ -178,6 +227,21 @@ describe('PvP WebSocket adapter', () => {
     let playerTwo: RawWebSocketClient | undefined;
     let reconnectedPlayerTwo: RawWebSocketClient | undefined;
     try {
+      const matchCreation = await fetch(`http://127.0.0.1:${String(port)}/api/v1/matches/casual`, {
+        method: 'POST',
+        headers: {
+          Cookie: 'deckdrive_session=session-player-1',
+          'x-csrf-token': 'csrf-player-1',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ deckId: 'deck-1' }),
+      });
+      await expect(matchCreation.json()).resolves.toEqual({
+        status: 'MATCHED',
+        matchId: 'match-1',
+      });
+      expect(matchCreation.status).toBe(201);
+      expect(persisted.get('match-1')?.matchId).toBe('match-1');
       playerOne = await RawWebSocketClient.open(port, 'player-1');
       playerTwo = await RawWebSocketClient.open(port, 'player-2');
       await playerOne.waitFor((message) => message.type === 'STATE', 2_000, 'initial state');
@@ -196,17 +260,23 @@ describe('PvP WebSocket adapter', () => {
         2_000,
         'advanced state',
       );
+      persisted.set('match-1', {
+        matchId: 'match-1',
+        state: session.currentState,
+        actions: [{ type: 'END_TURN', playerId: 'player-1' }],
+      });
 
       // Recreate the coordinator from the persisted replay boundary to cover
       // the process-restart path before the reconnecting browser joins.
+      const restored = persisted.get('match-1')!;
       session = new MatchSession({
-        state: session.currentState,
+        state: restored.state,
         initialState: battleState(),
         now: () => 0,
         snapshotInterval: 10,
         history: {
-          actions: [{ type: 'END_TURN', playerId: 'player-1' as PlayerId }],
-          events: session.currentState.events,
+          actions: restored.actions as [{ type: 'END_TURN'; playerId: PlayerId }],
+          events: restored.state.events,
           snapshots: [
             {
               actionIndex: 1,
@@ -235,7 +305,7 @@ describe('PvP WebSocket adapter', () => {
       playerOne?.close();
       playerTwo?.close();
       reconnectedPlayerTwo?.close();
-      stop();
+      closePvpWebSocket(server);
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });

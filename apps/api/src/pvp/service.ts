@@ -17,7 +17,12 @@ import type { IncomingMessage } from 'node:http';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { deckSize } from '../decks/deck-validation.js';
 import { PrismaPvpMatchPersistence, PvpConcurrentMatchError } from './persistence.js';
-import { PvpLobby, type LobbyPlayer, type RestoredPvpMatch } from './lobby.js';
+import {
+  PvpLobby,
+  type LobbyPlayer,
+  type PrivateMatchResult,
+  type RestoredPvpMatch,
+} from './lobby.js';
 import {
   MatchSession,
   type AcceptedAction,
@@ -50,6 +55,8 @@ type CasualMatchResult =
   | { readonly status: 'QUEUED'; readonly queueId: string }
   | { readonly status: 'MATCHED'; readonly queueId: string; readonly matchId: string };
 
+type PrivateCreateResult = PrivateMatchResult<PvpDeck>;
+
 export type PvpAuthenticator = (
   request: IncomingMessage,
 ) => Promise<PlayerId | null> | PlayerId | null;
@@ -64,10 +71,11 @@ export class PvpMatchService {
     string,
     {
       readonly deckId: string;
-      readonly result: { readonly inviteCode: string; readonly host: LobbyPlayer<PvpDeck> };
+      readonly operation: Promise<PrivateCreateResult>;
       readonly expiresAt: number;
     }
   >();
+  private readonly presenceWrites = new Map<string, Promise<void>>();
   private readonly matchmakingRateLimiter = new PvpRateLimiter();
 
   constructor(
@@ -81,10 +89,9 @@ export class PvpMatchService {
         candidate.deck.cardDataVersion === incoming.deck.cardDataVersion,
       createSession: ({ matchId, players }) => ({
         definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
-        onPlayerConnect: (playerId) =>
-          this.persistence.setPlayerDisconnected(matchId, playerId, null),
+        onPlayerConnect: (playerId) => this.queuePresenceWrite(matchId, playerId, null),
         onPlayerDisconnect: (playerId, disconnectedAt) =>
-          this.persistence.setPlayerDisconnected(matchId, playerId, disconnectedAt),
+          this.queuePresenceWrite(matchId, playerId, disconnectedAt),
       }),
       session: {
         onAction: (accepted) => this.persistAction(accepted),
@@ -149,19 +156,35 @@ export class PvpMatchService {
       const existing = this.privateCreateRequests.get(requestKey);
       if (existing !== undefined) {
         if (existing.deckId !== deckId) throw new PvpRequestError('REQUEST_CONFLICT');
-        return existing.result;
+        return existing.operation;
       }
     }
     this.matchmakingRateLimiter.consume(`${playerId}:private-create`, 5, 60_000);
+    const operation = this.createPrivateLocked(playerId, deckId);
+    if (requestKey !== undefined)
+      this.privateCreateRequests.set(requestKey, {
+        deckId,
+        operation,
+        expiresAt: Date.now() + pvpStatusRetentionMs,
+      });
     try {
-      const result = this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
-      if (requestKey !== undefined)
-        this.privateCreateRequests.set(requestKey, {
-          deckId,
-          result,
-          expiresAt: Date.now() + pvpStatusRetentionMs,
-        });
-      return result;
+      return await operation;
+    } catch (error) {
+      if (
+        requestKey !== undefined &&
+        this.privateCreateRequests.get(requestKey)?.operation === operation
+      )
+        this.privateCreateRequests.delete(requestKey);
+      throw error;
+    }
+  }
+
+  private async createPrivateLocked(
+    playerId: string,
+    deckId: string,
+  ): Promise<PrivateCreateResult> {
+    try {
+      return this.lobby.createPrivate(await this.loadPlayerDeck(playerId, deckId));
     } catch (error) {
       if (error instanceof Error && error.message === 'PRIVATE_INVITE_LIMIT')
         throw new PvpRequestError('PRIVATE_INVITE_LIMIT');
@@ -326,7 +349,9 @@ export class PvpMatchService {
           playerId: entry.playerId as PlayerId,
           requestId: entry.requestId,
           source: entry.source,
-          sequence: entry.sequence,
+          // MatchAction.sequence is the post-action cursor; clients submit the
+          // cursor immediately before that action.
+          sequence: Math.max(0, entry.sequence - 1),
           action: entry.action as unknown as GameAction,
           messages: entry.response as unknown as RestoredRequest['messages'],
           ...(entry.timeoutStreak === null ? {} : { timeoutStreak: entry.timeoutStreak }),
@@ -378,6 +403,9 @@ export class PvpMatchService {
         await this.persistence.abandon(abandonedMatchId);
         this.lobby.remove(abandonedMatchId);
       },
+      onPlayerConnect: (playerId) => this.queuePresenceWrite(matchId, playerId, null),
+      onPlayerDisconnect: (playerId, disconnectedAt) =>
+        this.queuePresenceWrite(matchId, playerId, disconnectedAt),
     });
     const playerIds = match.players
       .sort((left, right) => left.seat - right.seat)
@@ -427,6 +455,41 @@ export class PvpMatchService {
     const now = Date.now();
     for (const [key, request] of this.privateCreateRequests)
       if (request.expiresAt <= now) this.privateCreateRequests.delete(key);
+  }
+
+  private queuePresenceWrite(
+    matchId: string,
+    playerId: PlayerId,
+    disconnectedAt: number | null,
+  ): void {
+    const key = `${matchId}:${playerId}`;
+    const previous = this.presenceWrites.get(key) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => undefined)
+      .then(() => this.writePresenceWithRetry(matchId, playerId, disconnectedAt));
+    this.presenceWrites.set(key, operation);
+    void operation
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.presenceWrites.get(key) === operation) this.presenceWrites.delete(key);
+      });
+  }
+
+  private async writePresenceWithRetry(
+    matchId: string,
+    playerId: PlayerId,
+    disconnectedAt: number | null,
+  ): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await this.persistence.setPlayerDisconnected(matchId, playerId, disconnectedAt);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
   }
 
   private async findPersistedCasualMatch(

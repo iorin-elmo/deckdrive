@@ -333,6 +333,14 @@ export class PvpLobby<TDeck> {
         await specificOptions.onAbandoned?.(abandonedMatchId);
         this.remove(abandonedMatchId);
       },
+      onPlayerConnect: async (playerId) => {
+        await baseOptions.onPlayerConnect?.(playerId);
+        await specificOptions.onPlayerConnect?.(playerId);
+      },
+      onPlayerDisconnect: async (playerId, disconnectedAt) => {
+        await baseOptions.onPlayerDisconnect?.(playerId, disconnectedAt);
+        await specificOptions.onPlayerDisconnect?.(playerId, disconnectedAt);
+      },
       state: this.options.createState(input),
     });
     this.activeSessions.set(matchId, session);

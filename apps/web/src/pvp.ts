@@ -127,8 +127,6 @@ export class PvpSocketClient {
           return;
         if (typeof message.actionSequence === 'number')
           this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
-        if (typeof message.eventSequence === 'number')
-          this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
       }
       if (message.type === 'ERROR' && typeof message.requestId === 'string') {
         if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);
@@ -169,9 +167,15 @@ export class PvpSocketClient {
     return requestId;
   }
 
-  resync(afterEventSequence: number): void {
-    this.lastEventSequence = Math.max(this.lastEventSequence, afterEventSequence);
+  resync(afterEventSequence = this.lastEventSequence): void {
     this.sendRaw(JSON.stringify({ type: 'RESYNC', afterEventSequence }));
+  }
+
+  retryAction(requestId: string): boolean {
+    const pending = this.pendingActions.get(requestId);
+    if (pending === undefined) return false;
+    this.sendRaw(pending.payload);
+    return true;
   }
 
   ping(): void {

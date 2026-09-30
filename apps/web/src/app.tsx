@@ -1669,12 +1669,16 @@ function PvpBattlePage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);
   const apiClient = useApiClient();
+  const navigate = useNavigate();
   const { locale } = useI18n();
   const [stateMessage, setStateMessage] = useState<Extract<PvpServerMessage, { type: 'STATE' }>>();
   const [connectionStatus, setConnectionStatus] = useState<
     'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'CLOSED'
   >('CONNECTING');
   const [error, setError] = useState<string>();
+  const [pendingRequestId, setPendingRequestId] = useState<string>();
+  const [retryRequestId, setRetryRequestId] = useState<string>();
+  const [matchAbandoned, setMatchAbandoned] = useState(false);
   const clientRef = useRef<PvpSocketClient | undefined>(undefined);
   const [selectedTargetId, setSelectedTargetId] = useState<string>();
   const cards = useQuery({
@@ -1686,6 +1690,9 @@ function PvpBattlePage() {
     if (previewMode) return;
     setStateMessage(undefined);
     setError(undefined);
+    setPendingRequestId(undefined);
+    setRetryRequestId(undefined);
+    setMatchAbandoned(false);
     setSelectedTargetId(undefined);
     setConnectionStatus('CONNECTING');
     const client = new PvpSocketClient(matchId, {
@@ -1697,8 +1704,24 @@ function PvpBattlePage() {
         if (message.type === 'STATE') {
           const projected = message.state as { readonly turn: number; readonly phase: string };
           setStateMessage({ ...message, turn: projected.turn, phase: projected.phase });
+          if (message.requestId !== undefined) {
+            setPendingRequestId((current) => (current === message.requestId ? undefined : current));
+            setRetryRequestId((current) => (current === message.requestId ? undefined : current));
+          }
         }
-        if (message.type === 'ERROR') setError(String(message.code ?? 'UNKNOWN_ERROR'));
+        if (message.type === 'ERROR') {
+          setError(String(message.code ?? 'UNKNOWN_ERROR'));
+          if (message.code === 'MATCH_ABANDONED') {
+            setMatchAbandoned(true);
+            setPendingRequestId(undefined);
+            navigate(`/result/${matchId}`);
+          } else if (message.code === 'MATCH_UNAVAILABLE' && message.requestId !== undefined) {
+            setRetryRequestId(message.requestId);
+          } else if (message.requestId !== undefined) {
+            setPendingRequestId((current) => (current === message.requestId ? undefined : current));
+            setRetryRequestId((current) => (current === message.requestId ? undefined : current));
+          }
+        }
       },
     });
     clientRef.current = client;
@@ -1706,7 +1729,7 @@ function PvpBattlePage() {
       client.close();
       clientRef.current = undefined;
     };
-  }, [matchId, previewMode]);
+  }, [matchId, navigate, previewMode]);
 
   const state = stateMessage?.state as PvpProjectedState | undefined;
   const players = state?.players ?? [];
@@ -1714,13 +1737,19 @@ function PvpBattlePage() {
   const opponent = players.find((player) => player?.id !== playerId);
   const activePlayerId = state?.activePlayerId;
   const socketClosed = connectionStatus === 'CLOSED';
+  const actionControlsDisabled =
+    connectionStatus !== 'OPEN' ||
+    pendingRequestId !== undefined ||
+    matchAbandoned ||
+    state?.phase !== 'PLAYER_TURN';
   const eventSequence =
     typeof stateMessage?.eventSequence === 'number' ? stateMessage.eventSequence : 0;
   const actionSequence =
     typeof stateMessage?.actionSequence === 'number' ? stateMessage.actionSequence : 0;
   const endTurn = () => {
     if (stateMessage === undefined || activePlayerId !== playerId) return;
-    clientRef.current?.sendAction({ type: 'END_TURN', playerId }, actionSequence);
+    const requestId = clientRef.current?.sendAction({ type: 'END_TURN', playerId }, actionSequence);
+    if (requestId !== undefined) setPendingRequestId(requestId);
   };
   const playCard = (card: PvpCard) => {
     if (stateMessage === undefined || state === undefined || activePlayerId !== playerId) return;
@@ -1728,7 +1757,7 @@ function PvpBattlePage() {
       (candidate) =>
         candidate.cardId === card.definitionId && candidate.version === state.cardDataVersion,
     )?.definition;
-    clientRef.current?.sendAction(
+    const requestId = clientRef.current?.sendAction(
       {
         type: 'PLAY_CARD',
         playerId,
@@ -1739,6 +1768,7 @@ function PvpBattlePage() {
       },
       actionSequence,
     );
+    if (requestId !== undefined) setPendingRequestId(requestId);
   };
 
   if (previewMode)
@@ -1805,9 +1835,7 @@ function PvpBattlePage() {
               className="hand-card text-left disabled:cursor-not-allowed disabled:opacity-50"
               key={card.id}
               type="button"
-              disabled={
-                socketClosed || activePlayerId !== playerId || state?.phase !== 'PLAYER_TURN'
-              }
+              disabled={actionControlsDisabled || activePlayerId !== playerId}
               onClick={() => playCard(card)}
             >
               <p className="text-xs font-semibold text-amber-200">Play card</p>
@@ -1831,15 +1859,15 @@ function PvpBattlePage() {
         <ActionButton
           type="button"
           onClick={endTurn}
-          disabled={socketClosed || activePlayerId !== playerId}
+          disabled={actionControlsDisabled || activePlayerId !== playerId}
         >
           End turn
         </ActionButton>
         <button
           className="hero-secondary"
           type="button"
-          disabled={socketClosed}
-          onClick={() => clientRef.current?.resync(eventSequence)}
+          disabled={connectionStatus !== 'OPEN'}
+          onClick={() => clientRef.current?.resync()}
         >
           Resync
         </button>
@@ -1850,6 +1878,20 @@ function PvpBattlePage() {
       {error === undefined ? null : (
         <AsyncNotice kind="error" title="PvP error">
           {error}
+          {retryRequestId === undefined ? null : (
+            <ActionButton
+              className="mt-3"
+              type="button"
+              onClick={() => {
+                if (clientRef.current?.retryAction(retryRequestId)) {
+                  setRetryRequestId(undefined);
+                  setError(undefined);
+                }
+              }}
+            >
+              Retry action
+            </ActionButton>
+          )}
           {socketClosed ? (
             <ActionButton className="mt-3" type="button" onClick={() => window.location.reload()}>
               Reload battle

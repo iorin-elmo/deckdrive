@@ -101,7 +101,7 @@ describe('PvP socket client', () => {
       sockets[1]!.onopen?.();
       expect(JSON.parse(sockets[1]!.sent[0]!)).toEqual({
         type: 'RESYNC',
-        afterEventSequence: 7,
+        afterEventSequence: 0,
       });
       client.close();
     } finally {
@@ -175,5 +175,28 @@ describe('PvP socket client', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('allows a failed action to be retried on the open socket with the same request ID', () => {
+    const socket = new FakeSocket();
+    const client = new PvpSocketClient(
+      'match-1',
+      { onMessage: () => {} },
+      { socketFactory: () => socket },
+    );
+    client.sendAction({ type: 'END_TURN', playerId: 'player-1' }, 0, 'retry-me');
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: 'ERROR',
+        protocolVersion: 1,
+        code: 'MATCH_UNAVAILABLE',
+        message: 'retry',
+        requestId: 'retry-me',
+      }),
+    });
+    expect(client.retryAction('retry-me')).toBe(true);
+    expect(socket.sent).toHaveLength(2);
+    expect(socket.sent[0]).toBe(socket.sent[1]);
+    client.close();
   });
 });
