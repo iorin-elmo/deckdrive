@@ -554,7 +554,7 @@ export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): 
               ownerPlayerId: state.pendingCardChoice.ownerPlayerId,
               choiceKind: state.pendingCardChoice.choiceKind,
             },
-    events: state.events.map((event) => projectEvent(event, viewerId)),
+    events: state.events.map((event) => projectGameEventV2(event, viewerId)),
   };
 }
 
@@ -2441,7 +2441,10 @@ function projectCard(card: CardInstanceV2, isOwner: boolean): unknown {
   return { visibility: 'ownerOnly' };
 }
 
-function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
+export function projectGameEventV2(
+  event: GameEventV2,
+  viewerId: PlayerId,
+): Record<string, unknown> {
   const ownerPlayerId = (event.ownerPlayerId ?? event.playerId) as PlayerId | undefined;
   const hiddenDrawPileMove =
     event.type === 'CARD_MOVED' && event.toZone === 'drawPile' && ownerPlayerId !== viewerId;
@@ -2453,7 +2456,7 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
       ownerPlayerId,
       redacted: true,
     };
-    return view as GameEventV2;
+    return view;
   }
   const projected = { ...event } as Record<string, unknown>;
   delete projected.rngStateBefore;
@@ -2473,7 +2476,7 @@ function projectEvent(event: GameEventV2, viewerId: PlayerId): GameEventV2 {
       delete projected[key];
     }
   }
-  return projected as GameEventV2;
+  return projected;
 }
 
 function eventEmitter(existing: readonly GameEventV2[]): EventEmitter {
@@ -2518,7 +2521,12 @@ function seedToUint32(seed: string): number {
 }
 
 function isBattleInputShape(value: unknown): value is BattleInput {
-  if (!isRecord(value) || !Number.isSafeInteger(value.inputSequence)) return false;
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['inputSequence', 'kind', 'payload']) ||
+    !Number.isSafeInteger(value.inputSequence)
+  )
+    return false;
   if (value.kind === 'CLIENT_ACTION') return isGameActionV2(value.payload);
   if (value.kind === 'SERVER_COMMAND') return isServerCommand(value.payload);
   return false;
@@ -2527,9 +2535,10 @@ function isBattleInputShape(value: unknown): value is BattleInput {
 function isGameActionV2(value: unknown): value is GameActionV2 {
   if (!isRecord(value) || typeof value.playerId !== 'string' || value.playerId.length === 0)
     return false;
-  if (value.type === 'END_TURN') return true;
+  if (value.type === 'END_TURN') return hasOnlyKeys(value, ['type', 'playerId']);
   if (value.type === 'PLAY_CARD') {
     return (
+      hasOnlyKeys(value, ['type', 'playerId', 'cardInstanceId', 'targetId', 'choices']) &&
       typeof value.cardInstanceId === 'string' &&
       value.cardInstanceId.length > 0 &&
       (value.targetId === undefined || typeof value.targetId === 'string') &&
@@ -2541,6 +2550,7 @@ function isGameActionV2(value: unknown): value is GameActionV2 {
   }
   if (value.type === 'SUBMIT_CARD_CHOICE') {
     return (
+      hasOnlyKeys(value, ['type', 'playerId', 'choiceRequestId', 'choice']) &&
       typeof value.choiceRequestId === 'string' &&
       value.choiceRequestId.length > 0 &&
       isSubmittedCardChoice(value.choice)
@@ -2553,31 +2563,49 @@ function isPlayCardChoice(value: unknown): value is PlayCardChoice {
   if (!isRecord(value)) return false;
   if (value.kind === 'CARD_INSTANCES') {
     return (
+      hasOnlyKeys(value, ['kind', 'cardInstanceIds']) &&
       Array.isArray(value.cardInstanceIds) &&
       isDense(value.cardInstanceIds) &&
       value.cardInstanceIds.every((id) => typeof id === 'string' && id.length > 0)
     );
   }
   if (value.kind === 'RECIPE')
-    return typeof value.recipeId === 'string' && value.recipeId.length > 0;
+    return (
+      hasOnlyKeys(value, ['kind', 'recipeId']) &&
+      typeof value.recipeId === 'string' &&
+      value.recipeId.length > 0
+    );
   if (value.kind === 'CHANT_ENTRY')
-    return typeof value.chantEntryId === 'string' && value.chantEntryId.length > 0;
+    return (
+      hasOnlyKeys(value, ['kind', 'chantEntryId']) &&
+      typeof value.chantEntryId === 'string' &&
+      value.chantEntryId.length > 0
+    );
   return false;
 }
 
 function isSubmittedCardChoice(value: unknown): value is SubmittedCardChoice {
   if (!isRecord(value)) return false;
   if (value.kind === 'CARD')
-    return typeof value.cardInstanceId === 'string' && value.cardInstanceId.length > 0;
+    return (
+      hasOnlyKeys(value, ['kind', 'cardInstanceId']) &&
+      typeof value.cardInstanceId === 'string' &&
+      value.cardInstanceId.length > 0
+    );
   if (value.kind === 'CARDS') {
     return (
+      hasOnlyKeys(value, ['kind', 'cardInstanceIds']) &&
       Array.isArray(value.cardInstanceIds) &&
       isDense(value.cardInstanceIds) &&
       value.cardInstanceIds.every((id) => typeof id === 'string' && id.length > 0)
     );
   }
   if (value.kind === 'RECIPE')
-    return typeof value.recipeId === 'string' && value.recipeId.length > 0;
+    return (
+      hasOnlyKeys(value, ['kind', 'recipeId']) &&
+      typeof value.recipeId === 'string' &&
+      value.recipeId.length > 0
+    );
   return false;
 }
 
@@ -2594,10 +2622,29 @@ function isServerCommand(value: unknown): value is ServerCommand {
   )
     return false;
   if (value.type === 'CARD_CHOICE_DEADLINE_ISSUED') {
-    return isNonNegativeSafeInteger(value.issuedAt);
+    return (
+      hasOnlyKeys(value, [
+        'type',
+        'playerId',
+        'choiceRequestId',
+        'issuedAt',
+        'deadlineAt',
+        'timeoutAuthorization',
+      ]) && isNonNegativeSafeInteger(value.issuedAt)
+    );
   }
   if (value.type === 'CARD_CHOICE_TIMEOUT') {
     return (
+      hasOnlyKeys(value, [
+        'type',
+        'playerId',
+        'choiceRequestId',
+        'deadlineCommandSequence',
+        'deadlineAt',
+        'timeoutAt',
+        'timeoutAuthorization',
+        'timeoutAttestation',
+      ]) &&
       isPositiveSafeInteger(value.deadlineCommandSequence) &&
       isNonNegativeSafeInteger(value.timeoutAt) &&
       typeof value.timeoutAttestation === 'string' &&
@@ -2605,6 +2652,10 @@ function isServerCommand(value: unknown): value is ServerCommand {
     );
   }
   return false;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
 }
 
 function isDense(values: readonly unknown[]): boolean {

@@ -741,6 +741,38 @@ describe('battle protocol 2 special victory routes', () => {
     });
   });
 
+  it('rejects excess properties at every client and server input boundary', () => {
+    const state = battle([card('attack', 'test_attack')]);
+    const command = {
+      type: 'CARD_CHOICE_DEADLINE_ISSUED',
+      playerId: playerOne,
+      choiceRequestId: 'choice:1',
+      issuedAt: 1000,
+      deadlineAt: 61000,
+      timeoutAuthorization: 'signed',
+    };
+    const inputs = [
+      { ...client(1, { type: 'END_TURN', playerId: playerOne }), extra: true },
+      client(1, { type: 'END_TURN', playerId: playerOne, extra: true } as never),
+      client(1, { ...play('attack'), extra: true } as never),
+      client(1, {
+        ...play('attack'),
+        choices: [{ kind: 'RECIPE', recipeId: 'r', extra: true }],
+      } as never),
+      client(1, {
+        type: 'SUBMIT_CARD_CHOICE',
+        playerId: playerOne,
+        choiceRequestId: 'choice:1',
+        choice: { kind: 'CARD', cardInstanceId: 'attack', extra: true },
+      } as never),
+      { inputSequence: 1, kind: 'SERVER_COMMAND', payload: { ...command, extra: true } },
+    ];
+    for (const input of inputs)
+      expect(
+        applyBattleInputV2(state, input as BattleInput, definitions, () => true),
+      ).toMatchObject({ ok: false, error: { code: 'MALFORMED_INPUT' } });
+  });
+
   it('rejects sparse chant completion effects before playing the card', () => {
     const state = battle([card('sparse-chant', 'sparse-chant')]);
     const sparseDefinition = definition('sparse-chant', 0, [

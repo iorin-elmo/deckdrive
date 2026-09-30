@@ -3,7 +3,10 @@ import {
   battleProtocolVersion,
   createInitialBattleStateV2,
   isValidCardDefinitionV2,
+  projectBattleStateV2,
+  projectGameEventV2,
 } from './protocol-v2.js';
+import type { PlayerId } from './index.js';
 import type {
   BattleInput,
   BattleStateV2,
@@ -45,6 +48,330 @@ export interface ReplayV2 {
   readonly finalState: BattleStateV2;
   readonly snapshotInterval: number;
   readonly checksum: string;
+}
+
+export const playerReplayProjectionVersionV2 = 1 as const;
+
+export interface PlayerReplayViewV2 {
+  readonly formatVersion: 2;
+  readonly battleProtocolVersion: 2;
+  readonly projectionVersion: typeof playerReplayProjectionVersionV2;
+  readonly viewerPlayerId: PlayerId;
+  readonly draftDefinitionRevision: string;
+  readonly matchId: string;
+  readonly engineVersion: string;
+  readonly rulesVersion: string;
+  readonly cardDataVersion: string;
+  readonly initialState: Record<string, unknown>;
+  readonly actions: readonly BattleInputRecord<Record<string, unknown>>[];
+  readonly events: readonly Record<string, unknown>[];
+  readonly snapshots: readonly {
+    inputSequence: number;
+    eventSequence: number;
+    state: Record<string, unknown>;
+  }[];
+  readonly finalState: Record<string, unknown>;
+  readonly snapshotInterval: number;
+  readonly projectionChecksum: string;
+}
+
+/** Project only a replay that has passed authoritative checksum and simulation verification. */
+export function projectReplayV2(
+  replay: ReplayV2,
+  definitionSnapshots: DefinitionSnapshotRegistry,
+  authorizeServerCommand: ServerCommandAuthorizer,
+  viewerPlayerId: PlayerId,
+): PlayerReplayViewV2 {
+  const verified = verifyReplayV2(replay, definitionSnapshots, authorizeServerCommand);
+  if (!verified.ok) throw new Error(verified.error.message);
+  if (!replay.initialState.players.some((player) => player.id === viewerPlayerId))
+    throw new Error('Replay viewer must be a participant.');
+  const projectState = (state: BattleStateV2): Record<string, unknown> =>
+    JSON.parse(JSON.stringify(projectBattleStateV2(state, viewerPlayerId))) as Record<
+      string,
+      unknown
+    >;
+  const content = {
+    formatVersion: replay.formatVersion,
+    battleProtocolVersion: replay.battleProtocolVersion,
+    projectionVersion: playerReplayProjectionVersionV2,
+    viewerPlayerId,
+    draftDefinitionRevision: replay.draftDefinitionRevision,
+    matchId: replay.matchId,
+    engineVersion: replay.engineVersion,
+    rulesVersion: replay.rulesVersion,
+    cardDataVersion: replay.cardDataVersion,
+    initialState: projectState(replay.initialState),
+    actions: replay.actions.map(({ inputSequence, payload }) => ({
+      inputSequence,
+      payload:
+        payload.playerId === viewerPlayerId
+          ? (structuredClone(payload) as unknown as Record<string, unknown>)
+          : payload.type === 'PLAY_CARD'
+            ? {
+                type: payload.type,
+                playerId: payload.playerId,
+                cardInstanceId: payload.cardInstanceId,
+                ...(payload.targetId === undefined ? {} : { targetId: payload.targetId }),
+              }
+            : payload.type === 'SUBMIT_CARD_CHOICE'
+              ? { type: payload.type, playerId: payload.playerId, redacted: true }
+              : { type: payload.type, playerId: payload.playerId },
+    })),
+    events: replay.events.map((event) => projectGameEventV2(event, viewerPlayerId)),
+    snapshots: replay.snapshots.map((snapshot) => {
+      const state = projectState({ ...snapshot.state, events: [] });
+      delete state.events;
+      return {
+        inputSequence: snapshot.inputSequence,
+        eventSequence: snapshot.eventSequence,
+        state,
+      };
+    }),
+    finalState: projectState(replay.finalState),
+    snapshotInterval: replay.snapshotInterval,
+  };
+  return { ...content, projectionChecksum: calculatePlayerReplayProjectionChecksumV2(content) };
+}
+
+export function calculatePlayerReplayProjectionChecksumV2(
+  view: Omit<PlayerReplayViewV2, 'projectionChecksum'> | PlayerReplayViewV2,
+): string {
+  const content = { ...view } as Record<string, unknown>;
+  delete content.projectionChecksum;
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(canonicalReplayJson(content)))
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  return `fnv1a-32:${hash.toString(16).padStart(8, '0')}`;
+}
+
+export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly error: {
+        readonly code: 'INVALID_PROJECTION' | 'CHECKSUM_MISMATCH';
+        readonly message: string;
+      };
+    } {
+  const invalid = (message: string) => ({
+    ok: false as const,
+    error: { code: 'INVALID_PROJECTION' as const, message },
+  });
+  if (
+    !isRecord(view) ||
+    !onlyKeys(view, [
+      'formatVersion',
+      'battleProtocolVersion',
+      'projectionVersion',
+      'viewerPlayerId',
+      'draftDefinitionRevision',
+      'matchId',
+      'engineVersion',
+      'rulesVersion',
+      'cardDataVersion',
+      'initialState',
+      'actions',
+      'events',
+      'snapshots',
+      'finalState',
+      'snapshotInterval',
+      'projectionChecksum',
+    ]) ||
+    view.formatVersion !== 2 ||
+    view.battleProtocolVersion !== 2 ||
+    view.projectionVersion !== playerReplayProjectionVersionV2 ||
+    typeof view.viewerPlayerId !== 'string' ||
+    typeof view.matchId !== 'string' ||
+    typeof view.draftDefinitionRevision !== 'string' ||
+    typeof view.engineVersion !== 'string' ||
+    typeof view.rulesVersion !== 'string' ||
+    typeof view.cardDataVersion !== 'string' ||
+    !isNonNegativeSafeInteger(view.snapshotInterval) ||
+    view.snapshotInterval === 0 ||
+    typeof view.projectionChecksum !== 'string' ||
+    !Array.isArray(view.actions) ||
+    !Array.isArray(view.events) ||
+    !Array.isArray(view.snapshots) ||
+    !isRecord(view.initialState) ||
+    !isRecord(view.finalState)
+  )
+    return invalid('Malformed player replay view.');
+  let checksum: string;
+  try {
+    checksum = calculatePlayerReplayProjectionChecksumV2(view);
+  } catch {
+    return invalid('Unsupported player replay JSON.');
+  }
+  if (checksum !== view.projectionChecksum)
+    return {
+      ok: false,
+      error: { code: 'CHECKSUM_MISMATCH', message: 'Player replay checksum mismatch.' },
+    };
+  if (hasSecretReplayField(view))
+    return invalid('Player replay contains authoritative private data.');
+  if (
+    !validProjectedState(view.initialState, view.viewerPlayerId, true) ||
+    !validProjectedState(view.finalState, view.viewerPlayerId, true) ||
+    view.initialState.matchId !== view.matchId ||
+    view.finalState.matchId !== view.matchId
+  )
+    return invalid('Invalid projected battle state.');
+  if (
+    !dense(view.events) ||
+    !view.events.every(
+      (event, index) =>
+        isRecord(event) &&
+        event.sequence === index + 1 &&
+        validProjectedEvent(event, view.viewerPlayerId),
+    )
+  )
+    return invalid('Invalid projected event sequence or event visibility.');
+  if (canonicalReplayJson(view.finalState.events) !== canonicalReplayJson(view.events))
+    return invalid('Final projected events do not match the replay events.');
+  if (
+    !dense(view.actions) ||
+    !view.actions.every(
+      (action) =>
+        isRecord(action) &&
+        onlyKeys(action, ['inputSequence', 'payload']) &&
+        isNonNegativeSafeInteger(action.inputSequence) &&
+        isRecord(action.payload) &&
+        validProjectedAction(action.payload, view.viewerPlayerId),
+    )
+  )
+    return invalid('Invalid projected action.');
+  if (
+    !dense(view.snapshots) ||
+    !view.snapshots.every(
+      (snapshot) =>
+        isRecord(snapshot) &&
+        onlyKeys(snapshot, ['inputSequence', 'eventSequence', 'state']) &&
+        isNonNegativeSafeInteger(snapshot.inputSequence) &&
+        isNonNegativeSafeInteger(snapshot.eventSequence) &&
+        (snapshot.eventSequence as number) <= view.events.length &&
+        validProjectedState(snapshot.state, view.viewerPlayerId, false),
+    )
+  )
+    return invalid('Invalid projected snapshot.');
+  if (
+    view.snapshots[0]?.inputSequence !== 0 ||
+    view.snapshots.at(-1)?.inputSequence !== view.finalState.lastInputSequence ||
+    view.snapshots.some(
+      (snapshot, index) =>
+        index > 0 &&
+        (snapshot.inputSequence <= view.snapshots[index - 1]!.inputSequence ||
+          snapshot.eventSequence < view.snapshots[index - 1]!.eventSequence),
+    )
+  )
+    return invalid('Invalid snapshot sequence.');
+  return { ok: true };
+}
+
+function onlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function hasSecretReplayField(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasSecretReplayField);
+  if (!isRecord(value)) return false;
+  const forbidden = new Set([
+    'seed',
+    'rngState',
+    'rngStateBefore',
+    'rngStateAfter',
+    'serverCommands',
+    'timeoutAuthorization',
+    'timeoutAttestation',
+    'deadlineAt',
+    'issuedAt',
+    'timeoutAt',
+    'deadlineCommitment',
+  ]);
+  return Object.entries(value).some(
+    ([key, child]) => forbidden.has(key) || hasSecretReplayField(child),
+  );
+}
+
+function validProjectedState(
+  value: unknown,
+  viewerId: PlayerId,
+  withEvents: boolean,
+): value is Record<string, unknown> {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.players) ||
+    value.players.length !== 2 ||
+    !value.players.some((player) => isRecord(player) && player.id === viewerId) ||
+    (withEvents
+      ? !Array.isArray(value.events) ||
+        !dense(value.events) ||
+        !value.events.every(
+          (event: unknown) => isRecord(event) && validProjectedEvent(event, viewerId),
+        )
+      : 'events' in value)
+  )
+    return false;
+  for (const player of value.players) {
+    if (!isRecord(player) || typeof player.id !== 'string') return false;
+    for (const zone of ['drawPile', 'hand', 'discard', 'exhaust']) {
+      const cards = player[zone];
+      if (!Array.isArray(cards) || !dense(cards)) return false;
+      if (
+        cards.some(
+          (card) =>
+            !isRecord(card) ||
+            !['ownerOnly', 'allPlayers'].includes(String(card.visibility)) ||
+            (player.id !== viewerId &&
+              (zone === 'drawPile' || card.visibility === 'ownerOnly') &&
+              !onlyKeys(card, ['visibility'])),
+        )
+      )
+        return false;
+    }
+  }
+  const pending = value.pendingCardChoice;
+  if (pending !== undefined && !isRecord(pending)) return false;
+  if (
+    isRecord(pending) &&
+    pending.ownerPlayerId !== viewerId &&
+    !onlyKeys(pending, ['ownerPlayerId', 'choiceKind'])
+  )
+    return false;
+  return true;
+}
+
+function validProjectedEvent(event: Record<string, unknown>, viewerId: PlayerId): boolean {
+  if (event.redacted === true)
+    return (
+      event.ownerPlayerId !== viewerId &&
+      onlyKeys(event, ['type', 'sequence', 'visibility', 'ownerPlayerId', 'redacted'])
+    );
+  const owner = event.ownerPlayerId ?? event.playerId;
+  if (owner !== viewerId && event.visibility === 'ownerOnly') return false;
+  if (owner !== viewerId && event.type === 'CARD_MOVED' && event.toZone === 'drawPile')
+    return false;
+  return (
+    owner === viewerId ||
+    event.positionVisibility !== 'ownerOnly' ||
+    ['zone', 'from', 'to', 'fromZone', 'toZone', 'index', 'position', 'fromIndex', 'toIndex'].every(
+      (key) => !(key in event),
+    )
+  );
+}
+
+function validProjectedAction(action: Record<string, unknown>, viewerId: PlayerId): boolean {
+  if (typeof action.playerId !== 'string') return false;
+  if (action.playerId === viewerId)
+    return ['END_TURN', 'PLAY_CARD', 'SUBMIT_CARD_CHOICE'].includes(String(action.type));
+  if (action.type === 'END_TURN') return onlyKeys(action, ['type', 'playerId']);
+  if (action.type === 'PLAY_CARD')
+    return onlyKeys(action, ['type', 'playerId', 'cardInstanceId', 'targetId']);
+  return (
+    action.type === 'SUBMIT_CARD_CHOICE' &&
+    action.redacted === true &&
+    onlyKeys(action, ['type', 'playerId', 'redacted'])
+  );
 }
 
 export interface ReplayV2RecordingOptions {

@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   calculateDraftDefinitionRevision,
+  calculatePlayerReplayProjectionChecksumV2,
+  projectReplayV2,
   recordReplayV2,
   verifyReplay,
   verifyReplayV2,
+  verifyPlayerReplayViewV2,
 } from './index.js';
 import type { BattleInput, BattleStateV2, CardDefinitionV2, Replay, ReplayV2 } from './index.js';
 import { definitions, expectedReplay, successfulReplay } from './replay.test-support.js';
@@ -71,6 +74,28 @@ describe('Replay regression gate', () => {
       ok: false,
       error: { code: 'REPLAY_MISMATCH' },
     });
+  });
+
+  it('projects a validated replay separately for both players and rejects private data', () => {
+    for (const player of v2Fixture.initial.players) {
+      const view = projectReplayV2(
+        v2Fixture.expectedReplay,
+        () => v2Fixture.definitions,
+        () => true,
+        player.id,
+      );
+      expect(verifyPlayerReplayViewV2(view)).toEqual({ ok: true });
+      const serialized = JSON.stringify(view);
+      expect(serialized).not.toMatch(/"(?:seed|rngState|serverCommands|timeoutAuthorization)"/);
+      const tampered = structuredClone(view);
+      (tampered.finalState as Record<string, unknown>).seed = 'private';
+      (tampered as { projectionChecksum: string }).projectionChecksum =
+        calculatePlayerReplayProjectionChecksumV2(tampered);
+      expect(verifyPlayerReplayViewV2(tampered)).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_PROJECTION' },
+      });
+    }
   });
 });
 
