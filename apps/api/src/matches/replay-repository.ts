@@ -200,6 +200,20 @@ export class MatchReplayRepository {
     ) {
       throw new ReplayPersistenceError(`Persisted replay ${matchId} is missing V2 metadata.`);
     }
+    if (
+      match.formatVersion === replayFormatVersion
+        ? match.serverCommands.length > 0 ||
+          match.snapshots.some(
+            (snapshot) => snapshot.actionIndex === null || snapshot.inputSequence !== null,
+          )
+        : match.snapshots.some(
+            (snapshot) => snapshot.inputSequence === null || snapshot.actionIndex !== null,
+          )
+    ) {
+      throw new ReplayPersistenceError(
+        `Persisted replay ${matchId} contains rows from another replay format.`,
+      );
+    }
 
     const definitions =
       match.formatVersion === replayFormatVersion

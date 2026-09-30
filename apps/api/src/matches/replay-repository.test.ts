@@ -133,6 +133,7 @@ describe('MatchReplayRepository', () => {
           checksum: replay.checksum,
           cardDataVersion: replay.cardDataVersion,
           actions: [],
+          serverCommands: [],
           events: [],
           snapshots: [],
         }),
@@ -148,6 +149,32 @@ describe('MatchReplayRepository', () => {
       orderBy: { cardId: 'asc' },
       select: { definition: true },
     });
+  });
+
+  it('rejects format-1 rows carrying format-2 boundaries or server commands', async () => {
+    const replay = createZeroActionReplay();
+    const stored = {
+      id: replay.matchId,
+      formatVersion: 1,
+      finalState: replay.finalState,
+      checksum: replay.checksum,
+      serverCommands: [] as unknown[],
+      snapshots: [
+        { actionIndex: null, inputSequence: 0, eventSequence: 0, state: replay.initialState },
+      ],
+    };
+    const prisma = {
+      match: { findUnique: vi.fn().mockResolvedValue(stored) },
+    } as unknown as PrismaClient;
+    const repository = new MatchReplayRepository(prisma);
+    await expect(repository.load(replay.matchId)).rejects.toThrow(
+      'rows from another replay format',
+    );
+    stored.snapshots = [];
+    stored.serverCommands.push({ sequence: 1 });
+    await expect(repository.load(replay.matchId)).rejects.toThrow(
+      'rows from another replay format',
+    );
   });
 
   it('persists Replay V2 actions, server commands, metadata, and input snapshots', async () => {
@@ -293,37 +320,38 @@ describe('MatchReplayRepository', () => {
       definitions,
     });
     const storedReplay = recorded.replay;
+    const storedMatch = {
+      id: storedReplay.matchId,
+      engineVersion: storedReplay.engineVersion,
+      rulesVersion: storedReplay.rulesVersion,
+      cardDataVersion: storedReplay.cardDataVersion,
+      formatVersion: storedReplay.formatVersion,
+      battleProtocolVersion: storedReplay.battleProtocolVersion,
+      draftDefinitionRevision: storedReplay.draftDefinitionRevision,
+      snapshotInterval: storedReplay.snapshotInterval,
+      seed: storedReplay.seed,
+      initialState: storedReplay.initialState,
+      finalState: storedReplay.finalState,
+      checksum: storedReplay.checksum,
+      actions: storedReplay.actions.map((action) => ({
+        sequence: action.inputSequence,
+        action: action.payload,
+      })),
+      serverCommands: storedReplay.serverCommands.map((command) => ({
+        sequence: command.inputSequence,
+        command: command.payload,
+      })),
+      events: storedReplay.events.map((event) => ({ event })),
+      snapshots: storedReplay.snapshots.map((snapshot) => ({
+        actionIndex: null as number | null,
+        inputSequence: snapshot.inputSequence as number | null,
+        eventSequence: snapshot.eventSequence,
+        state: snapshot.state,
+      })),
+    };
     const loadPrisma = {
       match: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: storedReplay.matchId,
-          engineVersion: storedReplay.engineVersion,
-          rulesVersion: storedReplay.rulesVersion,
-          cardDataVersion: storedReplay.cardDataVersion,
-          formatVersion: storedReplay.formatVersion,
-          battleProtocolVersion: storedReplay.battleProtocolVersion,
-          draftDefinitionRevision: storedReplay.draftDefinitionRevision,
-          snapshotInterval: storedReplay.snapshotInterval,
-          seed: storedReplay.seed,
-          initialState: storedReplay.initialState,
-          finalState: storedReplay.finalState,
-          checksum: storedReplay.checksum,
-          actions: storedReplay.actions.map((action) => ({
-            sequence: action.inputSequence,
-            action: action.payload,
-          })),
-          serverCommands: storedReplay.serverCommands.map((command) => ({
-            sequence: command.inputSequence,
-            command: command.payload,
-          })),
-          events: storedReplay.events.map((event) => ({ event })),
-          snapshots: storedReplay.snapshots.map((snapshot) => ({
-            actionIndex: null,
-            inputSequence: snapshot.inputSequence,
-            eventSequence: snapshot.eventSequence,
-            state: snapshot.state,
-          })),
-        }),
+        findUnique: vi.fn().mockResolvedValue(storedMatch),
       },
       cardVersion: { findMany: findCurrentDefinitions },
       replayDefinitionSnapshot: { findUnique: findDefinitionSnapshot },
@@ -333,6 +361,14 @@ describe('MatchReplayRepository', () => {
     ).resolves.toEqual(storedReplay);
     expect(findDefinitionSnapshot).toHaveBeenCalledWith({ where: { revision } });
     expect(findCurrentDefinitions).not.toHaveBeenCalled();
+    storedMatch.snapshots.push({
+      ...storedMatch.snapshots[0]!,
+      actionIndex: 0,
+      inputSequence: null,
+    });
+    await expect(
+      new MatchReplayRepository(loadPrisma, () => true).load(storedReplay.matchId),
+    ).rejects.toThrow('rows from another replay format');
   });
 });
 
