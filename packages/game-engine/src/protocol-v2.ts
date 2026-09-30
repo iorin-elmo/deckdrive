@@ -2294,7 +2294,17 @@ export function isValidCardDefinitionV2(value: unknown): value is CardDefinition
     Array.isArray(value.effects) &&
     value.effects.length > 0 &&
     isDense(value.effects) &&
-    value.effects.every(isValidEffect)
+    value.effects.every(isValidEffect) &&
+    value.effects.filter(consumesCardInstancesChoice).length <= 1
+  );
+}
+
+function consumesCardInstancesChoice(effect: CardEffectV2): boolean {
+  return (
+    effect.type === 'EXHAUST_GRIMOIRE_ADVANCE_WISH' ||
+    effect.type === 'SYNTHESIZE' ||
+    effect.type === 'TRANSFORM_HAND_CARD' ||
+    effect.type === 'SEAL_GRIMOIRE'
   );
 }
 

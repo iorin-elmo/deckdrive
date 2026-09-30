@@ -925,9 +925,25 @@ export function validateCardDefinition(card: unknown): CardDefinitionValidationR
         errors.push({ code: 'INVALID_EFFECT', message: 'Card effect is not supported.' });
       }
     }
+    if (card.effects.filter(consumesCardInstancesChoice).length > 1) {
+      errors.push({
+        code: 'INVALID_EFFECT',
+        message: 'A card cannot contain multiple effects that consume CARD_INSTANCES.',
+      });
+    }
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+function consumesCardInstancesChoice(effect: unknown): boolean {
+  return (
+    isRecord(effect) &&
+    (effect.type === 'EXHAUST_GRIMOIRE_ADVANCE_WISH' ||
+      effect.type === 'SYNTHESIZE' ||
+      effect.type === 'TRANSFORM_HAND_CARD' ||
+      effect.type === 'SEAL_GRIMOIRE')
+  );
 }
 
 function hasValidTranslations(value: unknown): boolean {
