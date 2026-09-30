@@ -83,6 +83,20 @@ export class PrismaPvpMatchPersistence {
         (latestAction?.sequence ?? 0) !== accepted.sequence - 1
       )
         throw new PvpConcurrentMatchError(accepted.matchId);
+      if (accepted.source === 'TIMEOUT') {
+        await transaction.matchServerCommand.create({
+          data: {
+            matchId: accepted.matchId,
+            sequence: accepted.sequence,
+            command: asInputJson({
+              type: 'PVP_TIMEOUT',
+              playerId: accepted.playerId,
+              requestId: accepted.requestId,
+              timeoutStreak: accepted.timeoutStreak,
+            }),
+          },
+        });
+      }
       await transaction.matchAction.create({
         data: {
           matchId: accepted.matchId,

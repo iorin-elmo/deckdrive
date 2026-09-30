@@ -32,6 +32,7 @@ export interface PvpSocketClientOptions {
   readonly baseUrl?: string;
   readonly socketFactory?: (url: string) => PvpSocketLike;
   readonly reconnectDelayMs?: number;
+  readonly maxReconnectAttempts?: number;
 }
 
 /** Browser transport only: it sends intent and renders server messages. */
@@ -42,6 +43,7 @@ export class PvpSocketClient {
   private readonly socketFactory: (url: string) => PvpSocketLike;
   private readonly url: string;
   private readonly reconnectDelayMs: number;
+  private readonly maxReconnectAttempts: number;
   private readonly handlers: PvpSocketHandlers;
   private readonly outbound: string[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -49,12 +51,14 @@ export class PvpSocketClient {
   private closed = false;
   private lastEventSequence = 0;
   private lastActionSequence = 0;
+  private readonly pendingActions = new Map<string, { payload: string; sequence: number }>();
 
   constructor(matchId: string, handlers: PvpSocketHandlers, options: PvpSocketClientOptions = {}) {
     this.socketFactory =
       options.socketFactory ?? ((url: string) => new WebSocket(url) as unknown as PvpSocketLike);
     this.url = webSocketUrl(options.baseUrl, matchId);
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 8;
     this.handlers = handlers;
     this.currentSocket = this.socketFactory(this.url);
     this.bindSocket(this.currentSocket, false);
@@ -71,7 +75,11 @@ export class PvpSocketClient {
       this.reconnectAttempt = 0;
       this.handlers.onStatus?.('OPEN');
       this.sendRaw({ type: 'RESYNC', afterEventSequence: this.lastEventSequence });
-      while (this.outbound.length > 0) this.sendRaw(this.outbound.shift()!);
+      const queued = this.outbound.splice(0);
+      for (const payload of queued) this.sendRaw(payload);
+      for (const pending of this.pendingActions.values()) {
+        if (!queued.includes(pending.payload)) this.sendRaw(pending.payload);
+      }
     };
     socket.onmessage = (event) => {
       if (socket !== this.currentSocket) return;
@@ -88,8 +96,16 @@ export class PvpSocketClient {
           return;
         if (typeof message.actionSequence === 'number')
           this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
+        if (typeof message.actionSequence === 'number') {
+          for (const [requestId, pending] of this.pendingActions) {
+            if (message.actionSequence > pending.sequence) this.pendingActions.delete(requestId);
+          }
+        }
         if (typeof message.eventSequence === 'number')
           this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
+      }
+      if (message.type === 'ERROR' && typeof message.requestId === 'string') {
+        if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);
       }
       if (message.type === 'EVENT' && typeof message.sequence === 'number')
         this.lastEventSequence = Math.max(this.lastEventSequence, message.sequence);
@@ -110,7 +126,20 @@ export class PvpSocketClient {
   }
 
   sendAction(action: PvpAction, sequence: number, requestId = this.requestId()): string {
-    this.sendRaw(JSON.stringify({ type: 'ACTION', requestId, sequence, action }));
+    const payload = JSON.stringify({ type: 'ACTION', requestId, sequence, action });
+    this.pendingActions.set(requestId, { payload, sequence });
+    const queued = this.outbound;
+    const readyState = (this.currentSocket as PvpSocketLike & { readonly readyState?: number })
+      .readyState;
+    if (readyState === undefined || readyState === 1) {
+      try {
+        this.currentSocket.send(payload);
+        return requestId;
+      } catch {
+        // Leave the action pending and retry it after reconnect.
+      }
+    }
+    queued.push(payload);
     return requestId;
   }
 
@@ -149,6 +178,16 @@ export class PvpSocketClient {
   private scheduleReconnect(socket = this.currentSocket): void {
     if (socket !== this.currentSocket) return;
     if (this.closed || this.reconnectTimer !== undefined) return;
+    if (this.reconnectAttempt >= this.maxReconnectAttempts) {
+      this.closed = true;
+      this.handlers.onStatus?.('CLOSED');
+      try {
+        socket.close();
+      } catch {
+        // The socket is already unavailable.
+      }
+      return;
+    }
     this.handlers.onStatus?.('RECONNECTING');
     const delay = this.reconnectDelayMs * Math.min(8, 2 ** this.reconnectAttempt);
     this.reconnectAttempt += 1;

@@ -1,10 +1,94 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createInitialBattleStateV2 } from '@deck-drive/game-engine';
+import type { BattleStateV2, CardInstanceId, MatchId, PlayerId } from '@deck-drive/game-engine';
+
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('projects both protocol-2 match states for each participant', async () => {
+    const first = 'player-1' as PlayerId;
+    const second = 'player-2' as PlayerId;
+    const initialState = createInitialBattleStateV2({
+      matchId: 'private-match' as MatchId,
+      engineVersion: '1.0.0',
+      rulesVersion: '1.0.0',
+      cardDataVersion: '1.0.0',
+      seed: 'secret-seed',
+      initialDrawCount: 1,
+      turnDrawCount: 1,
+      players: [first, second].map((id, index) => ({
+        id,
+        drawPile: [0, 1].map((slot) => ({
+          id: `private-${index}-${slot}` as CardInstanceId,
+          definitionId: 'card',
+          definitionVersion: '1.0.0',
+          costModifier: 0,
+          visibility: 'ownerOnly' as const,
+        })),
+      })),
+    });
+    const finalState = {
+      ...initialState,
+      phase: 'PENDING_CARD_CHOICE',
+      pendingCardChoice: {
+        ownerPlayerId: first,
+        choiceKind: 'CARD',
+        candidateIds: ['private-0-1'],
+        deadlineCommitment: 'private-commitment',
+      },
+    } as unknown as BattleStateV2;
+    const application = new ApiApplication(
+      {
+        player: {
+          findUnique: vi.fn().mockImplementation(({ where }) => Promise.resolve({ id: where.id })),
+        },
+        match: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'private-match',
+            status: 'IN_PROGRESS',
+            initialState,
+            finalState,
+            createdAt: new Date('2026-09-30T00:00:00Z'),
+          }),
+        },
+      } as unknown as PrismaClient,
+      { NODE_ENV: 'test' },
+    );
+    for (const viewer of [first, second]) {
+      const response = await application.handle({
+        method: 'GET',
+        path: '/api/v1/matches/private-match',
+        headers: { 'x-deckdrive-player-id': viewer },
+      });
+      expect(response.status).toBe(200);
+      const body = response.body as {
+        initialState: Record<string, unknown>;
+        finalState: Record<string, unknown>;
+      };
+      for (const state of [body.initialState, body.finalState]) {
+        const serialized = JSON.stringify(state);
+        expect(serialized).not.toContain('secret-seed');
+        expect(serialized).not.toContain('rngState');
+        expect(serialized).not.toContain('private-commitment');
+        expect(serialized).not.toContain(viewer === first ? 'private-1-' : 'private-0-');
+        const players = state.players as {
+          id: string;
+          hand: Record<string, unknown>[];
+          drawPile: Record<string, unknown>[];
+        }[];
+        const opponent = players.find((player) => player.id !== viewer)!;
+        expect(opponent.hand).toEqual([{ visibility: 'ownerOnly' }]);
+        expect(opponent.drawPile).toEqual([{ visibility: 'ownerOnly' }]);
+        expect(players.find((player) => player.id === viewer)?.hand[0]).toHaveProperty('id');
+      }
+      const pending = body.finalState.pendingCardChoice as Record<string, unknown>;
+      if (viewer === first) expect(pending.candidateIds).toEqual(['private-0-1']);
+      else expect(pending).toEqual({ ownerPlayerId: first, choiceKind: 'CARD' });
+    }
+  });
   it.each(['production', 'development'])(
     'expires logout cookies with an accepted policy in %s',
     async (NODE_ENV) => {

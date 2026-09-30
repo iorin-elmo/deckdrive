@@ -137,6 +137,9 @@ const resources = {
     battleField: 'BATTLE FIELD',
     battleFieldDescription:
       'Server state is displayed here. Player action controls arrive with the multiplayer battle protocol.',
+    chantQueue: 'Chant queue',
+    chantRemaining: '{count} remaining',
+    alchemyProgress: 'Alchemy stage {stage}/3 · {count} syntheses',
     hand: 'Hand',
     cardsCount: '{count} cards',
     noCardsInHand: 'No cards in hand',
@@ -379,6 +382,9 @@ const resources = {
     battleField: '戦場',
     battleFieldDescription:
       'ここにはサーバーの状態を表示します。プレイヤー操作はマルチプレイヤー対戦プロトコルとともに提供されます。',
+    chantQueue: '詠唱キュー',
+    chantRemaining: '残り{count}',
+    alchemyProgress: '錬成段階 {stage}/3・合成{count}回',
     hand: '手札',
     cardsCount: '{count}枚',
     noCardsInHand: '手札にカードがありません',
@@ -776,8 +782,16 @@ export function localizePurchaseFrequencyPeriod(period: string, locale: Locale):
 }
 
 const battlePhases = {
-  en: { PLAYER_TURN: 'Player turn', MATCH_END: 'Match end' },
-  ja: { PLAYER_TURN: 'プレイヤーのターン', MATCH_END: '対戦終了' },
+  en: {
+    PLAYER_TURN: 'Player turn',
+    PENDING_CARD_CHOICE: 'Waiting for card choice',
+    MATCH_END: 'Match end',
+  },
+  ja: {
+    PLAYER_TURN: 'プレイヤーのターン',
+    PENDING_CARD_CHOICE: 'カード選択待ち',
+    MATCH_END: '対戦終了',
+  },
 } as const;
 
 export function localizeBattlePhase(phase: string, locale: Locale): string {

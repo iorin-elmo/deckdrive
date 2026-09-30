@@ -133,7 +133,7 @@ export class MatchSession {
     this.events = [...(options.history?.events ?? options.state.events)];
     this.actions.push(...(options.history?.actions ?? []));
     this.snapshots = options.history?.snapshots?.length
-      ? [...options.history.snapshots]
+      ? [options.history.snapshots.at(-1)!]
       : [{ actionIndex: 0, eventSequence: lastEventSequence(this.events), state: options.state }];
     this.turnStartedAt = options.history?.turnStartedAt ?? this.now();
     for (const player of options.state.players) this.disconnectedAt.set(player.id, this.now());
@@ -144,6 +144,9 @@ export class MatchSession {
       if (request.timeoutStreak !== undefined)
         this.timeoutStreaks.set(request.playerId, request.timeoutStreak);
     }
+    this.timeoutPenaltyPending = [...this.timeoutStreaks.values()].some(
+      (streak) => streak >= pvpTimeoutPenaltyThreshold,
+    );
   }
 
   get matchId(): string {
@@ -263,6 +266,9 @@ export class MatchSession {
       return Promise.resolve([pong]);
     }
     if (message.type === 'RESYNC') return Promise.resolve(this.resync(playerId, message));
+    const cached = this.requests.get(requestKey('CLIENT', playerId, message.requestId));
+    if (cached?.messages !== undefined) return Promise.resolve(cached.messages);
+    if (cached?.pending !== undefined) return cached.pending;
     if (this.abandoned || this.abandonRequested)
       return Promise.resolve([this.error('MATCH_ABANDONED', 'This match is no longer active.')]);
     if (!this.isActive)
@@ -403,7 +409,10 @@ export class MatchSession {
     this.state = nextState;
     this.actions.push(message.action);
     this.events.push(...result.events);
-    if (snapshot !== undefined) this.snapshots.push(snapshot);
+    if (snapshot !== undefined) {
+      this.snapshots.length = 0;
+      this.snapshots.push(snapshot);
+    }
     if (source === 'TIMEOUT') this.timeoutStreaks.set(playerId, timeoutStreak);
     else this.timeoutStreaks.set(playerId, 0);
     if (source === 'TIMEOUT' && timeoutStreak >= pvpTimeoutPenaltyThreshold) {
@@ -509,6 +518,11 @@ export class MatchSession {
     this.actionQueue = this.actionQueue
       .then(async () => {
         if (this.abandoned) return;
+        if (!this.isActive) {
+          this.abandonRequested = false;
+          this.timeoutPenaltyPending = false;
+          return;
+        }
         this.abandoning = true;
         await this.onAbandoned?.(this.matchId);
         this.abandoning = false;

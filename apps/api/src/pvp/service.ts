@@ -63,6 +63,8 @@ export class PvpMatchService {
     this.persistence = new PrismaPvpMatchPersistence(prisma);
     this.lobby = new PvpLobby({
       createState: ({ matchId, players }) => createState(matchId, players),
+      canPair: (candidate, incoming) =>
+        candidate.deck.cardDataVersion === incoming.deck.cardDataVersion,
       createSession: ({ players }) => ({
         definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
       }),
@@ -251,7 +253,11 @@ export class PvpMatchService {
         snapshots: { orderBy: { actionIndex: 'asc' } },
       },
     });
-    if (match === null || match.status !== 'IN_PROGRESS' || match.players.length !== 2)
+    if (
+      match === null ||
+      (match.status !== 'IN_PROGRESS' && match.status !== 'COMPLETED') ||
+      match.players.length !== 2
+    )
       return undefined;
     const definitions = definitionsFromDeckSnapshots(match.players);
     const initialState = match.initialState as unknown as BattleState;
@@ -277,14 +283,20 @@ export class PvpMatchService {
         },
       ];
     });
-    const snapshots: MatchSnapshot[] = match.snapshots.map((snapshot) => ({
-      actionIndex: snapshot.actionIndex,
-      eventSequence: snapshot.eventSequence,
-      state: {
-        ...(snapshot.state as object),
-        events: events.filter((event) => event.sequence <= snapshot.eventSequence),
-      } as unknown as BattleState,
-    }));
+    const snapshots: MatchSnapshot[] = match.snapshots.flatMap((snapshot) =>
+      snapshot.actionIndex === null
+        ? []
+        : [
+            {
+              actionIndex: snapshot.actionIndex,
+              eventSequence: snapshot.eventSequence,
+              state: {
+                ...(snapshot.state as object),
+                events: events.filter((event) => event.sequence <= snapshot.eventSequence),
+              } as unknown as BattleState,
+            },
+          ],
+    );
     const turnStartedAt =
       [...match.actions]
         .reverse()
@@ -293,7 +305,7 @@ export class PvpMatchService {
             isRecord(entry.action) && (entry.action as Record<string, unknown>).type === 'END_TURN',
         )?.createdAt ?? match.createdAt;
     const session = new MatchSession({
-      state: replay.replay.finalState,
+      state: (match.finalState as unknown as BattleState | null) ?? replay.replay.finalState,
       initialState,
       definitions,
       history: {

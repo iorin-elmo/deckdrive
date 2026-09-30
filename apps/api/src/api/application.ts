@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { createInitialBattleState, type BattleState } from '@deck-drive/game-engine';
+import {
+  createInitialBattleState,
+  projectBattleStateV2,
+  type BattleState,
+  type BattleStateV2,
+} from '@deck-drive/game-engine';
 import { projectBattleState } from '../pvp/protocol.js';
 import type { CardDefinition, CardInstance, MatchId, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
@@ -647,21 +652,31 @@ export class ApiApplication {
       },
     });
     if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
-    if (match.players.length === 1) {
+    if (match.players === undefined || match.players.length === 1) {
       return {
         status: 200,
         body: {
-          id: match.id,
-          status: match.status,
-          createdAt: match.createdAt,
-          initialState: match.initialState,
-          finalState: match.finalState,
+          ...match,
+          initialState: projectStoredBattleState(match.initialState, playerId),
+          finalState:
+            match.finalState === null ? null : projectStoredBattleState(match.finalState, playerId),
         },
       };
     }
     const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
     const liveState = liveSession?.currentState;
     const state = liveState ?? match.finalState ?? match.initialState;
+    if (match.status === 'ABANDONED') {
+      return {
+        status: 200,
+        body: {
+          id: match.id,
+          status: match.status,
+          createdAt: match.createdAt,
+          state: undefined,
+        },
+      };
+    }
     return {
       status: 200,
       body: {
@@ -852,6 +867,26 @@ export class ApiApplication {
       return { status: 503, body: { error: 'PVP_UNAVAILABLE' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };
   }
+}
+
+function projectStoredBattleState(value: Prisma.JsonValue, viewerId: string): unknown {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    value.battleProtocolVersion === 2
+  ) {
+    return projectBattleStateV2(value as unknown as BattleStateV2, viewerId as PlayerId);
+  }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Array.isArray(value.players)
+  ) {
+    return projectBattleState(value as unknown as BattleState, viewerId as PlayerId);
+  }
+  return value;
 }
 
 class UnauthorizedError extends Error {}

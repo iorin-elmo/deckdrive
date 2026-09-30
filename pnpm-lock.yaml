@@ -115,6 +115,9 @@ importers:
       '@eslint/js':
         specifier: ^9.17.0
         version: 9.39.5
+      '@prisma/adapter-pg':
+        specifier: 7.10.0
+        version: 7.10.0
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.1
@@ -237,6 +240,15 @@ importers:
   packages/logger: {}
 
   packages/pack-engine: {}
+
+  packages/presentation:
+    dependencies:
+      '@deck-drive/card-definitions':
+        specifier: workspace:*
+        version: link:../card-definitions
+      '@deck-drive/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
 
   packages/shared: {}
 

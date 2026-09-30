@@ -69,6 +69,19 @@ export interface PackOpening {
   readonly exchangePoints: number;
 }
 
+export interface VisibleBattleHandCard {
+  readonly id: string;
+  readonly definitionId: string;
+  readonly definitionVersion?: string;
+  readonly visibility?: 'ownerOnly' | 'allPlayers';
+}
+
+export interface HiddenBattleHandCard {
+  readonly visibility: 'ownerOnly';
+}
+
+export type BattleHandCard = VisibleBattleHandCard | HiddenBattleHandCard;
+
 export interface BattlePlayer {
   readonly id: string;
   readonly hp: number;
@@ -76,8 +89,10 @@ export interface BattlePlayer {
   readonly energy: number;
   readonly maxEnergy: number;
   readonly block: number;
-  readonly hand: readonly { readonly id: string; readonly definitionId: string }[];
+  readonly hand: readonly BattleHandCard[];
   readonly statuses: readonly { readonly id: string; readonly stacks: number }[];
+  readonly synthesisCount?: number;
+  readonly alchemyStage?: 0 | 1 | 2 | 3;
 }
 
 export interface BattleState {
@@ -86,6 +101,13 @@ export interface BattleState {
   readonly turn: number;
   readonly phase: string;
   readonly players: readonly BattlePlayer[];
+  readonly chantQueue?: readonly {
+    readonly chantEntryId: string;
+    readonly ownerPlayerId: string;
+    readonly sourceDefinitionId: string;
+    readonly sourceDefinitionVersion?: string;
+    readonly remaining: number;
+  }[];
 }
 
 export interface CpuMatch {
@@ -529,6 +551,7 @@ function previewBattle(matchId: string): BattleState {
         hand: previewCards.map((card, index) => ({
           id: `preview-hand-${String(index)}`,
           definitionId: card.definition.id,
+          definitionVersion: card.definition.version,
         })),
         statuses: [],
       },

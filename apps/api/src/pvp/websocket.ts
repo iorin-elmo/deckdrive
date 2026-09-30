@@ -235,6 +235,10 @@ class PvpWebSocketConnection {
         return;
       }
       if (frame.opcode === 0x9) {
+        if (!this.allowControlMessage()) {
+          this.close(1008, 'Too many control messages.');
+          return;
+        }
         this.sendFrame(0xa, frame.payload);
         continue;
       }

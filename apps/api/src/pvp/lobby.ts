@@ -24,6 +24,7 @@ export interface PvpLobbyOptions<TDeck> {
   readonly now?: () => number;
   readonly statusRetentionMs?: number;
   readonly maxOpenInvitesPerPlayer?: number;
+  readonly canPair?: (candidate: LobbyPlayer<TDeck>, incoming: LobbyPlayer<TDeck>) => boolean;
 }
 
 export interface RestoredPvpMatch {
@@ -112,7 +113,10 @@ export class PvpLobby<TDeck> {
           .queueId,
       };
     const opponentIndex = this.casualQueue.findIndex(
-      (entry) => entry.player.playerId !== player.playerId && !entry.reserved,
+      (entry) =>
+        entry.player.playerId !== player.playerId &&
+        !entry.reserved &&
+        (this.options.canPair?.(entry.player, player) ?? true),
     );
     if (opponentIndex < 0) {
       const queueId = randomUUID();
@@ -166,6 +170,7 @@ export class PvpLobby<TDeck> {
     session: MatchSession;
     players: readonly [LobbyPlayer<TDeck>, LobbyPlayer<TDeck>];
   } {
+    this.pruneStatuses();
     const normalizedCode = inviteCode.trim().toUpperCase();
     const invite = this.invites.get(normalizedCode);
     if (invite === undefined || invite.reserved) throw new Error('PRIVATE_INVITE_NOT_FOUND');
@@ -273,7 +278,12 @@ export class PvpLobby<TDeck> {
   }
 
   restore(session: MatchSession, metadata?: RestoredPvpMatch): void {
-    this.activeSessions.set(session.matchId, session);
+    if (session.isActive) this.activeSessions.set(session.matchId, session);
+    else
+      this.retainedSessions.set(session.matchId, {
+        session,
+        expiresAt: this.now() + (this.options.statusRetentionMs ?? 5 * 60_000),
+      });
     if (metadata?.mode === 'CASUAL' && metadata.queueId !== undefined) {
       this.queueStatuses.set(metadata.queueId, {
         playerIds: [...metadata.playerIds],

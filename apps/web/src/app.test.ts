@@ -1,8 +1,14 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+import { createJSONStorage } from 'zustand/middleware';
 
 import { maximumCardCopies } from '@deck-drive/card-definitions';
 
-import { ApiError, type CardSummary, type Deck, type OwnedCard } from './api.js';
+import { ApiError, type BattleState, type CardSummary, type Deck, type OwnedCard } from './api.js';
 import {
   canOpenOfflinePreview,
   cardDetailHref,
@@ -16,7 +22,104 @@ import {
   loginReturnPath,
   resultTitle,
   selectCardSummary,
+  BattleBoard,
 } from './app.js';
+import { I18nProvider } from './i18n.js';
+import { useLocaleStore } from './locale-store.js';
+import { useSessionStore } from './store.js';
+
+describe('BattleBoard participant identity', () => {
+  it('renders the second seat as you and displays that seat’s hand', async () => {
+    const state: BattleState = {
+      matchId: 'match',
+      cardDataVersion: '1.0.0',
+      turn: 1,
+      phase: 'PLAYER_TURN',
+      players: [
+        {
+          id: 'seat-one',
+          hp: 30,
+          maxHp: 30,
+          energy: 3,
+          maxEnergy: 3,
+          block: 0,
+          hand: [{ id: 'seat-one-card', definitionId: 'sword_strike' }],
+          statuses: [],
+          alchemyStage: 1,
+          synthesisCount: 1,
+        },
+        {
+          id: 'seat-two',
+          hp: 25,
+          maxHp: 30,
+          energy: 2,
+          maxEnergy: 3,
+          block: 1,
+          hand: [{ id: 'seat-two-card', definitionId: 'sword_strike', definitionVersion: '1.1.0' }],
+          statuses: [],
+          alchemyStage: 2,
+          synthesisCount: 3,
+        },
+      ],
+      chantQueue: [
+        {
+          chantEntryId: 'chant-1',
+          ownerPlayerId: 'seat-two',
+          sourceDefinitionId: 'sword_strike',
+          sourceDefinitionVersion: '1.1.0',
+          remaining: 2,
+        },
+      ],
+    };
+    const memoryStorage = createJSONStorage(() => ({
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    }));
+    const originalLocaleStorage = useLocaleStore.persist.getOptions().storage;
+    const originalSessionStorage = useSessionStore.persist.getOptions().storage;
+    useLocaleStore.persist.setOptions({ storage: memoryStorage });
+    useSessionStore.persist.setOptions({ storage: memoryStorage });
+    const originalLocale = useLocaleStore.getState().locale;
+    useLocaleStore.getState().setLocale('en');
+    useSessionStore.getState().setPlayerId('seat-two');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['cards', false], cards);
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      await act(async () =>
+        root.render(
+          createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            createElement(
+              MemoryRouter,
+              null,
+              createElement(I18nProvider, null, createElement(BattleBoard, { state })),
+            ),
+          ),
+        ),
+      );
+      const html = container.innerHTML;
+      expect(html.indexOf('seat-one')).toBeLessThan(html.indexOf('seat-two'));
+      expect(html).toContain('seat-two-card');
+      expect(html).not.toContain('seat-one-card');
+      expect(html.match(/Strike\+/g)).toHaveLength(2);
+      expect(html).not.toContain('>Strike<');
+      expect(container.querySelector('.combatant-player')?.textContent).toContain('seat-two');
+      expect(container.querySelector('.combatant-player')?.textContent).toContain('2/3');
+    } finally {
+      await act(async () => root.unmount());
+      useSessionStore.getState().clearPlayerId();
+      useLocaleStore.getState().setLocale(originalLocale);
+      useLocaleStore.persist.setOptions({ storage: originalLocaleStorage });
+      useSessionStore.persist.setOptions({ storage: originalSessionStorage });
+      delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+    }
+  });
+});
 
 const cards: readonly CardSummary[] = [
   {
