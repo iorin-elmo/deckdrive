@@ -1,0 +1,353 @@
+{
+  "users": [
+    {
+      "email": "debug@deckdrive.local",
+      "displayName": "Debug Player"
+    },
+    {
+      "email": "opponent@deckdrive.local",
+      "displayName": "Sample Opponent"
+    }
+  ],
+  "cards": [
+    {
+      "id": "sword_strike",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_strike",
+        "version": "1.0.0",
+        "name": "Strike",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 6 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 6, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_guard",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_guard",
+        "version": "1.0.0",
+        "name": "Guard",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Gain 5 block.",
+        "effects": [{ "type": "GAIN_BLOCK", "amount": 5, "target": "SELF" }],
+        "keywords": ["block"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_insight",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_insight",
+        "version": "1.0.0",
+        "name": "Insight",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Draw 1 card.",
+        "effects": [{ "type": "DRAW", "amount": 1, "target": "SELF" }],
+        "keywords": ["draw"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "sword_lunge",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_lunge",
+        "version": "1.0.0",
+        "name": "Lunge",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 4 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 4, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "sword_riposte",
+      "version": "1.0.0",
+      "definition": {
+        "id": "sword_riposte",
+        "version": "1.0.0",
+        "name": "Riposte",
+        "class": "SWORD",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 5 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 5, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_bulwark",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_bulwark",
+        "version": "1.0.0",
+        "name": "Bulwark",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Gain 7 block.",
+        "effects": [{ "type": "GAIN_BLOCK", "amount": 7, "target": "SELF" }],
+        "keywords": ["block"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "guardian_mend",
+      "version": "1.0.0",
+      "definition": {
+        "id": "guardian_mend",
+        "version": "1.0.0",
+        "name": "Mend",
+        "class": "GUARDIAN",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Heal 3 health.",
+        "effects": [{ "type": "HEAL", "amount": 3, "target": "SELF" }],
+        "keywords": ["heal"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_focus",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_focus",
+        "version": "1.0.0",
+        "name": "Focus",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 0,
+        "type": "SKILL",
+        "description": "Draw 1 card.",
+        "effects": [{ "type": "DRAW", "amount": 1, "target": "SELF" }],
+        "keywords": ["draw"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_spark",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_spark",
+        "version": "1.0.0",
+        "name": "Spark",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "ATTACK",
+        "description": "Deal 3 damage.",
+        "effects": [{ "type": "DAMAGE", "amount": 3, "target": "ENEMY" }],
+        "keywords": [],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    },
+    {
+      "id": "neutral_recovery",
+      "version": "1.0.0",
+      "definition": {
+        "id": "neutral_recovery",
+        "version": "1.0.0",
+        "name": "Recovery",
+        "class": "NEUTRAL",
+        "rarity": "BASIC",
+        "cost": 1,
+        "type": "SKILL",
+        "description": "Heal 2 health.",
+        "effects": [{ "type": "HEAL", "amount": 2, "target": "SELF" }],
+        "keywords": ["heal"],
+        "artwork": null,
+        "deckLimit": 3
+      }
+    }
+  ],
+  "deck": {
+    "id": "6e05b0c4-09cb-4e71-ae9f-18f1d4a94dfb",
+    "name": "Debug starter",
+    "cardDataVersion": "1.0.0",
+    "cards": [
+      { "cardId": "sword_strike", "version": "1.0.0", "position": 0, "quantity": 3 },
+      { "cardId": "guardian_guard", "version": "1.0.0", "position": 1, "quantity": 3 },
+      { "cardId": "neutral_insight", "version": "1.0.0", "position": 2, "quantity": 3 },
+      { "cardId": "sword_lunge", "version": "1.0.0", "position": 3, "quantity": 3 },
+      { "cardId": "sword_riposte", "version": "1.0.0", "position": 4, "quantity": 3 },
+      { "cardId": "guardian_bulwark", "version": "1.0.0", "position": 5, "quantity": 3 },
+      { "cardId": "guardian_mend", "version": "1.0.0", "position": 6, "quantity": 3 },
+      { "cardId": "neutral_focus", "version": "1.0.0", "position": 7, "quantity": 3 },
+      { "cardId": "neutral_spark", "version": "1.0.0", "position": 8, "quantity": 3 },
+      { "cardId": "neutral_recovery", "version": "1.0.0", "position": 9, "quantity": 3 }
+    ]
+  },
+  "match": {
+    "id": "development-seed-replay",
+    "status": "IN_PROGRESS",
+    "engineVersion": "1.0.0",
+    "rulesVersion": "1.0.0",
+    "cardDataVersion": "1.0.0",
+    "formatVersion": 1,
+    "snapshotInterval": 1,
+    "seed": "development-seed-replay-seed",
+    "initialState": {
+      "matchId": "development-seed-replay",
+      "engineVersion": "1.0.0",
+      "rulesVersion": "1.0.0",
+      "cardDataVersion": "1.0.0",
+      "seed": "development-seed-replay-seed",
+      "turn": 1,
+      "activePlayerId": "debug-player",
+      "phase": "PLAYER_TURN",
+      "initialDrawCount": 0,
+      "turnDrawCount": 1,
+      "stack": [],
+      "events": [],
+      "players": [
+        {
+          "id": "debug-player",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        },
+        {
+          "id": "sample-opponent",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        }
+      ]
+    },
+    "finalState": {
+      "matchId": "development-seed-replay",
+      "engineVersion": "1.0.0",
+      "rulesVersion": "1.0.0",
+      "cardDataVersion": "1.0.0",
+      "seed": "development-seed-replay-seed",
+      "turn": 1,
+      "activePlayerId": "debug-player",
+      "phase": "PLAYER_TURN",
+      "initialDrawCount": 0,
+      "turnDrawCount": 1,
+      "stack": [],
+      "events": [],
+      "players": [
+        {
+          "id": "debug-player",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        },
+        {
+          "id": "sample-opponent",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 3,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [],
+          "hand": [],
+          "discard": [],
+          "statuses": []
+        }
+      ]
+    },
+    "checksum": "fnv1a-32:7d5974d2",
+    "players": [
+      { "email": "debug@deckdrive.local", "seat": 1, "deckSnapshot": { "version": "1.0.0" } },
+      { "email": "opponent@deckdrive.local", "seat": 2, "deckSnapshot": { "version": "1.0.0" } }
+    ],
+    "actions": [],
+    "events": [],
+    "snapshots": [
+      {
+        "actionIndex": 0,
+        "eventSequence": 0,
+        "state": {
+          "matchId": "development-seed-replay",
+          "engineVersion": "1.0.0",
+          "rulesVersion": "1.0.0",
+          "cardDataVersion": "1.0.0",
+          "seed": "development-seed-replay-seed",
+          "turn": 1,
+          "activePlayerId": "debug-player",
+          "phase": "PLAYER_TURN",
+          "initialDrawCount": 0,
+          "turnDrawCount": 1,
+          "stack": [],
+          "players": [
+            {
+              "id": "debug-player",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "statuses": []
+            },
+            {
+              "id": "sample-opponent",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [],
+              "discard": [],
+              "statuses": []
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+# CI
+
+The `Quality` workflow is the Phase 0 pull-request and branch acceptance
+gate. It runs for every pull request and for pushes to `develop` and `main`.
+The workflow has read-only repository permissions and cancels a superseded run
+for the same ref.
+
+## Current required check
+
+Configure `quality` as a required status check for pull requests targeting
+`develop` and `main`. It performs a clean installation using the versions
+fixed by the workspace contract, then runs:
+
+```text
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm format
+pnpm typecheck
+pnpm test
+pnpm db:migrate:deploy
+pnpm db:seed
+pnpm test:integration
+pnpm test:replay
+pnpm build
+```
+
+`pnpm install --frozen-lockfile` validates that the committed lockfile is
+sufficient for a clean checkout. The workflow caches pnpm's store, never
+`node_modules`.
+
+## Copilot review
+
+The `Request Copilot review` workflow requests the review-only account
+`copilot-pull-request-reviewer[bot]` for pull requests. For a fresh review of
+an existing pull request, request that same reviewer through the GitHub review
+API or UI. Do not post `@copilot review` as a pull-request comment: that
+invokes the Copilot SWE agent, which can commit changes to the branch rather
+than providing an independent review.
+
+## Test gates by delivery phase
+
+Only checks that execute a real command and can fail are present in CI. An
+unimplemented test category must not be represented by an always-successful
+workflow job or made a required check.
+
+| Gate | Current state | Owner / enablement condition |
+| --- | --- | --- |
+| Lint | Required in `quality` | F01 baseline is implemented. |
+| Format check | Required in `quality` | F01 baseline is implemented. |
+| Typecheck | Required in `quality` | F01 baseline is implemented. |
+| Unit tests | Required in `quality` | Vitest has a real configuration-validation test from F01. |
+| Build | Required in `quality` | F01 workspace packages provide build commands. |
+| Integration tests | Required in `quality` | D00 applies the committed migration and development seed to the PostgreSQL service, then verifies persisted replay metadata and a database constraint. |
+| Engine replay regression | Required in `quality` | `pnpm test:replay` reproduces the known replay fixture and rejects a deliberately changed golden result. |
+| E2E | Not introduced | Add after the user-facing flows and Playwright suite exist (W00 and later). |
+| Docker image build | Not introduced | Add once app Dockerfiles exist; F02 supplies only PostgreSQL and Mailpit runtime services. |
+
+The product specification requires lint, formatting, typecheck, unit,
+integration, replay, and build checks for pull requests, plus E2E and Docker
+image builds for `main`. The missing gates above remain explicit delivery work;
+they do not pass by omission and must be added before their owning feature is
+accepted for production.
+
+## Local reproduction
+
+Run the same commands from a clean checkout after installing the versions in
+`mise.toml`:
+
+```sh
+mise install
+pnpm install --frozen-lockfile
+node scripts/setup/setup.mjs
+pnpm lint
+pnpm format
+pnpm typecheck
+pnpm test
+pnpm db:migrate:deploy
+pnpm db:seed
+pnpm test:integration
+pnpm test:replay
+pnpm build
+```
+
+F02's Compose runtime is validated separately with `docker compose config` and
+the local setup script. CI does not start PostgreSQL or Mailpit until an
+integration suite requires them.
+
+## Branch protection
+
+After the workflow has completed successfully once, configure branch
+protection for `develop` and `main` to require the `quality` check and an
+independent pull-request review. Do not use an administrative bypass to merge
+changes that have not passed the required check.

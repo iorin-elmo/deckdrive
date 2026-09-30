@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "paths": {
+      "@deck-drive/card-definitions": ["../../packages/card-definitions/src/index.ts"],
+      "@deck-drive/pack-engine": ["../../packages/pack-engine/src/index.ts"],
+      "@deck-drive/ui": ["../../packages/ui/src/index.ts"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

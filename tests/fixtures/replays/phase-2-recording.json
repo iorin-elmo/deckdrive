@@ -1,0 +1,320 @@
+{
+  "matchId": "phase-2-recording",
+  "seed": "phase-2-recording-seed",
+  "engineVersion": "1.0.0",
+  "rulesVersion": "1.0.0",
+  "cardDataVersion": "1.0.0",
+  "initialDrawCount": 1,
+  "turnDrawCount": 1,
+  "players": [
+    {
+      "id": "player-1",
+      "cards": [
+        { "id": "player-1-strike", "definitionId": "strike" },
+        { "id": "player-1-guard", "definitionId": "guard" }
+      ]
+    },
+    {
+      "id": "player-2",
+      "cards": [
+        { "id": "player-2-guard", "definitionId": "guard" },
+        { "id": "player-2-strike", "definitionId": "strike" }
+      ]
+    }
+  ],
+  "actions": [
+    { "type": "PLAY_CARD", "playerId": "player-1", "cardInstanceId": "player-1-strike" },
+    { "type": "END_TURN", "playerId": "player-1" },
+    { "type": "PLAY_CARD", "playerId": "player-2", "cardInstanceId": "player-2-guard" }
+  ],
+  "expectedReplay": {
+    "checksum": "fnv1a-32:7a36d915",
+    "events": [
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "player-1",
+        "cardInstanceId": "player-1-strike",
+        "sequence": 1
+      },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "player-2",
+        "cardInstanceId": "player-2-guard",
+        "sequence": 2
+      },
+      {
+        "type": "CARD_PLAYED",
+        "playerId": "player-1",
+        "cardInstanceId": "player-1-strike",
+        "sequence": 3
+      },
+      { "type": "EFFECT_STARTED", "effectId": "player-1-strike:1", "sequence": 4 },
+      {
+        "type": "DAMAGE_DEALT",
+        "sourceId": "player-1",
+        "targetId": "player-2",
+        "amount": 6,
+        "sequence": 5
+      },
+      { "type": "ENTITY_DAMAGED", "targetId": "player-2", "amount": 6, "sequence": 6 },
+      {
+        "type": "CARD_DISCARDED",
+        "playerId": "player-1",
+        "cardInstanceId": "player-1-strike",
+        "sequence": 7
+      },
+      { "type": "TURN_ENDED", "playerId": "player-1", "sequence": 8 },
+      {
+        "type": "CARD_DRAWN",
+        "playerId": "player-2",
+        "cardInstanceId": "player-2-strike",
+        "sequence": 9
+      },
+      { "type": "TURN_STARTED", "playerId": "player-2", "sequence": 10 },
+      {
+        "type": "CARD_PLAYED",
+        "playerId": "player-2",
+        "cardInstanceId": "player-2-guard",
+        "sequence": 11
+      },
+      { "type": "EFFECT_STARTED", "effectId": "player-2-guard:1", "sequence": 12 },
+      { "type": "BLOCK_GAINED", "targetId": "player-2", "amount": 5, "sequence": 13 },
+      {
+        "type": "CARD_DISCARDED",
+        "playerId": "player-2",
+        "cardInstanceId": "player-2-guard",
+        "sequence": 14
+      }
+    ],
+    "snapshots": [
+      {
+        "actionIndex": 0,
+        "eventSequence": 2,
+        "state": {
+          "matchId": "phase-2-recording",
+          "engineVersion": "1.0.0",
+          "rulesVersion": "1.0.0",
+          "cardDataVersion": "1.0.0",
+          "seed": "phase-2-recording-seed",
+          "turn": 1,
+          "activePlayerId": "player-1",
+          "phase": "PLAYER_TURN",
+          "initialDrawCount": 1,
+          "turnDrawCount": 1,
+          "stack": [],
+          "players": [
+            {
+              "id": "player-1",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [{ "id": "player-1-guard", "definitionId": "guard" }],
+              "hand": [{ "id": "player-1-strike", "definitionId": "strike" }],
+              "discard": [],
+              "statuses": []
+            },
+            {
+              "id": "player-2",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [{ "id": "player-2-strike", "definitionId": "strike" }],
+              "hand": [{ "id": "player-2-guard", "definitionId": "guard" }],
+              "discard": [],
+              "statuses": []
+            }
+          ]
+        }
+      },
+      {
+        "actionIndex": 2,
+        "eventSequence": 10,
+        "state": {
+          "matchId": "phase-2-recording",
+          "engineVersion": "1.0.0",
+          "rulesVersion": "1.0.0",
+          "cardDataVersion": "1.0.0",
+          "seed": "phase-2-recording-seed",
+          "turn": 1,
+          "activePlayerId": "player-2",
+          "phase": "PLAYER_TURN",
+          "initialDrawCount": 1,
+          "turnDrawCount": 1,
+          "stack": [],
+          "players": [
+            {
+              "id": "player-1",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [{ "id": "player-1-guard", "definitionId": "guard" }],
+              "hand": [],
+              "discard": [{ "id": "player-1-strike", "definitionId": "strike" }],
+              "statuses": []
+            },
+            {
+              "id": "player-2",
+              "hp": 24,
+              "maxHp": 30,
+              "energy": 3,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [],
+              "hand": [
+                { "id": "player-2-guard", "definitionId": "guard" },
+                { "id": "player-2-strike", "definitionId": "strike" }
+              ],
+              "discard": [],
+              "statuses": []
+            }
+          ]
+        }
+      },
+      {
+        "actionIndex": 3,
+        "eventSequence": 14,
+        "state": {
+          "matchId": "phase-2-recording",
+          "engineVersion": "1.0.0",
+          "rulesVersion": "1.0.0",
+          "cardDataVersion": "1.0.0",
+          "seed": "phase-2-recording-seed",
+          "turn": 1,
+          "activePlayerId": "player-2",
+          "phase": "PLAYER_TURN",
+          "initialDrawCount": 1,
+          "turnDrawCount": 1,
+          "stack": [],
+          "players": [
+            {
+              "id": "player-1",
+              "hp": 30,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 0,
+              "drawPile": [{ "id": "player-1-guard", "definitionId": "guard" }],
+              "hand": [],
+              "discard": [{ "id": "player-1-strike", "definitionId": "strike" }],
+              "statuses": []
+            },
+            {
+              "id": "player-2",
+              "hp": 24,
+              "maxHp": 30,
+              "energy": 2,
+              "maxEnergy": 3,
+              "block": 5,
+              "drawPile": [],
+              "hand": [{ "id": "player-2-strike", "definitionId": "strike" }],
+              "discard": [{ "id": "player-2-guard", "definitionId": "guard" }],
+              "statuses": []
+            }
+          ]
+        }
+      }
+    ],
+    "finalState": {
+      "matchId": "phase-2-recording",
+      "engineVersion": "1.0.0",
+      "rulesVersion": "1.0.0",
+      "cardDataVersion": "1.0.0",
+      "seed": "phase-2-recording-seed",
+      "turn": 1,
+      "activePlayerId": "player-2",
+      "phase": "PLAYER_TURN",
+      "initialDrawCount": 1,
+      "turnDrawCount": 1,
+      "stack": [],
+      "events": [
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "player-1",
+          "cardInstanceId": "player-1-strike",
+          "sequence": 1
+        },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "player-2",
+          "cardInstanceId": "player-2-guard",
+          "sequence": 2
+        },
+        {
+          "type": "CARD_PLAYED",
+          "playerId": "player-1",
+          "cardInstanceId": "player-1-strike",
+          "sequence": 3
+        },
+        { "type": "EFFECT_STARTED", "effectId": "player-1-strike:1", "sequence": 4 },
+        {
+          "type": "DAMAGE_DEALT",
+          "sourceId": "player-1",
+          "targetId": "player-2",
+          "amount": 6,
+          "sequence": 5
+        },
+        { "type": "ENTITY_DAMAGED", "targetId": "player-2", "amount": 6, "sequence": 6 },
+        {
+          "type": "CARD_DISCARDED",
+          "playerId": "player-1",
+          "cardInstanceId": "player-1-strike",
+          "sequence": 7
+        },
+        { "type": "TURN_ENDED", "playerId": "player-1", "sequence": 8 },
+        {
+          "type": "CARD_DRAWN",
+          "playerId": "player-2",
+          "cardInstanceId": "player-2-strike",
+          "sequence": 9
+        },
+        { "type": "TURN_STARTED", "playerId": "player-2", "sequence": 10 },
+        {
+          "type": "CARD_PLAYED",
+          "playerId": "player-2",
+          "cardInstanceId": "player-2-guard",
+          "sequence": 11
+        },
+        { "type": "EFFECT_STARTED", "effectId": "player-2-guard:1", "sequence": 12 },
+        { "type": "BLOCK_GAINED", "targetId": "player-2", "amount": 5, "sequence": 13 },
+        {
+          "type": "CARD_DISCARDED",
+          "playerId": "player-2",
+          "cardInstanceId": "player-2-guard",
+          "sequence": 14
+        }
+      ],
+      "players": [
+        {
+          "id": "player-1",
+          "hp": 30,
+          "maxHp": 30,
+          "energy": 2,
+          "maxEnergy": 3,
+          "block": 0,
+          "drawPile": [{ "id": "player-1-guard", "definitionId": "guard" }],
+          "hand": [],
+          "discard": [{ "id": "player-1-strike", "definitionId": "strike" }],
+          "statuses": []
+        },
+        {
+          "id": "player-2",
+          "hp": 24,
+          "maxHp": 30,
+          "energy": 2,
+          "maxEnergy": 3,
+          "block": 5,
+          "drawPile": [],
+          "hand": [{ "id": "player-2-strike", "definitionId": "strike" }],
+          "discard": [{ "id": "player-2-guard", "definitionId": "guard" }],
+          "statuses": []
+        }
+      ]
+    }
+  }
+}

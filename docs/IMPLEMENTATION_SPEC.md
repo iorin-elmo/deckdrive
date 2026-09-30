@@ -379,18 +379,23 @@ Game Engineは純粋なdomain packageとする。
 ```ts
 validateAction(
   state: BattleState,
-  action: GameAction
+  action: GameAction,
+  definitions?: CardDefinitionSource
 ): ValidationResult;
 
 applyAction(
   state: BattleState,
-  action: GameAction
+  action: GameAction,
+  definitions?: CardDefinitionSource
 ): EngineResult;
 
 calculateResult(
   state: BattleState
 ): BattleResult;
 ```
+
+`PLAY_CARD` には、そのmatchで固定された `CardDefinitionSource` を渡す。`END_TURN` では
+`definitions` 引数は不要である。
 
 可能な限りpure functionとする。
 
@@ -412,6 +417,8 @@ type BattleState = {
   turn: number;
   activePlayerId: PlayerId;
   phase: BattlePhase;
+  initialDrawCount: number;
+  turnDrawCount: number;
 
   players: BattlePlayerState[];
 
@@ -420,6 +427,8 @@ type BattleState = {
   events: GameEvent[];
 };
 ```
+
+`initialDrawCount` は各プレイヤーの初期手札に、`turnDrawCount` は各ターン開始時に適用する。
 
 Player:
 
@@ -491,6 +500,14 @@ MATCH_END
 状態遷移をコード上で明示する。
 
 ---
+
+### E03 atomic public contract
+
+E03 exposes only stable phases: `PLAYER_TURN` and `MATCH_END`. A submitted
+`PLAY_CARD` resolves `ACTION`, `RESOLVE`, and `CHECK_WIN` atomically before the
+next state is returned. `END_TURN` resolves `NEXT_TURN` atomically. The expanded
+diagram above is the internal resolution sequence, not a set of observable
+`BattleState.phase` values.
 
 # 11. Game Action
 
@@ -2069,7 +2086,8 @@ then
 
 ```ts
 it("deals 5 damage", () => {
-  const result = applyAction(state, action);
+  const definitions = [{ id: "strike", cost: 1, effects: [{ type: "DAMAGE", amount: 5, target: "ENEMY" }] }];
+  const result = applyAction(state, action, definitions);
 
   expect(result.state.players[1].hp).toBe(25);
 });

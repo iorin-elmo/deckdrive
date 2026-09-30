@@ -1,0 +1,30 @@
+{
+  "matchId": "phase-1-invariants",
+  "seed": "phase-1-invariants-seed",
+  "initialDrawCount": 2,
+  "turnDrawCount": 1,
+  "players": [
+    {
+      "id": "player-1",
+      "cards": [
+        { "id": "player-1-strike-1", "definitionId": "strike" },
+        { "id": "player-1-strike-2", "definitionId": "strike" },
+        { "id": "player-1-strike-3", "definitionId": "strike" },
+        { "id": "player-1-guard-1", "definitionId": "guard" },
+        { "id": "player-1-guard-2", "definitionId": "guard" },
+        { "id": "player-1-guard-3", "definitionId": "guard" }
+      ]
+    },
+    {
+      "id": "player-2",
+      "cards": [
+        { "id": "player-2-strike-1", "definitionId": "strike" },
+        { "id": "player-2-strike-2", "definitionId": "strike" },
+        { "id": "player-2-strike-3", "definitionId": "strike" },
+        { "id": "player-2-guard-1", "definitionId": "guard" },
+        { "id": "player-2-guard-2", "definitionId": "guard" },
+        { "id": "player-2-guard-3", "definitionId": "guard" }
+      ]
+    }
+  ]
+}

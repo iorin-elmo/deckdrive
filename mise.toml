@@ -1,0 +1,6 @@
+[tools]
+node = "26.8.2"
+pnpm = "12.3.4"
+terraform = "1.16.1"
+pipx = { version = "1.17.2", os = ["linux"] }
+ansible = { version = "14.4.0", os = ["linux"], depends = ["pipx"] }
