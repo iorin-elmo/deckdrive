@@ -253,6 +253,7 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
         onlyKeys(action, ['inputSequence', 'payload']) &&
         isNonNegativeSafeInteger(action.inputSequence) &&
         action.inputSequence > 0 &&
+        action.inputSequence <= view.finalState.lastInputSequence &&
         (index === 0 || action.inputSequence > view.actions[index - 1]!.inputSequence) &&
         isRecord(action.payload) &&
         validProjectedAction(action.payload, view.viewerPlayerId),
