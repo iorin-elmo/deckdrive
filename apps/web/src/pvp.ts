@@ -25,48 +25,122 @@ export interface PvpSocketLike {
 export interface PvpSocketHandlers {
   readonly onMessage: (message: PvpServerMessage) => void;
   readonly onMalformedMessage?: () => void;
+  readonly onStatus?: (status: 'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'CLOSED') => void;
 }
 
 export interface PvpSocketClientOptions {
   readonly baseUrl?: string;
   readonly socketFactory?: (url: string) => PvpSocketLike;
+  readonly reconnectDelayMs?: number;
 }
 
 /** Browser transport only: it sends intent and renders server messages. */
 export class PvpSocketClient {
-  readonly socket: PvpSocketLike;
+  private currentSocket: PvpSocketLike;
   private nextRequest = 0;
   private readonly clientId = randomClientId();
+  private readonly socketFactory: (url: string) => PvpSocketLike;
+  private readonly url: string;
+  private readonly reconnectDelayMs: number;
+  private readonly handlers: PvpSocketHandlers;
+  private readonly outbound: string[] = [];
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private reconnectAttempt = 0;
+  private closed = false;
+  private lastEventSequence = 0;
 
   constructor(matchId: string, handlers: PvpSocketHandlers, options: PvpSocketClientOptions = {}) {
-    const factory =
+    this.socketFactory =
       options.socketFactory ?? ((url: string) => new WebSocket(url) as unknown as PvpSocketLike);
-    this.socket = factory(webSocketUrl(options.baseUrl, matchId));
-    this.socket.onmessage = (event) => {
+    this.url = webSocketUrl(options.baseUrl, matchId);
+    this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
+    this.handlers = handlers;
+    this.currentSocket = this.socketFactory(this.url);
+    this.bindSocket(this.currentSocket, false);
+  }
+
+  get socket(): PvpSocketLike {
+    return this.currentSocket;
+  }
+
+  private bindSocket(socket: PvpSocketLike, reconnecting: boolean): void {
+    this.handlers.onStatus?.(reconnecting ? 'RECONNECTING' : 'CONNECTING');
+    socket.onopen = () => {
+      this.reconnectAttempt = 0;
+      this.handlers.onStatus?.('OPEN');
+      this.sendRaw({ type: 'RESYNC', afterEventSequence: this.lastEventSequence });
+      while (this.outbound.length > 0) this.sendRaw(this.outbound.shift()!);
+    };
+    socket.onmessage = (event) => {
       const message = parseServerMessage(event.data);
       if (message === null) {
-        handlers.onMalformedMessage?.();
+        this.handlers.onMalformedMessage?.();
         return;
       }
-      handlers.onMessage(message);
+      if (message.type === 'STATE' && typeof message.eventSequence === 'number')
+        this.lastEventSequence = Math.max(this.lastEventSequence, message.eventSequence);
+      if (message.type === 'EVENT' && typeof message.sequence === 'number')
+        this.lastEventSequence = Math.max(this.lastEventSequence, message.sequence);
+      this.handlers.onMessage(message);
     };
+    socket.onclose = () => {
+      if (this.closed) {
+        this.handlers.onStatus?.('CLOSED');
+        return;
+      }
+      this.scheduleReconnect();
+    };
+    socket.onerror = () => this.scheduleReconnect();
   }
 
   sendAction(action: PvpAction, sequence: number, requestId = this.requestId()): string {
-    this.socket.send(JSON.stringify({ type: 'ACTION', requestId, sequence, action }));
+    this.sendRaw(JSON.stringify({ type: 'ACTION', requestId, sequence, action }));
     return requestId;
   }
 
   resync(afterEventSequence: number): void {
-    this.socket.send(JSON.stringify({ type: 'RESYNC', afterEventSequence }));
+    this.lastEventSequence = Math.max(this.lastEventSequence, afterEventSequence);
+    this.sendRaw(JSON.stringify({ type: 'RESYNC', afterEventSequence }));
   }
 
   ping(): void {
-    this.socket.send(JSON.stringify({ type: 'PING', requestId: this.requestId() }));
+    this.sendRaw(JSON.stringify({ type: 'PING', requestId: this.requestId() }));
   }
 
   close(): void {
-    this.socket.close();
+    this.closed = true;
+    if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
+    this.currentSocket.close();
+  }
+
+  private sendRaw(
+    data: string | { readonly type: 'RESYNC'; readonly afterEventSequence: number },
+  ): void {
+    const payload = typeof data === 'string' ? data : JSON.stringify(data);
+    const readyState = (this.currentSocket as PvpSocketLike & { readonly readyState?: number })
+      .readyState;
+    if (readyState === undefined || readyState === 1) {
+      try {
+        this.currentSocket.send(payload);
+        return;
+      } catch {
+        // Queue the intent and let the reconnect path deliver it.
+      }
+    }
+    this.outbound.push(payload);
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closed || this.reconnectTimer !== undefined) return;
+    this.handlers.onStatus?.('RECONNECTING');
+    const delay = this.reconnectDelayMs * Math.min(8, 2 ** this.reconnectAttempt);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      if (this.closed) return;
+      this.currentSocket = this.socketFactory(this.url);
+      this.bindSocket(this.currentSocket, true);
+    }, delay);
   }
 
   private requestId(): string {

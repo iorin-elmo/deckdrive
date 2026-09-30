@@ -163,6 +163,7 @@ describe('MatchSession', () => {
     };
     session.connect(oldClient);
     session.connect(newClient);
+    session.connect({ playerId: 'player-2' as PlayerId, send: vi.fn() });
     session.disconnect(oldClient);
     await session.receive('player-1' as PlayerId, {
       type: 'ACTION',

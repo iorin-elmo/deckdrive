@@ -51,6 +51,7 @@ import {
   type OwnedCard,
   type PackOpening,
 } from './api.js';
+import { PvpSocketClient, type PvpServerMessage } from './pvp.js';
 import { useSessionStore } from './store.js';
 import {
   I18nProvider,
@@ -93,6 +94,7 @@ export function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/battle/cpu" element={<CpuSetupPage />} />
           <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
+          <Route path="/battle/pvp/:matchId" element={<PvpBattlePage />} />
           <Route path="/result/:matchId" element={<ResultPage />} />
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
@@ -1453,6 +1455,137 @@ function CpuBattlePage() {
       state={state}
       {...(started?.difficulty === undefined ? {} : { difficulty: started.difficulty })}
     />
+  );
+}
+
+function PvpBattlePage() {
+  const { matchId = '' } = useParams();
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const [stateMessage, setStateMessage] = useState<Extract<PvpServerMessage, { type: 'STATE' }>>();
+  const [connectionStatus, setConnectionStatus] = useState<
+    'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'CLOSED'
+  >('CONNECTING');
+  const [error, setError] = useState<string>();
+  const clientRef = useRef<PvpSocketClient | undefined>(undefined);
+
+  useEffect(() => {
+    const client = new PvpSocketClient(matchId, {
+      onStatus: setConnectionStatus,
+      onMessage: (message) => {
+        if (message.type === 'STATE') setStateMessage(message);
+        if (message.type === 'ERROR') setError(String(message.code ?? 'UNKNOWN_ERROR'));
+      },
+    });
+    clientRef.current = client;
+    return () => {
+      client.close();
+      clientRef.current = undefined;
+    };
+  }, [matchId]);
+
+  const state = stateMessage?.state as PvpProjectedState | undefined;
+  const players = state?.players ?? [];
+  const viewer = players.find((player) => player?.id === playerId);
+  const opponent = players.find((player) => player?.id !== playerId);
+  const activePlayerId =
+    typeof stateMessage?.activePlayerId === 'string' ? stateMessage.activePlayerId : undefined;
+  const eventSequence =
+    typeof stateMessage?.eventSequence === 'number' ? stateMessage.eventSequence : 0;
+  const actionSequence =
+    typeof stateMessage?.actionSequence === 'number' ? stateMessage.actionSequence : 0;
+  const endTurn = () => {
+    if (stateMessage === undefined || activePlayerId !== playerId) return;
+    clientRef.current?.sendAction({ type: 'END_TURN', playerId }, actionSequence);
+  };
+
+  if (stateMessage === undefined)
+    return (
+      <>
+        <PageHeading eyebrow="PvP" title="Connecting to the arena" description={connectionStatus} />
+        {error === undefined ? (
+          <LoadingNotice title="Loading battle state" />
+        ) : (
+          <AsyncNotice kind="error" title="PvP connection error">
+            {error}
+          </AsyncNotice>
+        )}
+      </>
+    );
+
+  return (
+    <>
+      <PageHeading
+        eyebrow={`PvP · ${connectionStatus}`}
+        title="PvP arena"
+        description={`Turn ${String(stateMessage.turn)} · ${stateMessage.phase}`}
+      />
+      <section className="battle-board mt-7" aria-label="PvP battle state">
+        <PvpCombatant label="Opponent" player={opponent} tone="enemy" />
+        <div className="battle-field">
+          <p className="eyebrow">Server-authoritative battle</p>
+          <div className="battle-ring" aria-hidden="true" />
+          <p className="mt-4 text-center text-sm text-stone-300">
+            Snapshot and event cursors: {String(eventSequence)}
+          </p>
+        </div>
+        <PvpCombatant label="You" player={viewer} tone="player" />
+      </section>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <ActionButton type="button" onClick={endTurn} disabled={activePlayerId !== playerId}>
+          End turn
+        </ActionButton>
+        <button
+          className="hero-secondary"
+          type="button"
+          onClick={() => clientRef.current?.resync(eventSequence)}
+        >
+          Resync
+        </button>
+      </div>
+      {error === undefined ? null : (
+        <AsyncNotice kind="error" title="PvP error">
+          {error}
+        </AsyncNotice>
+      )}
+    </>
+  );
+}
+
+type PvpProjectedPlayer = {
+  readonly id: string;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly block: number;
+  readonly energy: number;
+  readonly maxEnergy: number;
+  readonly hand: readonly unknown[];
+};
+
+type PvpProjectedState = { readonly players: readonly PvpProjectedPlayer[] };
+
+function PvpCombatant({
+  label,
+  player,
+  tone,
+}: {
+  readonly label: string;
+  readonly player: PvpProjectedPlayer | undefined;
+  readonly tone: 'player' | 'enemy';
+}) {
+  if (player === undefined) return <article className="combatant">{label}</article>;
+  return (
+    <article
+      className={classNames('combatant', tone === 'enemy' ? 'combatant-enemy' : 'combatant-player')}
+    >
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1 font-bold text-stone-50">{player.id}</p>
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <Metric label="HP" value={`${String(player.hp)}/${String(player.maxHp)}`} />
+        <Metric label="Block" value={String(player.block)} />
+        <Metric label="Energy" value={`${String(player.energy)}/${String(player.maxEnergy)}`} />
+      </div>
+      <p className="mt-4 text-xs text-stone-300">Hand: {String(player.hand.length)} cards</p>
+    </article>
   );
 }
 

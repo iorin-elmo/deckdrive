@@ -133,8 +133,6 @@ class PvpWebSocketConnection {
   private buffer = Buffer.alloc(0);
   private closed = false;
   private disconnected = false;
-  private pendingActions = 0;
-  private readonly actionTimestamps: number[] = [];
   private client: ConnectedPlayer | undefined;
 
   constructor(
@@ -259,7 +257,6 @@ class PvpWebSocketConnection {
         actionRequest === undefined
           ? false
           : this.session.hasCachedRequest(this.playerId, actionRequest);
-      if (actionRequest !== undefined) this.pendingActions += 1;
       void this.session
         .receive(this.playerId, value)
         .then((messages) => {
@@ -274,19 +271,17 @@ class PvpWebSocketConnection {
           for (const message of messages) this.sendJson(message);
         })
         .finally(() => {
-          if (actionRequest !== undefined) this.pendingActions -= 1;
+          if (actionRequest !== undefined) this.session.releaseAction(this.playerId);
         });
     }
   }
 
   private allowAction(): boolean {
-    const now = Date.now();
-    while (this.actionTimestamps[0] !== undefined && now - this.actionTimestamps[0] >= 1_000)
-      this.actionTimestamps.shift();
-    if (this.pendingActions >= this.maxPendingActions) return false;
-    if (this.actionTimestamps.length >= this.maxActionsPerSecond) return false;
-    this.actionTimestamps.push(now);
-    return true;
+    return this.session.reserveAction(
+      this.playerId,
+      this.maxPendingActions,
+      this.maxActionsPerSecond,
+    );
   }
 
   private sendFrame(opcode: number, payload: Buffer): void {

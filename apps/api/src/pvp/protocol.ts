@@ -156,6 +156,12 @@ export function projectBattleState(
 }
 
 export function projectEvent(event: GameEvent, viewerId: PlayerId): PublicGameEvent {
+  if (event.type === 'EFFECT_STARTED')
+    return {
+      type: event.type,
+      sequence: event.sequence,
+      effectId: `effect-${String(event.sequence)}`,
+    };
   if (event.type === 'CARD_PLAYED' && event.playerId !== viewerId)
     return { type: event.type, sequence: event.sequence, playerId: event.playerId };
   if (event.type === 'CARD_DRAWN' && event.playerId !== viewerId)

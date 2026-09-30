@@ -21,6 +21,15 @@ export interface PvpLobbyOptions<TDeck> {
   readonly createState: (input: CreatePvpState<TDeck>) => MatchSessionOptions['state'];
   readonly createSession?: (input: CreatePvpState<TDeck>) => Omit<MatchSessionOptions, 'state'>;
   readonly session?: Omit<MatchSessionOptions, 'state'>;
+  readonly now?: () => number;
+  readonly statusRetentionMs?: number;
+}
+
+export interface RestoredPvpMatch {
+  readonly mode: PvpMode;
+  readonly queueId?: string;
+  readonly inviteCode?: string;
+  readonly playerIds: readonly [PlayerId, PlayerId];
 }
 
 export type CasualQueueResult<TDeck> =
@@ -55,21 +64,39 @@ export class PvpLobby<TDeck> {
     queueId: string;
     player: LobbyPlayer<TDeck>;
     reserved: boolean;
+    createdAt: number;
   }> = [];
-  private readonly invites = new Map<string, { player: LobbyPlayer<TDeck>; reserved: boolean }>();
+  private readonly invites = new Map<
+    string,
+    { player: LobbyPlayer<TDeck>; reserved: boolean; createdAt: number }
+  >();
   private readonly queueStatuses = new Map<
     string,
-    { playerId: PlayerId; status: 'QUEUED' | 'MATCHED'; matchId?: string }
+    {
+      playerIds: readonly PlayerId[];
+      status: 'QUEUED' | 'MATCHED';
+      matchId?: string;
+      updatedAt: number;
+    }
   >();
   private readonly privateStatuses = new Map<
     string,
-    { playerId: PlayerId; status: 'INVITED' | 'MATCHED'; matchId?: string }
+    {
+      playerIds: readonly PlayerId[];
+      status: 'INVITED' | 'MATCHED';
+      matchId?: string;
+      updatedAt: number;
+    }
   >();
   private readonly activeSessions = new Map<string, MatchSession>();
 
-  constructor(private readonly options: PvpLobbyOptions<TDeck>) {}
+  constructor(private readonly options: PvpLobbyOptions<TDeck>) {
+    if ((options.statusRetentionMs ?? 5 * 60_000) <= 0)
+      throw new RangeError('statusRetentionMs must be positive.');
+  }
 
   enqueueCasual(player: LobbyPlayer<TDeck>): CasualQueueResult<TDeck> {
+    this.pruneStatuses();
     const alreadyQueued = this.casualQueue.some(
       (entry) => entry.player.playerId === player.playerId,
     );
@@ -84,8 +111,12 @@ export class PvpLobby<TDeck> {
     );
     if (opponentIndex < 0) {
       const queueId = randomUUID();
-      this.casualQueue.push({ queueId, player, reserved: false });
-      this.queueStatuses.set(queueId, { playerId: player.playerId, status: 'QUEUED' });
+      this.casualQueue.push({ queueId, player, reserved: false, createdAt: this.now() });
+      this.queueStatuses.set(queueId, {
+        playerIds: [player.playerId],
+        status: 'QUEUED',
+        updatedAt: this.now(),
+      });
       return { status: 'QUEUED', queueId };
     }
     const opponent = this.casualQueue[opponentIndex]!;
@@ -103,11 +134,16 @@ export class PvpLobby<TDeck> {
   }
 
   createPrivate(host: LobbyPlayer<TDeck>): PrivateMatchResult<TDeck> {
+    this.pruneStatuses();
     let inviteCode = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
     while (this.invites.has(inviteCode))
       inviteCode = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
-    this.invites.set(inviteCode, { player: host, reserved: false });
-    this.privateStatuses.set(inviteCode, { playerId: host.playerId, status: 'INVITED' });
+    this.invites.set(inviteCode, { player: host, reserved: false, createdAt: this.now() });
+    this.privateStatuses.set(inviteCode, {
+      playerIds: [host.playerId],
+      status: 'INVITED',
+      updatedAt: this.now(),
+    });
     return { inviteCode, host };
   }
 
@@ -143,6 +179,15 @@ export class PvpLobby<TDeck> {
     if (status !== undefined) {
       status.status = 'MATCHED';
       status.matchId = matchId;
+      status.updatedAt = this.now();
+    }
+  }
+
+  setCasualParticipants(queueId: string, playerIds: readonly PlayerId[]): void {
+    const status = this.queueStatuses.get(queueId);
+    if (status !== undefined) {
+      status.playerIds = [...playerIds];
+      status.updatedAt = this.now();
     }
   }
 
@@ -160,20 +205,31 @@ export class PvpLobby<TDeck> {
     if (status !== undefined) {
       status.status = 'MATCHED';
       status.matchId = matchId;
+      status.updatedAt = this.now();
+    }
+  }
+
+  setPrivateParticipants(inviteCode: string, playerIds: readonly PlayerId[]): void {
+    const status = this.privateStatuses.get(inviteCode.trim().toUpperCase());
+    if (status !== undefined) {
+      status.playerIds = [...playerIds];
+      status.updatedAt = this.now();
     }
   }
 
   casualStatus(queueId: string, playerId: PlayerId): CasualQueueStatus | undefined {
+    this.pruneStatuses();
     const status = this.queueStatuses.get(queueId);
-    if (status === undefined || status.playerId !== playerId) return undefined;
+    if (status === undefined || !status.playerIds.includes(playerId)) return undefined;
     return status.status === 'MATCHED' && status.matchId !== undefined
       ? { status: 'MATCHED', queueId, matchId: status.matchId }
       : { status: 'QUEUED', queueId };
   }
 
   casualStatusForPlayer(playerId: PlayerId): CasualQueueStatus | undefined {
+    this.pruneStatuses();
     for (const [queueId, status] of this.queueStatuses) {
-      if (status.playerId !== playerId) continue;
+      if (!status.playerIds.includes(playerId)) continue;
       return status.status === 'MATCHED' && status.matchId !== undefined
         ? { status: 'MATCHED', queueId, matchId: status.matchId }
         : { status: 'QUEUED', queueId };
@@ -182,9 +238,10 @@ export class PvpLobby<TDeck> {
   }
 
   privateStatus(inviteCode: string, playerId: PlayerId): PrivateMatchStatus | undefined {
+    this.pruneStatuses();
     const normalizedCode = inviteCode.trim().toUpperCase();
     const status = this.privateStatuses.get(normalizedCode);
-    if (status === undefined || status.playerId !== playerId) return undefined;
+    if (status === undefined || !status.playerIds.includes(playerId)) return undefined;
     return status.status === 'MATCHED' && status.matchId !== undefined
       ? { status: 'MATCHED', inviteCode: normalizedCode, matchId: status.matchId }
       : { status: 'INVITED', inviteCode: normalizedCode };
@@ -200,11 +257,28 @@ export class PvpLobby<TDeck> {
   }
 
   sessions(): readonly MatchSession[] {
+    this.pruneStatuses();
     return [...this.activeSessions.values()];
   }
 
-  restore(session: MatchSession): void {
+  restore(session: MatchSession, metadata?: RestoredPvpMatch): void {
     this.activeSessions.set(session.matchId, session);
+    if (metadata?.mode === 'CASUAL' && metadata.queueId !== undefined) {
+      this.queueStatuses.set(metadata.queueId, {
+        playerIds: [...metadata.playerIds],
+        status: 'MATCHED',
+        matchId: session.matchId,
+        updatedAt: this.now(),
+      });
+    }
+    if (metadata?.mode === 'PRIVATE' && metadata.inviteCode !== undefined) {
+      this.privateStatuses.set(metadata.inviteCode, {
+        playerIds: [...metadata.playerIds],
+        status: 'MATCHED',
+        matchId: session.matchId,
+        updatedAt: this.now(),
+      });
+    }
   }
 
   remove(matchId: string): void {
@@ -222,11 +296,52 @@ export class PvpLobby<TDeck> {
   } {
     const matchId = randomUUID() as MatchId;
     const input = { mode, matchId, players: [first, second] as const };
+    const specificOptions = this.options.createSession?.(input) ?? {};
+    const baseOptions = this.options.session ?? {};
     const session = new MatchSession({
-      ...(this.options.createSession?.(input) ?? this.options.session),
+      ...baseOptions,
+      ...specificOptions,
+      onAction: async (accepted) => {
+        await baseOptions.onAction?.(accepted);
+        await specificOptions.onAction?.(accepted);
+        if (accepted.state.phase === 'MATCH_END') this.remove(matchId);
+      },
+      onAbandoned: async (abandonedMatchId) => {
+        await baseOptions.onAbandoned?.(abandonedMatchId);
+        await specificOptions.onAbandoned?.(abandonedMatchId);
+        this.remove(abandonedMatchId);
+      },
       state: this.options.createState(input),
     });
     this.activeSessions.set(matchId, session);
     return { matchId, session, players: [first, second] };
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? Date.now();
+  }
+
+  private pruneStatuses(): void {
+    const cutoff = this.now() - (this.options.statusRetentionMs ?? 5 * 60_000);
+    for (let index = this.casualQueue.length - 1; index >= 0; index -= 1) {
+      const entry = this.casualQueue[index]!;
+      if (entry.reserved || entry.createdAt >= cutoff) continue;
+      this.casualQueue.splice(index, 1);
+      this.queueStatuses.delete(entry.queueId);
+    }
+    for (const [inviteCode, invite] of this.invites) {
+      if (!invite.reserved && invite.createdAt < cutoff) {
+        this.invites.delete(inviteCode);
+        this.privateStatuses.delete(inviteCode);
+      }
+    }
+    for (const [queueId, status] of this.queueStatuses) {
+      if (status.status === 'MATCHED' && status.updatedAt < cutoff)
+        this.queueStatuses.delete(queueId);
+    }
+    for (const [inviteCode, status] of this.privateStatuses) {
+      if (status.status === 'MATCHED' && status.updatedAt < cutoff)
+        this.privateStatuses.delete(inviteCode);
+    }
   }
 }

@@ -3,6 +3,13 @@ import type { BattleState, GameEvent, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import type { AcceptedAction } from './session.js';
 
+export class PvpConcurrentMatchError extends Error {
+  constructor(matchId: string) {
+    super(`PvP match ${matchId} was advanced by another worker.`);
+    this.name = 'PvpConcurrentMatchError';
+  }
+}
+
 /** Persists the accepted engine transition and its replay boundary atomically. */
 export class PrismaPvpMatchPersistence {
   constructor(private readonly prisma: PrismaClient) {}
@@ -13,6 +20,11 @@ export class PrismaPvpMatchPersistence {
       { readonly playerId: string; readonly deckSnapshot: unknown },
       { readonly playerId: string; readonly deckSnapshot: unknown },
     ],
+    metadata: {
+      readonly mode: 'CASUAL' | 'PRIVATE';
+      readonly queueId?: string;
+      readonly inviteCode?: string;
+    },
   ): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
       await transaction.match.create({
@@ -22,6 +34,9 @@ export class PrismaPvpMatchPersistence {
           rulesVersion: state.rulesVersion,
           cardDataVersion: state.cardDataVersion,
           seed: state.seed,
+          mode: metadata.mode,
+          ...(metadata.queueId === undefined ? {} : { queueId: metadata.queueId }),
+          ...(metadata.inviteCode === undefined ? {} : { inviteCode: metadata.inviteCode }),
           initialState: asInputJson(state),
           players: {
             create: players.map((player, index) => ({
@@ -54,12 +69,30 @@ export class PrismaPvpMatchPersistence {
       // A process-local session serializes normal traffic. This row lock also
       // protects the sequence boundary when more than one API worker exists.
       await transaction.$queryRaw`SELECT id FROM matches WHERE id = ${accepted.matchId} FOR UPDATE`;
+      const match = await transaction.match.findUnique({
+        where: { id: accepted.matchId },
+        select: { status: true },
+      });
+      const latestAction = await transaction.matchAction.findFirst({
+        where: { matchId: accepted.matchId },
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true },
+      });
+      if (
+        match?.status !== 'IN_PROGRESS' ||
+        (latestAction?.sequence ?? 0) !== accepted.sequence - 1
+      )
+        throw new PvpConcurrentMatchError(accepted.matchId);
       await transaction.matchAction.create({
         data: {
           matchId: accepted.matchId,
           sequence: accepted.sequence,
           source: accepted.source,
+          playerId: accepted.playerId,
+          requestId: accepted.requestId,
           action: asInputJson(accepted.action),
+          response: asInputJson(accepted.responses),
+          timeoutStreak: accepted.timeoutStreak,
         },
       });
       for (const event of accepted.events) {

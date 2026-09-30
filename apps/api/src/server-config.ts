@@ -14,12 +14,17 @@ export function apiHost(value: string | undefined): string {
   return host;
 }
 
-export function apiCorsOrigins(value: string | undefined): readonly string[] {
+export function apiCorsOrigins(
+  value: string | undefined,
+  applicationOrigin?: string,
+): readonly string[] {
   const configured = value === undefined || value.length === 0 ? 'http://localhost:5173' : value;
   const origins = configured
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+  if (applicationOrigin !== undefined && !origins.includes(applicationOrigin))
+    origins.push(applicationOrigin);
   if (origins.length === 0) throw new Error('CORS_ORIGINS must include at least one origin.');
   return origins;
 }

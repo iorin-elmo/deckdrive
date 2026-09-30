@@ -30,6 +30,10 @@ match host polls the status endpoint with the invite code. Both endpoints are
 authenticated and return only the owner's status; once paired, the response
 contains the `matchId`.
 
+Committed queue/invite metadata is stored with the match and restored after an
+API restart. Uncommitted queue entries and invites expire with the in-memory
+lobby.
+
 Clients send `ACTION`, `PING`, and `RESYNC`. The server sends `STATE`,
 `EVENT`, `ERROR`, and `PONG`. An action contains a request id and the accepted
 action sequence known by the client. A request id is idempotent per player and
@@ -45,16 +49,23 @@ opponent.
 ## Reconnect and timeout
 
 `MatchSession` keeps action/event sequence boundaries and snapshots. A reconnect
-receives the latest snapshot followed by events after that snapshot. The
-initial turn timeout is 60 seconds. A disconnected match has a 60-second grace
-period; after it expires the session is abandoned. Time is injected into the
-session and is advanced by the HTTP server's scheduler, which keeps this logic
-deterministically testable.
+receives the latest snapshot followed by events after that snapshot. The browser
+client tracks the event cursor, sends `RESYNC`, and reconnects with exponential
+backoff after a socket failure. The initial turn timeout is 60 seconds. A
+disconnected participant has a 60-second grace period, including matches that
+have not received their first socket yet; after it expires the session is
+abandoned. Three consecutive timeouts by one participant are recorded as a
+timeout penalty and abandon the match. Time is injected into the session and is
+advanced by the HTTP server's scheduler, which keeps this logic deterministically
+testable.
 
 `PrismaPvpMatchPersistence` writes the accepted action, engine events, and
 snapshot in one transaction. The match row is locked before the action is
 inserted. The in-memory state is committed only after that persistence callback
-succeeds.
+succeeds. Accepted actions persist their authenticated player, request ID,
+source, timeout streak, and response, so a retry after restart returns the same
+response. A stale worker is rejected by the database sequence check and the
+service reloads the match from durable state.
 
 ## Casual and private matches
 
@@ -66,4 +77,10 @@ known.
 The WebSocket adapter accepts an injected `PvpWebSocketRegistry`. The production
 server resolves the HttpOnly session cookie through O00's `OAuthService`; the
 development-only player header is accepted only in development and test
-environments. PvP transport code does not depend on the OAuth implementation.
+environments. WebSocket origins include `CORS_ORIGINS` and the configured
+application origin. PvP transport code does not depend on the OAuth
+implementation.
+
+The existing match endpoint keeps its `initialState`/`finalState` response for
+CPU matches. PvP matches use the player-specific `state` projection so hidden
+hands and piles are never exposed over HTTP.

@@ -354,6 +354,9 @@ model Match {
   checksum        String?
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   completedAt     DateTime?       @map("completed_at") @db.Timestamptz(6)
+  mode            MatchMode?
+  queueId         String?         @unique @map("queue_id")
+  inviteCode      String?         @unique @map("invite_code")
   players         MatchPlayer[]
   actions         MatchAction[]
   events          MatchEvent[]
@@ -384,11 +387,16 @@ model MatchAction {
   matchId   String   @map("match_id")
   sequence  Int
   source    MatchActionSource @default(CLIENT)
+  playerId  String?  @map("player_id") @db.Uuid
+  requestId String?  @map("request_id")
   action    Json
+  response  Json?
+  timeoutStreak Int? @map("timeout_streak")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, sequence])
+  @@unique([matchId, playerId, requestId])
   @@index([matchId, createdAt])
   @@map("match_actions")
 }
@@ -396,6 +404,11 @@ model MatchAction {
 enum MatchActionSource {
   CLIENT
   TIMEOUT
+}
+
+enum MatchMode {
+  CASUAL
+  PRIVATE
 }
 
 model MatchEvent {

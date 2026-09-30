@@ -16,8 +16,15 @@ import type { IncomingMessage } from 'node:http';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { deckSize } from '../decks/deck-validation.js';
 import { PrismaPvpMatchPersistence } from './persistence.js';
-import { PvpLobby, type LobbyPlayer } from './lobby.js';
-import { MatchSession, type MatchSnapshot } from './session.js';
+import { PvpLobby, type LobbyPlayer, type RestoredPvpMatch } from './lobby.js';
+import {
+  MatchSession,
+  type AcceptedAction,
+  type MatchSnapshot,
+  type RestoredRequest,
+} from './session.js';
+
+const pvpStatusRetentionMs = 5 * 60_000;
 
 interface PvpDeck {
   readonly cardDataVersion: string;
@@ -47,21 +54,39 @@ export class PvpMatchService {
         definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
       }),
       session: {
-        onAction: (accepted) => this.persistence.append(accepted),
+        onAction: (accepted) => this.persistAction(accepted),
         onAbandoned: (matchId) => this.persistence.abandon(matchId),
       },
+      statusRetentionMs: pvpStatusRetentionMs,
     });
   }
 
   async enqueueCasual(playerId: string, deckId: string) {
     const existing = this.lobby.casualStatusForPlayer(playerId as PlayerId);
-    if (existing !== undefined) return existing;
+    if (existing?.status === 'QUEUED') return existing;
+    if (existing?.status === 'MATCHED' && this.lobby.find(existing.matchId)?.isActive)
+      return existing;
+    const persisted = await this.findPersistedCasualMatch(playerId, existing);
+    if (persisted !== undefined) return persisted;
+    const activeMatch = await this.prisma.match.findFirst({
+      where: { mode: 'CASUAL', status: 'IN_PROGRESS', players: { some: { playerId } } },
+      select: { id: true, queueId: true },
+    });
+    if (activeMatch?.queueId !== null && activeMatch?.queueId !== undefined)
+      return { status: 'MATCHED' as const, queueId: activeMatch.queueId, matchId: activeMatch.id };
     const player = await this.loadPlayerDeck(playerId, deckId);
     const result = this.lobby.enqueueCasual(player);
     if (result.status === 'QUEUED') return result;
     try {
-      await this.persistNewMatch(result.session, result.players);
+      await this.persistNewMatch(result.session, result.players, {
+        mode: 'CASUAL',
+        queueId: result.queueId,
+      });
       this.lobby.markCasualMatched(result.queueId, result.matchId);
+      this.lobby.setCasualParticipants(
+        result.queueId,
+        result.players.map((entry) => entry.playerId),
+      );
       this.lobby.commitCasual(result.queueId);
     } catch (error) {
       this.lobby.releaseCasual(result.queueId);
@@ -76,6 +101,9 @@ export class PvpMatchService {
   }
 
   async joinPrivate(playerId: string, inviteCode: string, deckId: string) {
+    const normalizedCode = inviteCode.trim().toUpperCase();
+    const existing = await this.findPersistedPrivateMatch(playerId, normalizedCode);
+    if (existing !== undefined) return existing;
     const guest = await this.loadPlayerDeck(playerId, deckId);
     let result;
     try {
@@ -88,8 +116,15 @@ export class PvpMatchService {
       throw error;
     }
     try {
-      await this.persistNewMatch(result.session, result.players);
+      await this.persistNewMatch(result.session, result.players, {
+        mode: 'PRIVATE',
+        inviteCode: result.inviteCode,
+      });
       this.lobby.markPrivateMatched(result.inviteCode, result.matchId);
+      this.lobby.setPrivateParticipants(
+        result.inviteCode,
+        result.players.map((entry) => entry.playerId),
+      );
       this.lobby.commitPrivate(result.inviteCode);
     } catch (error) {
       this.lobby.releasePrivate(result.inviteCode);
@@ -113,16 +148,37 @@ export class PvpMatchService {
     return this.lobby.sessions().filter((session) => session.isActive);
   }
 
-  casualStatus(playerId: string, queueId: string) {
+  async casualStatus(playerId: string, queueId: string) {
     const status = this.lobby.casualStatus(queueId, playerId as PlayerId);
-    if (status === undefined) throw new PvpRequestError('QUEUE_NOT_FOUND');
-    return status;
+    if (status !== undefined) return status;
+    const persisted = await this.prisma.match.findFirst({
+      where: {
+        queueId,
+        mode: 'CASUAL',
+        players: { some: { playerId } },
+      },
+      select: { id: true, createdAt: true },
+    });
+    if (persisted === null || Date.now() - persisted.createdAt.getTime() > pvpStatusRetentionMs)
+      throw new PvpRequestError('QUEUE_NOT_FOUND');
+    return { status: 'MATCHED' as const, queueId, matchId: persisted.id };
   }
 
-  privateStatus(playerId: string, inviteCode: string) {
+  async privateStatus(playerId: string, inviteCode: string) {
     const status = this.lobby.privateStatus(inviteCode, playerId as PlayerId);
-    if (status === undefined) throw new PvpRequestError('PRIVATE_STATUS_NOT_FOUND');
-    return status;
+    if (status !== undefined) return status;
+    const normalizedCode = inviteCode.trim().toUpperCase();
+    const persisted = await this.prisma.match.findFirst({
+      where: {
+        inviteCode: normalizedCode,
+        mode: 'PRIVATE',
+        players: { some: { playerId } },
+      },
+      select: { id: true, createdAt: true },
+    });
+    if (persisted === null || Date.now() - persisted.createdAt.getTime() > pvpStatusRetentionMs)
+      throw new PvpRequestError('PRIVATE_STATUS_NOT_FOUND');
+    return { status: 'MATCHED' as const, inviteCode: normalizedCode, matchId: persisted.id };
   }
 
   async restoreActive(): Promise<void> {
@@ -167,7 +223,7 @@ export class PvpMatchService {
     const match = await this.prisma.match.findUnique({
       where: { id: matchId },
       include: {
-        players: { select: { deckSnapshot: true } },
+        players: { select: { playerId: true, seat: true, deckSnapshot: true } },
         actions: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
         snapshots: { orderBy: { actionIndex: 'asc' } },
@@ -181,6 +237,24 @@ export class PvpMatchService {
     const replay = recordReplay(initialState, actions, definitions);
     if (!replay.ok) return undefined;
     const events = match.events.map((entry) => entry.event as unknown as GameEvent);
+    const requests: RestoredRequest[] = match.actions.flatMap((entry) => {
+      if (
+        entry.playerId === null ||
+        entry.requestId === null ||
+        entry.response === null ||
+        !Array.isArray(entry.response)
+      )
+        return [];
+      return [
+        {
+          playerId: entry.playerId as PlayerId,
+          requestId: entry.requestId,
+          source: entry.source,
+          messages: entry.response as unknown as RestoredRequest['messages'],
+          ...(entry.timeoutStreak === null ? {} : { timeoutStreak: entry.timeoutStreak }),
+        },
+      ];
+    });
     const snapshots: MatchSnapshot[] = match.snapshots.map((snapshot) => ({
       actionIndex: snapshot.actionIndex,
       eventSequence: snapshot.eventSequence,
@@ -205,23 +279,86 @@ export class PvpMatchService {
         events,
         snapshots,
         turnStartedAt: turnStartedAt.getTime(),
+        requests,
       },
-      onAction: (accepted) => this.persistence.append(accepted),
-      onAbandoned: (abandonedMatchId) => this.persistence.abandon(abandonedMatchId),
+      onAction: async (accepted) => {
+        await this.persistAction(accepted);
+        if (accepted.state.phase === 'MATCH_END') this.lobby.remove(accepted.matchId);
+      },
+      onAbandoned: async (abandonedMatchId) => {
+        await this.persistence.abandon(abandonedMatchId);
+        this.lobby.remove(abandonedMatchId);
+      },
     });
-    this.lobby.restore(session);
+    const playerIds = match.players
+      .sort((left, right) => left.seat - right.seat)
+      .map((player) => player.playerId as PlayerId) as [PlayerId, PlayerId];
+    const metadata: RestoredPvpMatch | undefined =
+      match.mode === 'CASUAL' && match.queueId !== null
+        ? { mode: 'CASUAL', queueId: match.queueId, playerIds }
+        : match.mode === 'PRIVATE' && match.inviteCode !== null
+          ? { mode: 'PRIVATE', inviteCode: match.inviteCode, playerIds }
+          : undefined;
+    this.lobby.restore(session, metadata);
     return session;
   }
 
   private async persistNewMatch(
     session: MatchSession,
     players: readonly [LobbyPlayer<PvpDeck>, LobbyPlayer<PvpDeck>],
+    metadata: {
+      readonly mode: 'CASUAL' | 'PRIVATE';
+      readonly queueId?: string;
+      readonly inviteCode?: string;
+    } = {
+      mode: 'CASUAL',
+    },
   ): Promise<void> {
     const state = session.currentState;
-    await this.persistence.create(state, [
-      { playerId: players[0].playerId, deckSnapshot: players[0].deck.snapshot },
-      { playerId: players[1].playerId, deckSnapshot: players[1].deck.snapshot },
-    ]);
+    await this.persistence.create(
+      state,
+      [
+        { playerId: players[0].playerId, deckSnapshot: players[0].deck.snapshot },
+        { playerId: players[1].playerId, deckSnapshot: players[1].deck.snapshot },
+      ],
+      metadata,
+    );
+  }
+
+  private async persistAction(accepted: AcceptedAction): Promise<void> {
+    try {
+      await this.persistence.append(accepted);
+    } catch (error) {
+      await this.restore(accepted.matchId);
+      throw error;
+    }
+  }
+
+  private async findPersistedCasualMatch(
+    playerId: string,
+    status: ReturnType<PvpLobby<PvpDeck>['casualStatusForPlayer']>,
+  ) {
+    if (status?.status !== 'MATCHED') return undefined;
+    const match = await this.prisma.match.findFirst({
+      where: { id: status.matchId, mode: 'CASUAL', players: { some: { playerId } } },
+      select: { id: true, status: true },
+    });
+    if (match === null || match.status !== 'IN_PROGRESS') return undefined;
+    return { status: 'MATCHED' as const, queueId: status.queueId, matchId: match.id };
+  }
+
+  private async findPersistedPrivateMatch(playerId: string, inviteCode: string) {
+    const match = await this.prisma.match.findFirst({
+      where: {
+        inviteCode,
+        mode: 'PRIVATE',
+        players: { some: { playerId, seat: 2 } },
+      },
+      select: { id: true },
+    });
+    return match === null
+      ? undefined
+      : { status: 'MATCHED' as const, inviteCode, matchId: match.id };
   }
 }
 

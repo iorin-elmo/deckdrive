@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PvpSocketClient, webSocketUrl, type PvpSocketLike } from './pvp.js';
 
@@ -54,5 +54,36 @@ describe('PvP socket client', () => {
     );
     socket.onmessage?.({ data: '{"type":"STATE"' });
     expect(malformed).toBe(1);
+  });
+
+  it('reconnects and resumes from the last event cursor', () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeSocket[] = [];
+      const client = new PvpSocketClient(
+        'match-1',
+        { onMessage: () => {} },
+        {
+          reconnectDelayMs: 10,
+          socketFactory: () => {
+            const socket = new FakeSocket();
+            sockets.push(socket);
+            return socket;
+          },
+        },
+      );
+      sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'STATE', eventSequence: 7 }) });
+      sockets[0]!.onclose?.();
+      vi.advanceTimersByTime(10);
+      expect(sockets).toHaveLength(2);
+      sockets[1]!.onopen?.();
+      expect(JSON.parse(sockets[1]!.sent[0]!)).toEqual({
+        type: 'RESYNC',
+        afterEventSequence: 7,
+      });
+      client.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -18,6 +18,7 @@ if (databaseUrl === undefined || databaseUrl.length === 0)
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
 const oauth = new OAuthService(prisma, process.env);
+const allowedOrigins = apiCorsOrigins(process.env.CORS_ORIGINS, oauth.applicationOrigin());
 const pvp = new PvpMatchService(prisma, async (request) => {
   const sessionToken = parseCookies(request.headers.cookie)[sessionCookieName];
   const session = await oauth.session().authenticate(sessionToken);
@@ -36,12 +37,12 @@ const pvp = new PvpMatchService(prisma, async (request) => {
 });
 await pvp.restoreActive();
 const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp), {
-  allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS),
+  allowedOrigins,
   developmentLoginLoopbackOnly: true,
   trustedProxyAddresses: apiTrustedProxyAddresses(process.env.TRUSTED_PROXY_ADDRESSES),
   pvpWebSocket: {
     registry: pvp,
-    options: { allowedOrigins: apiCorsOrigins(process.env.CORS_ORIGINS) },
+    options: { allowedOrigins },
   },
 });
 const host = apiHost(process.env.HOST);

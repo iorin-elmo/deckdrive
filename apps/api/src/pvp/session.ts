@@ -20,6 +20,7 @@ import {
 
 export const pvpTurnTimeoutMs = 60_000;
 export const pvpReconnectGraceMs = 60_000;
+export const pvpTimeoutPenaltyThreshold = 3;
 
 export interface MatchSnapshot {
   readonly actionIndex: number;
@@ -35,7 +36,10 @@ export interface AcceptedAction {
   readonly events: readonly GameEvent[];
   readonly state: BattleState;
   readonly snapshot: MatchSnapshot | undefined;
+  readonly requestId: string;
+  readonly responses: readonly ServerMessage[];
   readonly source: 'CLIENT' | 'TIMEOUT';
+  readonly timeoutStreak: number;
   readonly initialState: BattleState;
   readonly actions: readonly GameAction[];
   readonly definitions: CardDefinitionSource | undefined;
@@ -56,6 +60,7 @@ export interface MatchSessionOptions {
     readonly events: readonly GameEvent[];
     readonly snapshots: readonly MatchSnapshot[];
     readonly turnStartedAt?: number;
+    readonly requests?: readonly RestoredRequest[];
   };
 }
 
@@ -67,6 +72,14 @@ export interface ConnectedPlayer {
 interface CachedRequest {
   readonly messages?: readonly ServerMessage[];
   readonly pending?: Promise<readonly ServerMessage[]>;
+}
+
+export interface RestoredRequest {
+  readonly playerId: PlayerId;
+  readonly requestId: string;
+  readonly source: 'CLIENT' | 'TIMEOUT';
+  readonly messages: readonly ServerMessage[];
+  readonly timeoutStreak?: number;
 }
 
 /**
@@ -86,15 +99,20 @@ export class MatchSession {
   private readonly onAbandoned: ((matchId: string) => Promise<void> | void) | undefined;
   private readonly clients = new Map<string, ConnectedPlayer>();
   private readonly requests = new Map<string, CachedRequest>();
+  private readonly pendingActions = new Map<string, number>();
+  private readonly actionTimestamps = new Map<string, number[]>();
   private readonly events: GameEvent[];
   private readonly actions: GameAction[] = [];
   private readonly snapshots: MatchSnapshot[];
   private actionQueue: Promise<void> = Promise.resolve();
   private turnStartedAt: number;
   private readonly disconnectedAt = new Map<string, number>();
+  private readonly timeoutStreaks = new Map<string, number>();
   private timeoutInFlightTurn: number | undefined;
   private abandoning = false;
   private abandoned = false;
+  private abandonRequested = false;
+  private timeoutPenaltyPending = false;
 
   constructor(options: MatchSessionOptions) {
     if (options.turnTimeoutMs !== undefined && options.turnTimeoutMs <= 0)
@@ -118,6 +136,14 @@ export class MatchSession {
       ? [...options.history.snapshots]
       : [{ actionIndex: 0, eventSequence: lastEventSequence(this.events), state: options.state }];
     this.turnStartedAt = options.history?.turnStartedAt ?? this.now();
+    for (const player of options.state.players) this.disconnectedAt.set(player.id, this.now());
+    for (const request of options.history?.requests ?? []) {
+      this.requests.set(requestKey(request.source, request.playerId, request.requestId), {
+        messages: request.messages,
+      });
+      if (request.timeoutStreak !== undefined)
+        this.timeoutStreaks.set(request.playerId, request.timeoutStreak);
+    }
   }
 
   get matchId(): string {
@@ -150,7 +176,7 @@ export class MatchSession {
       client.send(error);
       return [error];
     }
-    if (this.abandoned) {
+    if (this.abandoned || this.abandonRequested) {
       const error = this.error('MATCH_ABANDONED', 'This match is no longer reconnectable.');
       client.send(error);
       return [error];
@@ -177,21 +203,16 @@ export class MatchSession {
 
   /** Called by the server's scheduler; keeping time outside the engine makes it testable. */
   tick(at = this.now()): void {
-    if (this.abandoned || this.abandoning) return;
+    if (this.abandoned || this.abandoning || this.abandonRequested) return;
     const expiredDisconnect = [...this.disconnectedAt.values()].some(
       (disconnectedAt) => at - disconnectedAt >= this.reconnectGraceMs,
     );
     if (expiredDisconnect) {
-      this.abandoning = true;
-      void Promise.resolve(this.onAbandoned?.(this.matchId))
-        .then(() => {
-          this.abandoning = false;
-          this.abandoned = true;
-          this.broadcast(this.error('MATCH_ABANDONED', 'Reconnect grace period has expired.'));
-        })
-        .catch(() => {
-          this.abandoning = false;
-        });
+      this.scheduleAbandonment();
+      return;
+    }
+    if (this.timeoutPenaltyPending) {
+      this.scheduleAbandonment();
       return;
     }
     if (
@@ -230,9 +251,28 @@ export class MatchSession {
       return Promise.resolve([pong]);
     }
     if (message.type === 'RESYNC') return Promise.resolve(this.resync(playerId, message));
-    if (this.abandoned)
+    if (this.abandoned || this.abandonRequested)
       return Promise.resolve([this.error('MATCH_ABANDONED', 'This match is no longer active.')]);
     return this.enqueueAction(playerId, message.requestId, message, 'CLIENT');
+  }
+
+  reserveAction(playerId: PlayerId, maximumPending: number, maximumPerSecond: number): boolean {
+    const now = this.now();
+    const timestamps = (this.actionTimestamps.get(playerId) ?? []).filter(
+      (timestamp) => now - timestamp < 1_000,
+    );
+    if ((this.pendingActions.get(playerId) ?? 0) >= maximumPending) return false;
+    if (timestamps.length >= maximumPerSecond) return false;
+    timestamps.push(now);
+    this.actionTimestamps.set(playerId, timestamps);
+    this.pendingActions.set(playerId, (this.pendingActions.get(playerId) ?? 0) + 1);
+    return true;
+  }
+
+  releaseAction(playerId: PlayerId): void {
+    const pending = this.pendingActions.get(playerId) ?? 0;
+    if (pending <= 1) this.pendingActions.delete(playerId);
+    else this.pendingActions.set(playerId, pending - 1);
   }
 
   private enqueueAction(
@@ -317,6 +357,18 @@ export class MatchSession {
             state: nextState,
           }
         : undefined;
+    const timeoutStreak = source === 'TIMEOUT' ? (this.timeoutStreaks.get(playerId) ?? 0) + 1 : 0;
+    const outgoing = nextEvents.slice(previousEventCount);
+    const responses: ServerMessage[] = outgoing.map((event) => this.eventMessage(playerId, event));
+    responses.push(
+      this.stateMessage(
+        playerId,
+        snapshot ?? this.latestSnapshot(),
+        nextState,
+        nextActionSequence,
+        lastEventSequence(nextEvents),
+      ),
+    );
     await this.onAction?.({
       matchId: this.matchId,
       playerId,
@@ -325,7 +377,10 @@ export class MatchSession {
       events: result.events,
       state: nextState,
       snapshot,
+      requestId,
+      responses,
       source,
+      timeoutStreak,
       initialState: this.initialState,
       actions: [...this.actions, message.action],
       definitions: this.definitions,
@@ -335,11 +390,13 @@ export class MatchSession {
     this.actions.push(message.action);
     this.events.push(...result.events);
     if (snapshot !== undefined) this.snapshots.push(snapshot);
+    if (source === 'TIMEOUT') this.timeoutStreaks.set(playerId, timeoutStreak);
+    else this.timeoutStreaks.set(playerId, 0);
+    if (source === 'TIMEOUT' && timeoutStreak >= pvpTimeoutPenaltyThreshold) {
+      this.timeoutPenaltyPending = true;
+      this.scheduleAbandonment();
+    }
     if (message.action.type === 'END_TURN') this.turnStartedAt = this.now();
-    const outgoing = nextEvents.slice(previousEventCount);
-    const responses: ServerMessage[] = outgoing.map((event) => this.eventMessage(playerId, event));
-    const stateMessage = this.stateMessage(playerId, snapshot ?? this.latestSnapshot(), this.state);
-    responses.push(stateMessage);
     this.requests.set(key, { messages: responses });
     this.broadcastEvents(outgoing);
     this.broadcastState();
@@ -368,6 +425,8 @@ export class MatchSession {
     playerId: PlayerId,
     snapshot: MatchSnapshot,
     sourceState: BattleState = snapshot.state,
+    actionSequence = this.actions.length,
+    eventSequence = this.eventSequence,
   ): StateMessage {
     return {
       type: 'STATE',
@@ -375,8 +434,8 @@ export class MatchSession {
       matchId: this.state.matchId,
       // These are the current stream cursors even when `state` is an older
       // snapshot. The following EVENT messages advance the snapshot to them.
-      actionSequence: this.actions.length,
-      eventSequence: this.eventSequence,
+      actionSequence,
+      eventSequence,
       snapshotActionIndex: snapshot.actionIndex,
       state: projectBattleState(sourceState, playerId),
     };
@@ -427,6 +486,25 @@ export class MatchSession {
 
   private isParticipant(playerId: PlayerId): boolean {
     return this.state.players.some((player) => player.id === playerId);
+  }
+
+  private scheduleAbandonment(): void {
+    if (this.abandonRequested || this.abandoned) return;
+    this.abandonRequested = true;
+    this.actionQueue = this.actionQueue
+      .then(async () => {
+        if (this.abandoned) return;
+        this.abandoning = true;
+        await this.onAbandoned?.(this.matchId);
+        this.abandoning = false;
+        this.abandoned = true;
+        this.timeoutPenaltyPending = false;
+        this.broadcast(this.error('MATCH_ABANDONED', 'Reconnect grace period has expired.'));
+      })
+      .catch(() => {
+        this.abandoning = false;
+        this.abandonRequested = false;
+      });
   }
 }
 

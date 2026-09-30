@@ -61,6 +61,15 @@ describe('PvP protocol', () => {
     ).toEqual({ type: 'CARD_PLAYED', sequence: 2, playerId: 'player-2' });
   });
 
+  it('replaces effect IDs because the engine derives them from hidden card IDs', () => {
+    expect(
+      projectEvent(
+        { type: 'EFFECT_STARTED', sequence: 3, effectId: 'secret-card:1' },
+        'player-1' as PlayerId,
+      ),
+    ).toEqual({ type: 'EFFECT_STARTED', sequence: 3, effectId: 'effect-3' });
+  });
+
   it('rejects malformed and forged action messages', () => {
     expect(
       parseClientMessage({

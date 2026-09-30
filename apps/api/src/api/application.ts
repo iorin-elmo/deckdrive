@@ -637,10 +637,29 @@ export class ApiApplication {
   private async getMatch(playerId: string, matchId: string): Promise<ApiResponse> {
     const match = await this.prisma.match.findFirst({
       where: { id: matchId, players: { some: { playerId } } },
-      select: { id: true, status: true, initialState: true, finalState: true, createdAt: true },
+      select: {
+        id: true,
+        status: true,
+        initialState: true,
+        finalState: true,
+        createdAt: true,
+        players: { select: { playerId: true } },
+      },
     });
     if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
     const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
+    if (match.players.length === 1) {
+      return {
+        status: 200,
+        body: {
+          id: match.id,
+          status: match.status,
+          createdAt: match.createdAt,
+          initialState: match.initialState,
+          finalState: match.finalState,
+        },
+      };
+    }
     const liveState = liveSession?.currentState;
     const state = liveState ?? match.finalState ?? match.initialState;
     return {
@@ -672,12 +691,12 @@ export class ApiApplication {
 
   private async getCasualStatus(playerId: string, queueId: string): Promise<ApiResponse> {
     if (this.pvp === undefined) throw new PvpUnavailableError();
-    return { status: 200, body: this.pvp.casualStatus(playerId, queueId) };
+    return { status: 200, body: await this.pvp.casualStatus(playerId, queueId) };
   }
 
   private async getPrivateStatus(playerId: string, inviteCode: string): Promise<ApiResponse> {
     if (this.pvp === undefined) throw new PvpUnavailableError();
-    return { status: 200, body: this.pvp.privateStatus(playerId, inviteCode) };
+    return { status: 200, body: await this.pvp.privateStatus(playerId, inviteCode) };
   }
 
   private async joinPrivateMatch(
