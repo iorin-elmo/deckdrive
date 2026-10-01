@@ -28,6 +28,12 @@ const definition: CardDefinition = {
 };
 
 describe('ranked settlement in PostgreSQL', () => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const hourMs = 60 * 60 * 1000;
+  const referenceTime = Date.now();
+  const seasonOneStartsAt = new Date(referenceTime - dayMs);
+  const seasonTwoStartsAt = new Date(referenceTime + dayMs);
+  const seasonTwoEndsAt = new Date(referenceTime + 2 * dayMs);
   const testId = randomUUID();
   const seasonOne = randomUUID();
   const seasonTwo = randomUUID();
@@ -48,11 +54,11 @@ describe('ranked settlement in PostgreSQL', () => {
     }
     await ranked.activateSeason({
       id: seasonOne,
-      startsAt: new Date('2026-10-01T00:00:00Z'),
-      endsAt: new Date('2026-10-02T00:00:00Z'),
+      startsAt: seasonOneStartsAt,
+      endsAt: seasonTwoStartsAt,
       initialRating: 1500,
       resetRetention: 0.5,
-      at: new Date('2026-10-01T01:00:00Z'),
+      at: new Date(referenceTime),
     });
   });
 
@@ -197,11 +203,11 @@ describe('ranked settlement in PostgreSQL', () => {
     await expect(
       ranked.activateSeason({
         id: seasonTwo,
-        startsAt: new Date('2026-10-02T00:00:00Z'),
-        endsAt: new Date('2026-10-03T00:00:00Z'),
+        startsAt: seasonTwoStartsAt,
+        endsAt: seasonTwoEndsAt,
         initialRating: 1500,
         resetRetention: 0.5,
-        at: new Date('2026-10-02T01:00:00Z'),
+        at: new Date(seasonTwoStartsAt.getTime() + hourMs),
       }),
     ).rejects.toMatchObject({ code: 'SEASON_HAS_OPEN_MATCHES' });
     expect(await prisma.season.findUnique({ where: { id: seasonTwo } })).toBeNull();
@@ -231,20 +237,20 @@ describe('ranked settlement in PostgreSQL', () => {
     await expect(
       ranked.activateSeason({
         id: randomUUID(),
-        startsAt: new Date('2026-10-01T12:00:00Z'),
-        endsAt: new Date('2026-10-02T12:00:00Z'),
+        startsAt: new Date(referenceTime),
+        endsAt: new Date(seasonTwoStartsAt.getTime() + 12 * hourMs),
         initialRating: 1500,
         resetRetention: 0.5,
-        at: new Date('2026-10-01T13:00:00Z'),
+        at: new Date(referenceTime + hourMs),
       }),
     ).rejects.toMatchObject({ code: 'SEASON_OVERLAP' });
     await ranked.activateSeason({
       id: seasonTwo,
-      startsAt: new Date('2026-10-02T00:00:00Z'),
-      endsAt: new Date('2026-10-03T00:00:00Z'),
+      startsAt: seasonTwoStartsAt,
+      endsAt: seasonTwoEndsAt,
       initialRating: 1500,
       resetRetention: 0.5,
-      at: new Date('2026-10-02T01:00:00Z'),
+      at: new Date(seasonTwoStartsAt.getTime() + hourMs),
     });
     const next = await prisma.playerSeasonRating.findMany({ where: { seasonId: seasonTwo } });
     expect(next).toHaveLength(2);
