@@ -120,7 +120,8 @@ function validateInput(input: RatingInput): void {
     !Number.isFinite(input.damageDealt) ||
     input.damageDealt < 0 ||
     !Number.isFinite(input.opponentInitialHp) ||
-    input.opponentInitialHp <= 0
+    input.opponentInitialHp <= 0 ||
+    (input.outcome !== 'WIN' && input.outcome !== 'LOSS' && input.outcome !== 'DRAW')
   )
     throw new RangeError('Invalid authoritative rating input.');
 }

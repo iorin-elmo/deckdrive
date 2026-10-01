@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateRatingChange, softResetRating } from './rating.js';
+import { calculateRatingChange, softResetRating, type RatingInput } from './rating.js';
 
 const base = {
   rating: 1500,
@@ -129,6 +129,17 @@ describe('ranked rating strategy', () => {
     expect(() =>
       calculateRatingChange({ ...base, completedGames: 0, outcome: 'LOSS', ...invalid }),
     ).toThrow(RangeError);
+  });
+
+  it('rejects an invalid outcome at runtime', () => {
+    const input: RatingInput = {
+      ...base,
+      opponentRating: 1900,
+      completedGames: 0,
+      damageDealt: 30,
+      outcome: 'ABANDONED' as RatingInput['outcome'],
+    };
+    expect(() => calculateRatingChange(input)).toThrow(RangeError);
   });
 
   it('soft resets toward a configured anchor without touching card state', () => {
