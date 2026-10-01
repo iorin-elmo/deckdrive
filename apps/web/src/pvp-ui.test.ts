@@ -66,11 +66,21 @@ describe('PvP recovery in the routed UI', () => {
   let container: HTMLDivElement;
   let queryClient: QueryClient;
   const inviteStorageKey = 'deckdrive:pvp:invite:player-1';
+  const originalLocalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage');
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     TestSocket.instances = [];
     vi.stubGlobal('WebSocket', TestSocket);
+    const stored = new Map<string, string>();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      },
+    });
     useSessionStore.getState().setPlayerId('player-1');
     queryClient = new QueryClient({
       defaultOptions: { queries: { staleTime: Infinity, retry: false } },
@@ -90,7 +100,8 @@ describe('PvP recovery in the routed UI', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     queryClient.clear();
-    window.localStorage.removeItem(inviteStorageKey);
+    if (originalLocalStorage === undefined) Reflect.deleteProperty(window, 'localStorage');
+    else Object.defineProperty(window, 'localStorage', originalLocalStorage);
     useSessionStore.getState().clearPlayerId();
     vi.unstubAllGlobals();
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
