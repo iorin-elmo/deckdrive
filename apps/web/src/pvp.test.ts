@@ -109,6 +109,37 @@ describe('PvP socket client', () => {
     }
   });
 
+  it('stops retrying sockets that open but never deliver a usable state', () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: FakeSocket[] = [];
+      const statuses: string[] = [];
+      const client = new PvpSocketClient(
+        'match-1',
+        { onMessage: () => {}, onStatus: (status) => statuses.push(status) },
+        {
+          reconnectDelayMs: 10,
+          maxReconnectAttempts: 2,
+          socketFactory: () => {
+            const socket = new FakeSocket();
+            sockets.push(socket);
+            return socket;
+          },
+        },
+      );
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        sockets[attempt]!.onopen?.();
+        sockets[attempt]!.onclose?.();
+        vi.advanceTimersByTime(attempt === 0 ? 10 : 20);
+      }
+      expect(sockets).toHaveLength(3);
+      expect(statuses.at(-1)).toBe('CLOSED');
+      client.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps an unacknowledged action across a newer state and retries it after reconnect', () => {
     vi.useFakeTimers();
     try {

@@ -102,7 +102,6 @@ export class PvpSocketClient {
     this.handlers.onStatus?.(reconnecting ? 'RECONNECTING' : 'CONNECTING');
     socket.onopen = () => {
       if (socket !== this.currentSocket) return;
-      this.reconnectAttempt = 0;
       this.handlers.onStatus?.('OPEN');
       this.sendRaw({ type: 'RESYNC', afterEventSequence: this.lastEventSequence });
       const queued = this.outbound.splice(0);
@@ -127,6 +126,9 @@ export class PvpSocketClient {
           return;
         if (typeof message.actionSequence === 'number')
           this.lastActionSequence = Math.max(this.lastActionSequence, message.actionSequence);
+        // A successful handshake alone does not prove that the match can be
+        // resumed. Only a usable state resets the reconnect attempt budget.
+        this.reconnectAttempt = 0;
       }
       if (message.type === 'ERROR' && typeof message.requestId === 'string') {
         if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);

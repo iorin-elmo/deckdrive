@@ -625,8 +625,13 @@ function sameRequest(
   cached: Pick<CachedRequest, 'action' | 'sequence'>,
   message: Extract<ClientMessage, { type: 'ACTION' }>,
 ): boolean {
+  if (cached.sequence !== message.sequence || cached.action.type !== message.action.type)
+    return false;
+  if (cached.action.playerId !== message.action.playerId) return false;
+  if (cached.action.type === 'END_TURN') return true;
   return (
-    cached.sequence === message.sequence &&
-    JSON.stringify(cached.action) === JSON.stringify(message.action)
+    message.action.type === 'PLAY_CARD' &&
+    cached.action.cardInstanceId === message.action.cardInstanceId &&
+    cached.action.targetId === message.action.targetId
   );
 }

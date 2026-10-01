@@ -98,6 +98,24 @@ describe('MatchSession', () => {
     expect(session.actionSequence).toBe(1);
   });
 
+  it('accepts a retry with the same action regardless of JSON property order', async () => {
+    const session = new MatchSession({ state: state() });
+    const first = await session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'ordered-retry',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId: 'player-1' },
+    });
+    const retry = await session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'ordered-retry',
+      sequence: 0,
+      action: { playerId: 'player-1', type: 'END_TURN' },
+    });
+    expect(retry).toEqual(first);
+    expect(session.actionSequence).toBe(1);
+  });
+
   it('replays a restored action for the client sequence before the action', async () => {
     const restoredResponse = [
       {

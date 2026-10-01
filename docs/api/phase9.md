@@ -39,6 +39,9 @@ Clients send `ACTION`, `PING`, and `RESYNC`. The server sends `STATE`,
 action sequence known by the client. A request id is idempotent per player and
 match. Actions are processed by one queue, so concurrent requests cannot apply
 against the same state.
+Retries compare the parsed action fields, not JSON property order. A WebSocket
+handshake alone does not reset the browser's reconnect budget; a valid `STATE`
+must arrive before the attempt counter is reset.
 
 `apps/api/src/pvp/protocol.ts` is deliberately independent of the WebSocket
 framing layer. It validates untrusted JSON at runtime and creates the player
