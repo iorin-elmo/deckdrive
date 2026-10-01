@@ -11,13 +11,13 @@ export interface RatingConfig {
   readonly lossDamageWeight: number;
 }
 
-export const defaultRatingConfig: RatingConfig = {
-  kValues: { provisional: 40, regular: 28, veteran: 20 },
+export const defaultRatingConfig: RatingConfig = Object.freeze({
+  kValues: Object.freeze({ provisional: 40, regular: 28, veteran: 20 }),
   provisionalGames: 20,
   regularGames: 100,
   maxLossScore: 0.45,
   lossDamageWeight: 0.45,
-};
+});
 
 export interface RatingInput {
   readonly rating: number;

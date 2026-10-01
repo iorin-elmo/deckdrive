@@ -13,6 +13,17 @@ enum MatchStatus {
   ABANDONED
 }
 
+enum SeasonStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum RatingOutcome {
+  WIN
+  LOSS
+  DRAW
+}
+
 enum Currency {
   GEM
   EXCHANGE_POINT
@@ -137,6 +148,10 @@ model Player {
   cosmetics            PlayerCosmetic[]
   cosmeticGrants       CosmeticGrant[]
   experienceTransactions ExperienceTransaction[]
+  seasonRatings PlayerSeasonRating[]
+  rankedSnapshots RankedMatchPlayer[]
+  ratingHistory RatingHistory[]
+  ratingAbuseFlags RatingAbuseFlag[]
 
   @@map("players")
 }
@@ -365,6 +380,9 @@ model Match {
   events          MatchEvent[]
   snapshots       MatchSnapshot[]
   draftDefinitionSnapshot ReplayDefinitionSnapshot? @relation(fields: [draftDefinitionRevision], references: [revision], onDelete: Restrict)
+  rankedMatch     RankedMatch?
+  ratingHistory   RatingHistory[]
+  ratingAbuseFlags RatingAbuseFlag[]
 
   @@index([status, createdAt])
   @@index([cardDataVersion, rulesVersion, engineVersion])
@@ -389,6 +407,7 @@ model MatchPlayer {
   disconnectedAt DateTime? @map("disconnected_at") @db.Timestamptz(6)
   match        Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player       Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  rankedSnapshot RankedMatchPlayer?
 
   @@unique([matchId, playerId])
   @@unique([matchId, seat])
@@ -423,6 +442,111 @@ enum MatchActionSource {
 enum MatchMode {
   CASUAL
   PRIVATE
+  RANKED
+}
+
+model Season {
+  id                  String       @id @db.Uuid
+  status              SeasonStatus
+  startsAt            DateTime     @map("starts_at") @db.Timestamptz(6)
+  endsAt              DateTime     @map("ends_at") @db.Timestamptz(6)
+  initialRating       Float        @map("initial_rating")
+  resetRetention      Float        @map("reset_retention")
+  ratingConfigVersion String       @map("rating_config_version")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  ratings             PlayerSeasonRating[]
+  rankedMatches       RankedMatch[]
+  ratingHistory       RatingHistory[]
+
+  @@index([status, startsAt])
+  @@map("seasons")
+}
+
+model PlayerSeasonRating {
+  seasonId       String   @map("season_id") @db.Uuid
+  playerId       String   @map("player_id") @db.Uuid
+  rating         Float
+  completedGames Int      @default(0) @map("completed_games")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  season         Season   @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@id([seasonId, playerId])
+  @@index([playerId, seasonId])
+  @@map("player_season_ratings")
+}
+
+model RankedMatch {
+  matchId             String   @id @map("match_id")
+  seasonId            String   @map("season_id") @db.Uuid
+  ratingConfigVersion String   @map("rating_config_version")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  match               Match    @relation(fields: [matchId], references: [id], onDelete: Restrict)
+  season              Season   @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  players             RankedMatchPlayer[]
+
+  @@index([seasonId, createdAt])
+  @@map("ranked_matches")
+}
+
+model RankedMatchPlayer {
+  matchId              String      @map("match_id")
+  playerId             String      @map("player_id") @db.Uuid
+  seat                 Int
+  ratingAtStart        Float       @map("rating_at_start")
+  completedGamesAtStart Int        @map("completed_games_at_start")
+  rankedMatch          RankedMatch @relation(fields: [matchId], references: [matchId], onDelete: Restrict)
+  player               Player      @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  matchPlayer           MatchPlayer @relation(fields: [matchId, playerId], references: [matchId, playerId], onDelete: Restrict)
+
+  @@id([matchId, playerId])
+  @@unique([matchId, seat])
+  @@index([playerId, matchId])
+  @@map("ranked_match_players")
+}
+
+model RatingHistory {
+  id                   String        @id @default(uuid()) @db.Uuid
+  matchId              String        @map("match_id")
+  seasonId             String        @map("season_id") @db.Uuid
+  playerId             String        @map("player_id") @db.Uuid
+  opponentId           String        @map("opponent_id") @db.Uuid
+  outcome              RatingOutcome
+  ratingBefore         Float         @map("rating_before")
+  ratingAfter          Float         @map("rating_after")
+  ratingAtStart        Float         @map("rating_at_start")
+  opponentRatingAtStart Float        @map("opponent_rating_at_start")
+  delta                Float
+  k                    Float
+  expectedScore        Float         @map("expected_score")
+  actualScore          Float         @map("actual_score")
+  damageRatio          Float         @map("damage_ratio")
+  damageDealt          Float         @map("damage_dealt")
+  opponentInitialHp    Float         @map("opponent_initial_hp")
+  ratingConfigVersion  String        @map("rating_config_version")
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  match                Match         @relation(fields: [matchId], references: [id], onDelete: Restrict)
+  season               Season        @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  player               Player        @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([matchId, playerId])
+  @@index([playerId, seasonId, createdAt])
+  @@map("rating_history")
+}
+
+model RatingAbuseFlag {
+  id        String   @id @default(uuid()) @db.Uuid
+  matchId   String   @map("match_id")
+  playerId  String   @map("player_id") @db.Uuid
+  type      String
+  evidence  Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Restrict)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([matchId, playerId, type])
+  @@index([playerId, createdAt])
+  @@map("rating_abuse_flags")
 }
 
 model MatchServerCommand {
