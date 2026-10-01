@@ -8,6 +8,7 @@ K00 の最初の実装単位（Issue #57）。親 Issue #22 と `IMPLEMENTATION_
 - `apps/api/src/ranked/performance.ts`: server replay の `DAMAGE_DEALT` と対応する `ENTITY_DAMAGED` から、block と self damage を除いた HP damage を集計。
 - K は試合開始前の完了済み ranked 試合数で選ぶ。0–20 は 40、21–100 は 28、101 以上は 20。
 - 敗北時の `S` は `min(0.45, clamp(damageDealt / opponentInitialHp, 0, 1) * 0.45)`。勝利時は 1、引き分け時は 0.5。
+- 敗北時の rating 差分は `min(0, K * (S - E))`。善戦ボーナスは減点を 0 まで緩和できるが、敗北を rating 増加には変えない。これは K00 着手時の仕様判断として確定した。
 - rating は丸めず計算する。表示時の丸めと永続化の精度は後続の API 契約で確定する。
 - soft reset は anchor と retention を明示的に渡す純粋関数。season 開始時の一括更新、報酬、カード資産はまだ変更しない。
 
@@ -25,7 +26,6 @@ K00 の最初の実装単位（Issue #57）。親 Issue #22 と `IMPLEMENTATION_
 
 ## 仕様上の未決事項
 
-- Elo の式をそのまま使うと、期待勝率が敗北 bonus より小さい場合、敗北して rating が増える。§29 の「減少を緩和する」と式 `S = performanceBonus` の間に差がある。保存処理へ接続する前に、正の delta を許すか 0 で止めるか決める。
 - Bronze から Grand Master までの rating 境界、I/II/III、RR 目盛りは未指定。
 - season の期間、soft reset の anchor / retention、placement K、報酬・称号の条件は未指定。
 - abuse signal の閾値と rated disconnect / abandon の勝敗扱いは未指定。

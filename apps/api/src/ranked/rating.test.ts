@@ -46,6 +46,27 @@ describe('ranked rating strategy', () => {
     expect(overkill.delta).toBeCloseTo(28 * (0.45 - 0.5));
   });
 
+  it('never turns a loss into a rating gain through the performance bonus', () => {
+    const withoutBonus = calculateRatingChange({
+      ...base,
+      opponentRating: 1900,
+      completedGames: 0,
+      outcome: 'LOSS',
+    });
+    const withBonus = calculateRatingChange({
+      ...base,
+      opponentRating: 1900,
+      completedGames: 0,
+      outcome: 'LOSS',
+      damageDealt: 30,
+    });
+    expect(withoutBonus.delta).toBeLessThan(0);
+    expect(withBonus.actualScore).toBe(0.45);
+    expect(withBonus.actualScore).toBeGreaterThan(withBonus.expectedScore);
+    expect(withBonus.delta).toBe(0);
+    expect(withBonus.nextRating).toBe(base.rating);
+  });
+
   it('uses dealt damage only for a loss and supports a draw', () => {
     const loss = calculateRatingChange({
       ...base,

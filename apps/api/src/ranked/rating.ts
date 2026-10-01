@@ -87,7 +87,9 @@ export function calculateRatingChange(
       : input.outcome === 'DRAW'
         ? 0.5
         : Math.min(config.maxLossScore, Math.max(0, lossScore));
-  const delta = k * (actualScore - expectedScore);
+  // Performance can reduce a loss penalty, but it cannot award rating for a loss.
+  const rawDelta = k * (actualScore - expectedScore);
+  const delta = input.outcome === 'LOSS' ? Math.min(0, rawDelta) : rawDelta;
   return { k, expectedScore, actualScore, damageRatio, delta, nextRating: input.rating + delta };
 }
 
