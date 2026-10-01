@@ -1,6 +1,7 @@
 import { recordReplay } from '@deck-drive/game-engine';
 import type { BattleState, GameEvent, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
+import { PrismaRankedSettlement } from '../ranked/prisma-ranked-settlement.js';
 import type { AcceptedAction } from './session.js';
 
 export class PvpConcurrentMatchError extends Error {
@@ -12,7 +13,11 @@ export class PvpConcurrentMatchError extends Error {
 
 /** Persists the accepted engine transition and its replay boundary atomically. */
 export class PrismaPvpMatchPersistence {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly ranked: PrismaRankedSettlement;
+
+  constructor(private readonly prisma: PrismaClient) {
+    this.ranked = new PrismaRankedSettlement(prisma);
+  }
 
   async create(
     state: BattleState,
@@ -21,7 +26,7 @@ export class PrismaPvpMatchPersistence {
       { readonly playerId: string; readonly deckSnapshot: unknown },
     ],
     metadata: {
-      readonly mode: 'CASUAL' | 'PRIVATE';
+      readonly mode: 'CASUAL' | 'PRIVATE' | 'RANKED';
       readonly queueId?: string;
       readonly inviteCode?: string;
     },
@@ -62,6 +67,7 @@ export class PrismaPvpMatchPersistence {
           state: asInputJson(snapshotState),
         },
       });
+      if (metadata.mode === 'RANKED') await this.ranked.captureMatchStart(transaction, state);
     });
   }
 
@@ -72,7 +78,7 @@ export class PrismaPvpMatchPersistence {
       await transaction.$queryRaw`SELECT id FROM matches WHERE id = ${accepted.matchId} FOR UPDATE`;
       const match = await transaction.match.findUnique({
         where: { id: accepted.matchId },
-        select: { status: true },
+        select: { status: true, mode: true },
       });
       const latestAction = await transaction.matchAction.findFirst({
         where: { matchId: accepted.matchId },
@@ -115,6 +121,9 @@ export class PrismaPvpMatchPersistence {
       if (accepted.state.phase === 'MATCH_END') {
         const replay = recordReplay(accepted.initialState, accepted.actions, accepted.definitions);
         if (!replay.ok) throw new Error(`Cannot record PvP replay: ${replay.error.message}`);
+        if (JSON.stringify(replay.replay.finalState) !== JSON.stringify(accepted.state))
+          throw new Error('PvP replay final state does not match the accepted state.');
+        if (match.mode === 'RANKED') await this.ranked.settleMatch(transaction, replay.replay);
         await transaction.match.update({
           where: { id: accepted.matchId },
           data: {
