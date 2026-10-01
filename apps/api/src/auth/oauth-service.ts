@@ -276,6 +276,10 @@ export class OAuthService {
     return origin !== undefined && origin === this.applicationBaseUrl;
   }
 
+  applicationOrigin(): string | undefined {
+    return this.applicationBaseUrl;
+  }
+
   private adapter(provider: string): OAuthProviderAdapter {
     if (!isOAuthProviderId(provider)) throw new OAuthRequestError('OAUTH_INVALID_REQUEST');
     const adapter = this.adapters.get(provider);

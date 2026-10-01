@@ -105,6 +105,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  remeda: 2.33.3
+
 importers:
 
   .:
@@ -237,6 +240,15 @@ importers:
   packages/logger: {}
 
   packages/pack-engine: {}
+
+  packages/presentation:
+    dependencies:
+      '@deck-drive/card-definitions':
+        specifier: workspace:*
+        version: link:../card-definitions
+      '@deck-drive/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
 
   packages/shared: {}
 
@@ -2452,8 +2464,8 @@ packages:
     resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
     engines: {node: '>= 20.19.0'}
 
-  remeda@2.33.4:
-    resolution: {integrity: sha512-ygHswjlc/opg2VrtiYvUOPLjxjtdKvjGz1/plDhkG66hjNjFr1xmfrs2ClNFo/E6TyUFiwYNh53bKV26oBoMGQ==}
+  remeda@2.33.3:
+    resolution: {integrity: sha512-lZne8IOVPnyZApub61z13+iAD7Wr80JdlThr9iUcYjZdZvSBDvRrmJIZsqSKGnI5zJr/zt6ppIEJgZM15X6KjQ==}
 
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
@@ -3350,7 +3362,7 @@ snapshots:
       get-port-please: 3.2.0
       pathe: 2.0.3
       proper-lockfile: 4.1.2
-      remeda: 2.33.4
+      remeda: 2.33.3
       std-env: 3.10.0
       valibot: 1.4.2(typescript@5.9.3)
       zeptomatch: 2.1.0
@@ -4885,7 +4897,7 @@ snapshots:
 
   readdirp@5.1.1: {}
 
-  remeda@2.33.4: {}
+  remeda@2.33.3: {}
 
   require-from-string@2.0.2: {}
 

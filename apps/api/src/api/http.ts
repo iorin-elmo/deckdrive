@@ -8,8 +8,14 @@ import {
 import { finished } from 'node:stream/promises';
 
 import { ApiApplication, type ApiRequest } from './application.js';
+import {
+  attachPvpWebSocket,
+  type PvpWebSocketOptions,
+  type PvpWebSocketRegistry,
+} from '../pvp/websocket.js';
 
 export const maximumRequestBodyBytes = 1024 * 1024;
+const pvpCleanupByServer = new WeakMap<Server, () => void>();
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
 const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id';
 
@@ -17,6 +23,10 @@ export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly developmentLoginLoopbackOnly?: boolean;
   readonly trustedProxyAddresses?: readonly string[];
+  readonly pvpWebSocket?: {
+    readonly registry: PvpWebSocketRegistry;
+    readonly options?: PvpWebSocketOptions;
+  };
 }
 
 /** Native Node adapter for the framework-neutral Phase 4 controller. */
@@ -26,9 +36,10 @@ export function createApiHttpServer(
     allowedOrigins = [],
     developmentLoginLoopbackOnly = false,
     trustedProxyAddresses = [],
+    pvpWebSocket,
   }: ApiHttpServerOptions = {},
 ): Server {
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const responseHeaders = {
       ...corsResponseHeaders(request, allowedOrigins),
       ...authenticatedResponseHeaders(request),
@@ -88,6 +99,19 @@ export function createApiHttpServer(
       writeJson(response, 500, { error: 'INTERNAL_ERROR' }, responseHeaders);
     }
   });
+  if (pvpWebSocket !== undefined) {
+    const cleanup = attachPvpWebSocket(server, pvpWebSocket.registry, pvpWebSocket.options);
+    pvpCleanupByServer.set(server, cleanup);
+    server.once('close', () => {
+      cleanup();
+      pvpCleanupByServer.delete(server);
+    });
+  }
+  return server;
+}
+
+export function closePvpWebSocket(server: Server): void {
+  pvpCleanupByServer.get(server)?.();
 }
 
 /** Uses forwarded client addresses only when the direct peer is explicitly trusted. */

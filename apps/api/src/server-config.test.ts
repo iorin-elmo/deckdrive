@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { apiCorsOrigins, apiHost, apiPort, apiTrustedProxyAddresses } from './server-config.js';
+import {
+  apiCorsOrigins,
+  apiHost,
+  apiPort,
+  apiTrustedProxyAddresses,
+  pvpWorkerCount,
+} from './server-config.js';
+
+describe('pvpWorkerCount', () => {
+  it('defaults to one worker for in-process PvP coordination', () => {
+    expect(pvpWorkerCount(undefined)).toBe(1);
+  });
+
+  it('rejects invalid worker counts', () => {
+    expect(() => pvpWorkerCount('0')).toThrow('PVP_WORKER_COUNT');
+    expect(() => pvpWorkerCount('2.5')).toThrow('PVP_WORKER_COUNT');
+  });
+});
 
 describe('apiPort', () => {
   it('uses 3000 by default', () => {

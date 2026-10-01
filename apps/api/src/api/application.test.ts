@@ -52,6 +52,7 @@ describe('ApiApplication authentication', () => {
             initialState,
             finalState,
             createdAt: new Date('2026-09-30T00:00:00Z'),
+            players: [{ playerId: first }, { playerId: second }],
           }),
         },
       } as unknown as PrismaClient,

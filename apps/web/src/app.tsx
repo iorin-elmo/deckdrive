@@ -51,7 +51,9 @@ import {
   type DeckDriveClient,
   type OwnedCard,
   type PackOpening,
+  type PvpProjectedMatchState,
 } from './api.js';
+import { PvpSocketClient, type PvpServerMessage } from './pvp.js';
 import { useSessionStore } from './store.js';
 import {
   I18nProvider,
@@ -94,6 +96,8 @@ export function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/battle/cpu" element={<CpuSetupPage />} />
           <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
+          <Route path="/battle/pvp" element={<PvpSetupPage />} />
+          <Route path="/battle/pvp/:matchId" element={<PvpBattlePage />} />
           <Route path="/result/:matchId" element={<ResultPage />} />
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
@@ -1401,6 +1405,9 @@ function CpuSetupPage() {
             <Swords size={18} aria-hidden="true" />
             {start.isPending ? t('creatingMatch') : t('enterCpuArena')}
           </ActionButton>
+          <Link className="hero-secondary mt-3 block text-center" to="/battle/pvp">
+            PvP arena
+          </Link>
         </form>
         <article className="arena-panel min-h-80 p-6 sm:p-8">
           <p className="eyebrow">{t('matchFormat')}</p>
@@ -1457,6 +1464,510 @@ function CpuBattlePage() {
   );
 }
 
+function PvpSetupPage() {
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  const navigate = useNavigate();
+  const decks = useQuery({
+    queryKey: ['decks', playerId, previewMode],
+    queryFn: () => client.decks(playerId),
+  });
+  const playableDecks = (decks.data ?? []).filter(isCpuReadyDeck);
+  const [deckId, setDeckId] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const inviteStorageKey = `deckdrive:pvp:invite:${playerId}`;
+  const [createdInvite, setCreatedInvite] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(inviteStorageKey) ?? '';
+  });
+  const privateCreateRequestId = useRef<string | undefined>(undefined);
+  const [mode, setMode] = useState<'CASUAL' | 'PRIVATE'>('CASUAL');
+  const [queueId, setQueueId] = useState('');
+  const selectedDeck = playableDecks.some((deck) => deck.id === deckId);
+  useEffect(() => {
+    if (deckId.length === 0 && playableDecks[0] !== undefined) setDeckId(playableDecks[0].id);
+  }, [deckId, playableDecks]);
+  const casualStart = useMutation({
+    mutationFn: () => client.startCasualMatch(playerId, deckId),
+    onSuccess: (result) => {
+      if (result.matchId !== undefined) navigate(`/battle/pvp/${result.matchId}`);
+      else setQueueId(result.queueId);
+    },
+  });
+  const casualStatus = useQuery({
+    queryKey: ['pvp-casual-status', playerId, queueId, previewMode],
+    queryFn: () => client.casualMatchStatus(playerId, queueId),
+    enabled: queueId.length > 0,
+    refetchInterval: 1_000,
+  });
+  const createPrivate = useMutation({
+    mutationFn: () => {
+      privateCreateRequestId.current ??= crypto.randomUUID();
+      return client.createPrivateMatch(playerId, deckId, privateCreateRequestId.current);
+    },
+    onSuccess: (result) => {
+      setCreatedInvite(result.inviteCode);
+      setInviteCode(result.inviteCode);
+      window.localStorage.setItem(inviteStorageKey, result.inviteCode);
+      privateCreateRequestId.current = undefined;
+    },
+  });
+  const privateStatus = useQuery({
+    queryKey: ['pvp-private-status', playerId, createdInvite, previewMode],
+    queryFn: () => client.privateMatchStatus(playerId, createdInvite),
+    enabled: createdInvite.length > 0,
+    refetchInterval: 1_000,
+  });
+  const joinPrivate = useMutation({
+    mutationFn: () => client.joinPrivateMatch(playerId, inviteCode.trim(), deckId),
+    onSuccess: (result) => navigate(`/battle/pvp/${result.matchId}`),
+  });
+  useEffect(() => {
+    const matchId =
+      casualStatus.data?.matchId ??
+      (privateStatus.data?.status === 'MATCHED' ? privateStatus.data.matchId : undefined);
+    if (matchId !== undefined) {
+      if (privateStatus.data?.status === 'MATCHED' && privateStatus.data.matchId === matchId) {
+        window.localStorage.removeItem(inviteStorageKey);
+        setCreatedInvite('');
+        setInviteCode('');
+      }
+      navigate(`/battle/pvp/${matchId}`);
+    }
+  }, [casualStatus.data?.matchId, inviteStorageKey, navigate, privateStatus.data]);
+  useEffect(() => {
+    if (casualStatus.error instanceof ApiError && casualStatus.error.code === 'QUEUE_NOT_FOUND')
+      setQueueId('');
+  }, [casualStatus.error]);
+  useEffect(() => {
+    if (
+      privateStatus.error instanceof ApiError &&
+      privateStatus.error.code === 'PRIVATE_STATUS_NOT_FOUND'
+    ) {
+      setCreatedInvite('');
+      setInviteCode('');
+      window.localStorage.removeItem(inviteStorageKey);
+    }
+  }, [privateStatus.error]);
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="PvP"
+        title="Enter the arena"
+        description="Choose a server-validated deck, find an opponent, or invite one directly."
+      />
+      <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <article className="surface-panel p-6">
+          {decks.isLoading ? <LoadingNotice title="Loading decks" /> : null}
+          {decks.isError ? (
+            <ApiFailure error={decks.error} onRetry={() => void decks.refetch()} />
+          ) : null}
+          {playableDecks.length === 0 && !decks.isLoading ? (
+            <AsyncNotice kind="empty" title="No ready decks">
+              Build a 30-card deck before entering PvP.
+              <Link className="quiet-link mt-3" to="/decks/new">
+                Build deck
+              </Link>
+            </AsyncNotice>
+          ) : (
+            <>
+              <label className="field-label">
+                Deck
+                <select value={deckId} onChange={(event) => setDeckId(event.target.value)}>
+                  {playableDecks.map((deck) => (
+                    <option key={deck.id} value={deck.id}>
+                      {deck.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-6 grid grid-cols-2 gap-2">
+                {(['CASUAL', 'PRIVATE'] as const).map((option) => (
+                  <button
+                    key={option}
+                    className={classNames(
+                      'difficulty-option',
+                      mode === option && 'difficulty-option-selected',
+                    )}
+                    type="button"
+                    aria-pressed={mode === option}
+                    onClick={() => setMode(option)}
+                  >
+                    {option === 'CASUAL' ? 'Casual queue' : 'Private invite'}
+                  </button>
+                ))}
+              </div>
+              {mode === 'CASUAL' ? (
+                <>
+                  <ActionButton
+                    className="mt-6 w-full"
+                    type="button"
+                    disabled={
+                      previewMode || !selectedDeck || casualStart.isPending || queueId.length > 0
+                    }
+                    onClick={() => casualStart.mutate()}
+                  >
+                    {queueId.length > 0 ? 'Waiting for opponent…' : 'Find opponent'}
+                  </ActionButton>
+                  {casualStart.isError ? <ApiFailure error={casualStart.error} /> : null}
+                  {casualStatus.isError ? <ApiFailure error={casualStatus.error} /> : null}
+                </>
+              ) : (
+                <>
+                  <ActionButton
+                    className="mt-6 w-full"
+                    type="button"
+                    disabled={previewMode || !selectedDeck || createPrivate.isPending}
+                    onClick={() => createPrivate.mutate()}
+                  >
+                    Create invite
+                  </ActionButton>
+                  {createdInvite.length > 0 ? (
+                    <p className="mt-4 rounded border border-cyan-300/30 p-3 text-sm">
+                      Share invite code: <strong>{createdInvite}</strong>
+                    </p>
+                  ) : null}
+                  <label className="field-label mt-5">
+                    Invite code
+                    <input
+                      value={inviteCode}
+                      onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+                      placeholder="ABC123"
+                    />
+                  </label>
+                  <ActionButton
+                    className="mt-3 w-full"
+                    type="button"
+                    disabled={
+                      previewMode ||
+                      !selectedDeck ||
+                      inviteCode.trim().length === 0 ||
+                      joinPrivate.isPending
+                    }
+                    onClick={() => joinPrivate.mutate()}
+                  >
+                    Join invite
+                  </ActionButton>
+                  {createPrivate.isError ? <ApiFailure error={createPrivate.error} /> : null}
+                  {joinPrivate.isError ? <ApiFailure error={joinPrivate.error} /> : null}
+                  {privateStatus.isError ? <ApiFailure error={privateStatus.error} /> : null}
+                </>
+              )}
+            </>
+          )}
+        </article>
+        <article className="arena-panel min-h-80 p-6 sm:p-8">
+          <p className="eyebrow">Server authoritative</p>
+          <h2 className="mt-2 text-3xl font-black">Play with a human</h2>
+          <p className="mt-4 max-w-md leading-7 text-stone-200">
+            The API owns matchmaking, action validation, random results, and the reconnectable
+            battle state.
+          </p>
+        </article>
+      </section>
+    </>
+  );
+}
+
+function PvpBattlePage() {
+  const { matchId = '' } = useParams();
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const apiClient = useApiClient();
+  const navigate = useNavigate();
+  const { locale } = useI18n();
+  const [stateMessage, setStateMessage] = useState<Extract<PvpServerMessage, { type: 'STATE' }>>();
+  const [connectionStatus, setConnectionStatus] = useState<
+    'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'CLOSED'
+  >('CONNECTING');
+  const [error, setError] = useState<string>();
+  const [pendingRequestId, setPendingRequestId] = useState<string>();
+  const [retryRequestId, setRetryRequestId] = useState<string>();
+  const [matchAbandoned, setMatchAbandoned] = useState(false);
+  const clientRef = useRef<PvpSocketClient | undefined>(undefined);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>();
+  const cards = useQuery({
+    queryKey: ['cards', previewMode],
+    queryFn: () => apiClient.cards(),
+  });
+
+  useEffect(() => {
+    if (previewMode) return;
+    setStateMessage(undefined);
+    setError(undefined);
+    setPendingRequestId(undefined);
+    setRetryRequestId(undefined);
+    setMatchAbandoned(false);
+    setSelectedTargetId(undefined);
+    setConnectionStatus('CONNECTING');
+    const client = new PvpSocketClient(matchId, {
+      onActionAcknowledged: (requestId) => {
+        setPendingRequestId((current) => (current === requestId ? undefined : current));
+        setRetryRequestId((current) => (current === requestId ? undefined : current));
+      },
+      onStatus: (status) => {
+        setConnectionStatus(status);
+        if (status === 'CLOSED') setError('PvP connection could not be established.');
+      },
+      onMessage: (message) => {
+        if (message.type === 'STATE') {
+          const projected = message.state as { readonly turn: number; readonly phase: string };
+          setStateMessage({ ...message, turn: projected.turn, phase: projected.phase });
+        }
+        if (message.type === 'ERROR') {
+          setError(String(message.code ?? 'UNKNOWN_ERROR'));
+          if (message.code === 'MATCH_ABANDONED') {
+            setMatchAbandoned(true);
+            setPendingRequestId(undefined);
+            navigate(`/result/${matchId}`);
+          } else if (message.code === 'MATCH_UNAVAILABLE' && message.requestId !== undefined) {
+            setRetryRequestId(message.requestId);
+          } else if (message.requestId !== undefined) {
+            setPendingRequestId((current) => (current === message.requestId ? undefined : current));
+            setRetryRequestId((current) => (current === message.requestId ? undefined : current));
+          }
+        }
+      },
+    });
+    clientRef.current = client;
+    return () => {
+      client.close();
+      clientRef.current = undefined;
+    };
+  }, [matchId, navigate, previewMode]);
+
+  const state = stateMessage?.state as PvpProjectedState | undefined;
+  const players = state?.players ?? [];
+  const viewer = players.find((player) => player?.id === playerId);
+  const opponent = players.find((player) => player?.id !== playerId);
+  const activePlayerId = state?.activePlayerId;
+  const socketClosed = connectionStatus === 'CLOSED';
+  const actionControlsDisabled =
+    connectionStatus !== 'OPEN' ||
+    pendingRequestId !== undefined ||
+    matchAbandoned ||
+    state?.phase !== 'PLAYER_TURN';
+  const eventSequence =
+    typeof stateMessage?.eventSequence === 'number' ? stateMessage.eventSequence : 0;
+  const actionSequence =
+    typeof stateMessage?.actionSequence === 'number' ? stateMessage.actionSequence : 0;
+  const endTurn = () => {
+    if (stateMessage === undefined || activePlayerId !== playerId) return;
+    const requestId = clientRef.current?.sendAction({ type: 'END_TURN', playerId }, actionSequence);
+    if (requestId !== undefined) setPendingRequestId(requestId);
+  };
+  const playCard = (card: PvpCard) => {
+    if (stateMessage === undefined || state === undefined || activePlayerId !== playerId) return;
+    const definition = cards.data?.find(
+      (candidate) =>
+        candidate.cardId === card.definitionId && candidate.version === state.cardDataVersion,
+    )?.definition;
+    const requestId = clientRef.current?.sendAction(
+      {
+        type: 'PLAY_CARD',
+        playerId,
+        cardInstanceId: card.id,
+        ...(cardNeedsEnemyTarget(definition) && selectedTargetId !== undefined
+          ? { targetId: selectedTargetId }
+          : {}),
+      },
+      actionSequence,
+    );
+    if (requestId !== undefined) setPendingRequestId(requestId);
+  };
+
+  if (previewMode)
+    return (
+      <AsyncNotice kind="empty" title="PvP is unavailable in preview mode">
+        Sign in to use the live PvP arena.
+      </AsyncNotice>
+    );
+  if (stateMessage === undefined)
+    return (
+      <>
+        <PageHeading eyebrow="PvP" title="Connecting to the arena" description={connectionStatus} />
+        {error === undefined ? (
+          <LoadingNotice title="Loading battle state" />
+        ) : (
+          <AsyncNotice kind="error" title="PvP connection error">
+            {error}
+            {connectionStatus === 'CLOSED' ? (
+              <ActionButton className="mt-3" type="button" onClick={() => window.location.reload()}>
+                Reload battle
+              </ActionButton>
+            ) : null}
+          </AsyncNotice>
+        )}
+      </>
+    );
+
+  return (
+    <>
+      <PageHeading
+        eyebrow={`PvP · ${connectionStatus}`}
+        title="PvP arena"
+        description={`Turn ${String(stateMessage.turn)} · ${stateMessage.phase}`}
+      />
+      <section className="battle-board mt-7" aria-label="PvP battle state">
+        <PvpCombatant label="Opponent" player={opponent} tone="enemy" />
+        <div className="battle-field">
+          <p className="eyebrow">Server-authoritative battle</p>
+          <div className="battle-ring" aria-hidden="true" />
+          <p className="mt-4 text-center text-sm text-stone-300">
+            Snapshot and event cursors: {String(eventSequence)}
+          </p>
+          {opponent === undefined ? null : (
+            <button
+              className="hero-secondary mx-auto mt-4 block"
+              type="button"
+              aria-pressed={selectedTargetId === opponent.id}
+              onClick={() => setSelectedTargetId(opponent.id)}
+            >
+              Target: {opponent.id}
+            </button>
+          )}
+        </div>
+        <PvpCombatant label="You" player={viewer} tone="player" />
+      </section>
+      <section className="surface-panel mt-5 p-5" aria-label="PvP hand">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">Your hand</h2>
+          <span className="text-sm text-stone-400">{String(viewer?.hand.length ?? 0)} cards</span>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {(viewer?.hand ?? []).filter(isPvpCard).map((card) => (
+            <button
+              className="hand-card text-left disabled:cursor-not-allowed disabled:opacity-50"
+              key={card.id}
+              type="button"
+              disabled={actionControlsDisabled || activePlayerId !== playerId}
+              onClick={() => playCard(card)}
+            >
+              <p className="text-xs font-semibold text-amber-200">Play card</p>
+              <p className="mt-3 font-bold text-stone-50">
+                {localizedCardName(
+                  card.definitionId,
+                  state?.cardDataVersion ?? '',
+                  locale,
+                  cards.data?.find(
+                    (candidate) =>
+                      candidate.cardId === card.definitionId &&
+                      candidate.version === state?.cardDataVersion,
+                  )?.definition,
+                )}
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <ActionButton
+          type="button"
+          onClick={endTurn}
+          disabled={actionControlsDisabled || activePlayerId !== playerId}
+        >
+          End turn
+        </ActionButton>
+        <button
+          className="hero-secondary"
+          type="button"
+          disabled={connectionStatus !== 'OPEN'}
+          onClick={() => clientRef.current?.resync()}
+        >
+          Resync
+        </button>
+        <Link className="hero-secondary" to={`/result/${matchId}`}>
+          Result
+        </Link>
+      </div>
+      {error === undefined ? null : (
+        <AsyncNotice kind="error" title="PvP error">
+          {error}
+          {retryRequestId === undefined ? null : (
+            <ActionButton
+              className="mt-3"
+              type="button"
+              onClick={() => {
+                if (clientRef.current?.retryAction(retryRequestId)) {
+                  setRetryRequestId(undefined);
+                  setError(undefined);
+                }
+              }}
+            >
+              Retry action
+            </ActionButton>
+          )}
+          {socketClosed ? (
+            <ActionButton className="mt-3" type="button" onClick={() => window.location.reload()}>
+              Reload battle
+            </ActionButton>
+          ) : null}
+        </AsyncNotice>
+      )}
+    </>
+  );
+}
+
+type PvpProjectedPlayer = {
+  readonly id: string;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly block: number;
+  readonly energy: number;
+  readonly maxEnergy: number;
+  readonly hand: BattleState['players'][number]['hand'];
+};
+
+type PvpCard = Extract<
+  BattleState['players'][number]['hand'][number],
+  { readonly id: string; readonly definitionId: string }
+>;
+
+type PvpProjectedState = Pick<
+  PvpProjectedMatchState,
+  'cardDataVersion' | 'turn' | 'phase' | 'activePlayerId'
+> & { readonly players: readonly PvpProjectedPlayer[] };
+
+function cardNeedsEnemyTarget(definition: CardSummary['definition'] | undefined): boolean {
+  return (
+    definition?.effects.some((effect) => 'target' in effect && effect.target === 'ENEMY') ?? false
+  );
+}
+
+function isPvpCard(card: BattleState['players'][number]['hand'][number]): card is PvpCard {
+  return 'id' in card && 'definitionId' in card;
+}
+
+function PvpCombatant({
+  label,
+  player,
+  tone,
+}: {
+  readonly label: string;
+  readonly player: PvpProjectedPlayer | undefined;
+  readonly tone: 'player' | 'enemy';
+}) {
+  if (player === undefined) return <article className="combatant">{label}</article>;
+  return (
+    <article
+      className={classNames('combatant', tone === 'enemy' ? 'combatant-enemy' : 'combatant-player')}
+    >
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1 font-bold text-stone-50">{player.id}</p>
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <Metric label="HP" value={`${String(player.hp)}/${String(player.maxHp)}`} />
+        <Metric label="Block" value={String(player.block)} />
+        <Metric label="Energy" value={`${String(player.energy)}/${String(player.maxEnergy)}`} />
+      </div>
+      <p className="mt-4 text-xs text-stone-300">
+        Hand: {tone === 'enemy' ? 'hidden' : `${String(player.hand.length)} cards`}
+      </p>
+    </article>
+  );
+}
+
 function ResultPage() {
   const { matchId = '' } = useParams();
   const playerId = useSessionStore((state) => state.playerId)!;
@@ -1470,6 +1981,7 @@ function ResultPage() {
   if (match.isLoading) return <LoadingNotice title={t('loadingResult')} />;
   if (match.isError) return <ApiFailure error={match.error} />;
   const state = match.data?.finalState;
+  const pvpState = match.data?.state;
   const abandoned = match.data?.status === 'ABANDONED';
   return (
     <>
@@ -1478,7 +1990,9 @@ function ResultPage() {
         title={localizedResultTitle(match.data?.status, t)}
         description={t('resultDescription')}
       />
-      {state === null || state === undefined ? (
+      {pvpState !== undefined ? (
+        <PvpResultBoard state={pvpState} playerId={playerId} />
+      ) : state === null || state === undefined ? (
         <AsyncNotice kind="empty" title={abandoned ? t('battleAbandoned') : t('noFinalResult')}>
           {abandoned ? t('abandonedDescription') : t('noFinalResultDescription')}
         </AsyncNotice>
@@ -1486,6 +2000,29 @@ function ResultPage() {
         <BattleBoard state={state} />
       )}
     </>
+  );
+}
+
+function PvpResultBoard({
+  state,
+  playerId,
+}: {
+  readonly state: PvpProjectedMatchState;
+  readonly playerId: string;
+}) {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  const opponent = state.players.find((candidate) => candidate.id !== playerId);
+  return (
+    <section className="battle-board mt-7" aria-label="PvP result state">
+      <PvpCombatant label="Opponent" player={opponent} tone="enemy" />
+      <div className="battle-field">
+        <p className="eyebrow">Final server snapshot</p>
+        <p className="mt-4 text-center text-sm text-stone-300">
+          Turn {String(state.turn)} · {state.phase}
+        </p>
+      </div>
+      <PvpCombatant label="You" player={player} tone="player" />
+    </section>
   );
 }
 

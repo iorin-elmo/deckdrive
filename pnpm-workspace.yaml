@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+overrides:
+  remeda: 2.33.3
 allowBuilds:
   '@prisma/engines': true
   esbuild: true

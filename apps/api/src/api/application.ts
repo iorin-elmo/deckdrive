@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
-import { createInitialBattleState, projectBattleStateV2 } from '@deck-drive/game-engine';
-import type {
-  BattleStateV2,
-  CardDefinition,
-  CardInstance,
-  MatchId,
-  PlayerId,
+import {
+  createInitialBattleState,
+  projectBattleStateV2,
+  type BattleState,
+  type BattleStateV2,
 } from '@deck-drive/game-engine';
+import { projectBattleState } from '../pvp/protocol.js';
+import type { CardDefinition, CardInstance, MatchId, PlayerId } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import {
   DevelopmentAuthenticationDisabledError,
@@ -50,6 +50,7 @@ import {
   packProducts,
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
+import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
 import { RewardValidationError } from '../rewards/reward-ledger.js';
 import {
   LoginRewardConfigurationError,
@@ -84,6 +85,7 @@ export class ApiApplication {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly environment: NodeJS.ProcessEnv = process.env,
+    private readonly pvp: PvpMatchService | undefined = undefined,
   ) {
     this.oauth = new OAuthService(prisma, environment);
   }
@@ -115,6 +117,9 @@ export class ApiApplication {
 
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
+      const privateJoin = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/join$/u)?.[1];
+      const queueId = path.match(/^\/api\/v1\/matches\/queue\/([^/]+)$/u)?.[1];
+      const privateStatusCode = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/status$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
       const missionId = path.match(/^\/api\/v1\/missions\/([^/]+)\/claim$/u)?.[1];
       const authenticatedRoute =
@@ -126,9 +131,13 @@ export class ApiApplication {
             path === '/api/v1/missions' ||
             path === '/api/v1/progression' ||
             path === '/api/v1/cosmetics')) ||
+        (request.method === 'GET' && (queueId !== undefined || privateStatusCode !== undefined)) ||
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
+            path === '/api/v1/matches/casual' ||
+            path === '/api/v1/matches/private' ||
+            privateJoin !== undefined ||
             path === '/api/v1/login-rewards/claim' ||
             packProductId !== undefined ||
             missionId !== undefined)) ||
@@ -149,6 +158,10 @@ export class ApiApplication {
         return await this.progression(player.id);
       if (request.method === 'GET' && path === '/api/v1/cosmetics')
         return await this.listCosmetics(player.id);
+      if (request.method === 'GET' && queueId !== undefined)
+        return await this.getCasualStatus(player.id, queueId);
+      if (request.method === 'GET' && privateStatusCode !== undefined)
+        return await this.getPrivateStatus(player.id, privateStatusCode);
       if (request.method === 'POST' && packProductId !== undefined)
         return await this.openPack(player.id, packProductId, request);
       if (request.method === 'POST' && missionId !== undefined)
@@ -163,6 +176,12 @@ export class ApiApplication {
         return await this.deleteDeck(player.id, deckId);
       if (request.method === 'POST' && path === '/api/v1/matches')
         return await this.startCpuMatch(player.id, request.body);
+      if (request.method === 'POST' && path === '/api/v1/matches/casual')
+        return await this.startCasualMatch(player.id, request.body);
+      if (request.method === 'POST' && path === '/api/v1/matches/private')
+        return await this.createPrivateMatch(player.id, request.body);
+      if (request.method === 'POST' && privateJoin !== undefined)
+        return await this.joinPrivateMatch(player.id, privateJoin, request.body);
       if (matchId !== undefined && request.method === 'GET')
         return await this.getMatch(player.id, matchId);
       return { status: 404, body: { error: 'NOT_FOUND' } };
@@ -623,21 +642,92 @@ export class ApiApplication {
   private async getMatch(playerId: string, matchId: string): Promise<ApiResponse> {
     const match = await this.prisma.match.findFirst({
       where: { id: matchId, players: { some: { playerId } } },
-      select: { id: true, status: true, initialState: true, finalState: true, createdAt: true },
+      select: {
+        id: true,
+        status: true,
+        mode: true,
+        initialState: true,
+        finalState: true,
+        createdAt: true,
+        players: { select: { playerId: true } },
+      },
     });
-    return match === null
-      ? { status: 404, body: { error: 'MATCH_NOT_FOUND' } }
-      : {
-          status: 200,
-          body: {
-            ...match,
-            initialState: projectStoredBattleState(match.initialState, playerId),
-            finalState:
-              match.finalState === null
-                ? null
-                : projectStoredBattleState(match.finalState, playerId),
-          },
-        };
+    if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
+    if (match.mode !== 'CASUAL' && match.mode !== 'PRIVATE') {
+      return {
+        status: 200,
+        body: {
+          ...match,
+          initialState: projectStoredBattleState(match.initialState, playerId),
+          finalState:
+            match.finalState === null ? null : projectStoredBattleState(match.finalState, playerId),
+        },
+      };
+    }
+    const liveSession = this.pvp === undefined ? undefined : await this.pvp.find(match.id);
+    const liveState = liveSession?.currentState;
+    const state = liveState ?? match.finalState ?? match.initialState;
+    if (match.status === 'ABANDONED') {
+      return {
+        status: 200,
+        body: {
+          id: match.id,
+          status: match.status,
+          createdAt: match.createdAt,
+          state: undefined,
+        },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        id: match.id,
+        status: match.status,
+        createdAt: match.createdAt,
+        state: projectBattleState(state as BattleState, playerId as PlayerId),
+      },
+    };
+  }
+
+  private async startCasualMatch(playerId: string, body: unknown): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.enqueueCasual(playerId, string(value.deckId, 'deckId'));
+    return result.status === 'QUEUED'
+      ? { status: 202, body: result }
+      : { status: 201, body: { status: result.status, matchId: result.matchId } };
+  }
+
+  private async createPrivateMatch(playerId: string, body: unknown): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.createPrivate(
+      playerId,
+      string(value.deckId, 'deckId'),
+      optionalString(value.requestId),
+    );
+    return { status: 201, body: { inviteCode: result.inviteCode } };
+  }
+
+  private async getCasualStatus(playerId: string, queueId: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: await this.pvp.casualStatus(playerId, queueId) };
+  }
+
+  private async getPrivateStatus(playerId: string, inviteCode: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: await this.pvp.privateStatus(playerId, inviteCode) };
+  }
+
+  private async joinPrivateMatch(
+    playerId: string,
+    inviteCode: string,
+    body: unknown,
+  ): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.joinPrivate(playerId, inviteCode, string(value.deckId, 'deckId'));
+    return { status: 201, body: { status: 'MATCHED', matchId: result.matchId } };
   }
 
   private async validateOwnedDeck(
@@ -763,6 +853,24 @@ export class ApiApplication {
       return { status: 503, body: { error: 'PACK_POOL_UNAVAILABLE' } };
     if (error instanceof DevelopmentAuthenticationDisabledError)
       return { status: 404, body: { error: 'NOT_FOUND' } };
+    if (error instanceof PvpRequestError) {
+      if (
+        error.code === 'DECK_NOT_FOUND' ||
+        error.code === 'PRIVATE_INVITE_NOT_FOUND' ||
+        error.code === 'QUEUE_NOT_FOUND' ||
+        error.code === 'PRIVATE_STATUS_NOT_FOUND'
+      )
+        return { status: 404, body: { error: error.code } };
+      if (error.code === 'PRIVATE_INVITE_SELF_JOIN')
+        return { status: 409, body: { error: error.code } };
+      if (error.code === 'PRIVATE_INVITE_LIMIT')
+        return { status: 409, body: { error: error.code } };
+      if (error.code === 'REQUEST_CONFLICT') return { status: 409, body: { error: error.code } };
+      if (error.code === 'RATE_LIMITED') return { status: 429, body: { error: error.code } };
+      return { status: 400, body: { error: error.code } };
+    }
+    if (error instanceof PvpUnavailableError)
+      return { status: 503, body: { error: 'PVP_UNAVAILABLE' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };
   }
 }
@@ -776,12 +884,21 @@ function projectStoredBattleState(value: Prisma.JsonValue, viewerId: string): un
   ) {
     return projectBattleStateV2(value as unknown as BattleStateV2, viewerId as PlayerId);
   }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Array.isArray(value.players)
+  ) {
+    return projectBattleState(value as unknown as BattleState, viewerId as PlayerId);
+  }
   return value;
 }
 
 class UnauthorizedError extends Error {}
 class CsrfError extends Error {}
 class BadRequestError extends Error {}
+class PvpUnavailableError extends Error {}
 
 function oauthFailureCode(error: unknown): string {
   if (error instanceof OAuthRateLimitError) return 'OAUTH_RATE_LIMITED';
@@ -836,6 +953,10 @@ function string(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new BadRequestError(`${field} is required.`);
   return value;
+}
+function optionalString(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  return string(value, 'requestId');
 }
 function header(
   headers: Readonly<Record<string, string | undefined>>,
