@@ -107,6 +107,7 @@ acknowledgements and returning to the private lobby).
 The database-backed reconnect integration test exercises cookie-authenticated
 private match creation, real Prisma persistence, disconnect, a fresh API server
 and `PvpMatchService.restore`, then snapshot and missing-event recovery through
-the WebSocket protocol. An API restart resets every active player's disconnect
+the real browser `PvpSocketClient` and a cookie-bearing WebSocket transport.
+An API restart resets every active player's disconnect
 grace period because no old socket survives the restart; presence writes retry
 until the database recovers rather than silently stopping after three failures.

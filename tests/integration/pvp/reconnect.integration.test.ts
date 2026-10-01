@@ -4,15 +4,20 @@ import { connect, type Socket } from 'node:net';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { PlayerId } from '@deck-drive/game-engine';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
-import { ApiApplication } from '../api/application.js';
-import { closePvpWebSocket, createApiHttpServer } from '../api/http.js';
-import { parseCookies, sessionCookieName } from '../auth/cookies.js';
-import { OAuthService } from '../auth/oauth-service.js';
-import { loadRootEnvironment } from '../database/load-environment.js';
-import { PrismaClient } from '../generated/prisma/client.js';
-import { PvpMatchService } from './service.js';
+import { ApiApplication } from '../../../apps/api/src/api/application.js';
+import { closePvpWebSocket, createApiHttpServer } from '../../../apps/api/src/api/http.js';
+import { parseCookies, sessionCookieName } from '../../../apps/api/src/auth/cookies.js';
+import { OAuthService } from '../../../apps/api/src/auth/oauth-service.js';
+import { loadRootEnvironment } from '../../../apps/api/src/database/load-environment.js';
+import { PrismaClient } from '../../../apps/api/src/generated/prisma/client.js';
+import { PvpMatchService } from '../../../apps/api/src/pvp/service.js';
+import {
+  PvpSocketClient,
+  type PvpSocketLike,
+  type PvpServerMessage,
+} from '../../../apps/web/src/pvp.js';
 
 loadRootEnvironment();
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,16 +26,27 @@ const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: data
 
 type WireMessage = { readonly type?: string; readonly [key: string]: unknown };
 
-class TestSocket {
+class TestSocket implements PvpSocketLike {
+  onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+  readyState = 0;
   private buffer = Buffer.alloc(0);
+  private handshaken = false;
   private readonly pending: WireMessage[] = [];
   private readonly waiters: Array<(message: WireMessage) => boolean> = [];
 
   private constructor(private readonly socket: Socket) {
     socket.on('data', (chunk: Buffer) => this.receive(chunk));
+    socket.once('close', () => {
+      this.readyState = 3;
+      this.onclose?.();
+    });
+    socket.once('error', () => this.onerror?.());
   }
 
-  static async open(port: number, matchId: string, cookie: string): Promise<TestSocket> {
+  static dial(port: number, matchId: string, cookie: string): TestSocket {
     const socket = connect(port, '127.0.0.1');
     const client = new TestSocket(socket);
     socket.write(
@@ -46,12 +62,17 @@ class TestSocket {
         '',
       ].join('\r\n'),
     );
+    return client;
+  }
+
+  static async open(port: number, matchId: string, cookie: string): Promise<TestSocket> {
+    const client = TestSocket.dial(port, matchId, cookie);
     await client.waitFor((message) => message.type === 'HANDSHAKE');
     return client;
   }
 
   send(message: unknown): void {
-    const payload = Buffer.from(JSON.stringify(message));
+    const payload = Buffer.from(typeof message === 'string' ? message : JSON.stringify(message));
     const mask = Buffer.from([1, 2, 3, 4]);
     const masked = Buffer.from(payload);
     for (let index = 0; index < masked.length; index += 1)
@@ -86,12 +107,15 @@ class TestSocket {
 
   private receive(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    if (this.buffer.subarray(0, 5).toString() === 'HTTP/') {
+    if (!this.handshaken) {
       const end = this.buffer.indexOf('\r\n\r\n');
       if (end < 0) return;
       const header = this.buffer.subarray(0, end).toString();
       this.buffer = this.buffer.subarray(end + 4);
       if (!header.startsWith('HTTP/1.1 101 ')) throw new Error(header);
+      this.handshaken = true;
+      this.readyState = 1;
+      this.onopen?.();
       this.deliver({ type: 'HANDSHAKE' });
     }
     while (this.buffer.length >= 2) {
@@ -103,7 +127,11 @@ class TestSocket {
       const opcode = this.buffer[0]! & 0xf;
       const payload = this.buffer.subarray(offset, offset + length);
       this.buffer = this.buffer.subarray(offset + length);
-      if (opcode === 1) this.deliver(JSON.parse(payload.toString()) as WireMessage);
+      if (opcode === 1) {
+        const data = payload.toString();
+        this.onmessage?.({ data });
+        this.deliver(JSON.parse(data) as WireMessage);
+      }
     }
   }
 
@@ -129,8 +157,9 @@ describe('DB-backed PvP restart and reconnect', () => {
     const deckIds: string[] = [];
     let server: Server | undefined;
     const sockets: TestSocket[] = [];
+    let browserClient: PvpSocketClient | undefined;
     let matchId: string | undefined;
-    const boot = async () => {
+    const boot = async (listenPort = 0) => {
       const service = new PvpMatchService(prisma, async (request) => {
         const token = parseCookies(request.headers.cookie)[sessionCookieName];
         const session = await oauth.session().authenticate(token);
@@ -143,7 +172,7 @@ describe('DB-backed PvP restart and reconnect', () => {
           pvpWebSocket: { registry: service, options: { tickIntervalMs: 10 } },
         },
       );
-      await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+      await new Promise<void>((resolve) => server!.listen(listenPort, '127.0.0.1', resolve));
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('Missing server port');
       return address.port;
@@ -212,7 +241,31 @@ describe('DB-backed PvP restart and reconnect', () => {
       const active = (firstState.state as { activePlayerId: string }).activePlayerId;
       const actor = active === playerIds[0] ? first : second;
       const other = actor === first ? second : first;
+      const otherIndex = actor === first ? 1 : 0;
       other.close();
+      const browserMessages: PvpServerMessage[] = [];
+      const browserSockets: TestSocket[] = [];
+      browserClient = new PvpSocketClient(
+        matchId!,
+        { onMessage: (message) => browserMessages.push(message) },
+        {
+          baseUrl: `http://127.0.0.1:${port}`,
+          reconnectDelayMs: 500,
+          socketFactory: () => {
+            const socket = TestSocket.dial(port, matchId!, cookies[otherIndex]!);
+            browserSockets.push(socket);
+            return socket;
+          },
+        },
+      );
+      await vi.waitFor(
+        () => expect(browserMessages.some((message) => message.type === 'STATE')).toBe(true),
+        { timeout: 5_000 },
+      );
+      browserMessages.length = 0;
+      // Drop the real browser transport without closing PvpSocketClient. It
+      // must retain its event cursor and reconnect after the API restarts.
+      browserSockets[0]!.close();
       actor.send({
         type: 'ACTION',
         requestId: 'reconnect-e2e-action',
@@ -232,7 +285,7 @@ describe('DB-backed PvP restart and reconnect', () => {
         where: { matchId: matchId! },
         data: { disconnectedAt: new Date(0) },
       });
-      port = await boot();
+      port = await boot(port);
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
       expect((await prisma.match.findUniqueOrThrow({ where: { id: matchId! } })).status).toBe(
         'IN_PROGRESS',
@@ -242,20 +295,39 @@ describe('DB-backed PvP restart and reconnect', () => {
           await prisma.matchPlayer.findFirstOrThrow({ where: { matchId: matchId! } })
         ).disconnectedAt?.getTime(),
       ).toBeGreaterThan(Date.now() - 30_000);
-      const recovered = await TestSocket.open(port, matchId!, cookies[actor === first ? 1 : 0]!);
-      sockets.push(recovered);
-      const snapshot = await recovered.waitFor((message) => message.type === 'STATE');
+      await vi.waitFor(
+        () =>
+          expect(
+            browserMessages.some(
+              (message) => message.type === 'STATE' && message.actionSequence === 1,
+            ),
+          ).toBe(true),
+        { timeout: 10_000 },
+      );
+      const snapshot = browserMessages.find(
+        (message) => message.type === 'STATE' && message.actionSequence === 1,
+      );
+      if (snapshot?.type !== 'STATE') throw new Error('The browser did not recover its state');
       expect(snapshot.actionSequence).toBe(1);
       expect(snapshot.state).toEqual(
         expect.objectContaining({ matchId, activePlayerId: expect.any(String) }),
       );
-      recovered.send({ type: 'RESYNC', afterEventSequence: 0 });
-      const missing = await recovered.waitFor(
-        (message) =>
-          message.type === 'EVENT' && (message.event as { type?: string }).type === 'TURN_ENDED',
+      await vi.waitFor(
+        () =>
+          expect(
+            browserMessages.some(
+              (message) => message.type === 'EVENT' && message.event.type === 'TURN_ENDED',
+            ),
+          ).toBe(true),
+        { timeout: 10_000 },
       );
+      const missing = browserMessages.find(
+        (message) => message.type === 'EVENT' && message.event.type === 'TURN_ENDED',
+      );
+      if (missing?.type !== 'EVENT') throw new Error('The browser did not recover missing events');
       expect(missing.event).toEqual(expect.objectContaining({ type: 'TURN_ENDED' }));
     } finally {
+      browserClient?.close();
       for (const socket of sockets) socket.close();
       await stop();
       if (matchId) await prisma.match.delete({ where: { id: matchId } });
