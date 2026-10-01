@@ -8,6 +8,17 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('does not expose operator analytics or abuse flags through the player API', async () => {
+    const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'test' });
+    for (const path of ['/api/v1/ranked/analytics', '/api/v1/ranked/abuse-flags']) {
+      for (const headers of [{}, { 'x-deckdrive-player-id': 'player-1' }]) {
+        await expect(application.handle({ method: 'GET', path, headers })).resolves.toEqual({
+          status: 404,
+          body: { error: 'NOT_FOUND' },
+        });
+      }
+    }
+  });
   it('projects both protocol-2 match states for each participant', async () => {
     const first = 'player-1' as PlayerId;
     const second = 'player-2' as PlayerId;

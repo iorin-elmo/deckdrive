@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -15,6 +15,7 @@ import { PrismaClient } from '../../../apps/api/src/generated/prisma/client.js';
 import { PrismaPvpMatchPersistence } from '../../../apps/api/src/pvp/persistence.js';
 import { MatchSession } from '../../../apps/api/src/pvp/session.js';
 import { PrismaRankedSettlement } from '../../../apps/api/src/ranked/prisma-ranked-settlement.js';
+import { PrismaRankedAnalytics } from '../../../apps/api/src/ranked/prisma-analytics.js';
 import { defaultRatingConfig, calculateRatingChange } from '../../../apps/api/src/ranked/rating.js';
 
 loadRootEnvironment();
@@ -42,6 +43,7 @@ describe('ranked settlement in PostgreSQL', () => {
   const userIds: string[] = [];
   const matchIds: string[] = [];
   const ranked = new PrismaRankedSettlement(prisma);
+  const analytics = new PrismaRankedAnalytics(prisma);
   const persistence = new PrismaPvpMatchPersistence(prisma);
 
   beforeAll(async () => {
@@ -65,6 +67,7 @@ describe('ranked settlement in PostgreSQL', () => {
 
   afterAll(async () => {
     await prisma.ratingHistory.deleteMany({ where: { playerId: { in: playerIds } } });
+    await prisma.ratingAbuseReview.deleteMany({ where: { flag: { playerId: { in: playerIds } } } });
     await prisma.ratingAbuseFlag.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.rankedMatchPlayer.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.rankedMatch.deleteMany({ where: { matchId: { in: matchIds } } });
@@ -100,7 +103,21 @@ describe('ranked settlement in PostgreSQL', () => {
     await persistence.create(
       initial,
       [
-        { playerId: playerIds[0]!, deckSnapshot: {} },
+        {
+          playerId: playerIds[0]!,
+          deckSnapshot: {
+            cards: [
+              {
+                quantity: 1,
+                cardVersion: {
+                  id: 'ranked-test-card-version',
+                  version: '1.0.0',
+                  definition: { id: definition.id, class: 'SWORD' },
+                },
+              },
+            ],
+          },
+        },
         { playerId: playerIds[1]!, deckSnapshot: {} },
       ],
       { mode: 'RANKED' },
@@ -197,6 +214,74 @@ describe('ranked settlement in PostgreSQL', () => {
     expect(await prisma.ratingHistory.count({ where: { matchId } })).toBe(2);
     const ratings = await prisma.playerSeasonRating.findMany({ where: { seasonId: seasonOne } });
     expect(ratings.map((entry) => entry.completedGames)).toEqual([3, 3]);
+  });
+
+  it('counts disconnect episodes once and preserves reviewed flags across scans', async () => {
+    const { matchId, session, cardId } = await createRankedSession();
+    await persistence.setPlayerDisconnected(matchId, playerIds[0]!, null);
+    await Promise.all([
+      persistence.setPlayerDisconnected(matchId, playerIds[0]!, Date.now()),
+      persistence.setPlayerDisconnected(matchId, playerIds[0]!, Date.now()),
+    ]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await persistence.setPlayerDisconnected(matchId, playerIds[0]!, null);
+      await persistence.setPlayerDisconnected(matchId, playerIds[0]!, Date.now());
+    }
+    expect(
+      await prisma.matchPlayer.findUniqueOrThrow({
+        where: { matchId_playerId: { matchId, playerId: playerIds[0]! } },
+      }),
+    ).toMatchObject({ disconnectCount: 3 });
+    await session.receive(playerIds[0]!, {
+      type: 'ACTION',
+      requestId: 'analytics-win',
+      sequence: 0,
+      action: { type: 'PLAY_CARD', playerId: playerIds[0]!, cardInstanceId: cardId },
+    });
+    expect((await analytics.scan(seasonOne)).inserted).toBeGreaterThanOrEqual(1);
+    expect(await analytics.scan(seasonOne)).toMatchObject({ inserted: 0 });
+    const flags = await analytics.flags(seasonOne);
+    const flag = flags.find(
+      (entry) =>
+        entry.matchId === matchId &&
+        entry.playerId === playerIds[0] &&
+        entry.type === 'DISCONNECT_ABUSE',
+    );
+    expect(flag).toMatchObject({
+      type: 'DISCONNECT_ABUSE',
+      status: 'OPEN',
+      evidence: { seasonId: seasonOne, matchIds: [matchId] },
+    });
+    const review = await analytics.review(
+      flag!.id,
+      'operator-test',
+      'DISMISSED',
+      'Connection outage confirmed',
+    );
+    expect(
+      (
+        await analytics.review(
+          flag!.id,
+          'operator-test',
+          'DISMISSED',
+          'Connection outage confirmed',
+        )
+      ).id,
+    ).toBe(review.id);
+    await analytics.scan(seasonOne);
+    expect((await analytics.flags(seasonOne)).find((entry) => entry.id === flag!.id)).toMatchObject(
+      {
+        status: 'DISMISSED',
+        reviews: [{ operatorId: 'operator-test', previousStatus: 'OPEN', nextStatus: 'DISMISSED' }],
+      },
+    );
+    const report = await analytics.report(seasonOne);
+    expect(report.completedMatches).toBeGreaterThanOrEqual(1);
+    expect(report.disconnectCount).toBeGreaterThanOrEqual(3);
+    expect(report.cards).toContainEqual(expect.objectContaining({ key: 'ranked-lethal@1.0.0' }));
+    expect(report.classes).toContainEqual(expect.objectContaining({ key: 'SWORD' }));
+    expect(report.decks.length).toBeGreaterThan(0);
+    expect(JSON.stringify(report)).not.toContain(playerIds[0]!);
   });
 
   it('settles a v1 match with its immutable policy after switching workers', async () => {

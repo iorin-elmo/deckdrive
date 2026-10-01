@@ -162,12 +162,18 @@ export class PrismaPvpMatchPersistence {
     playerId: string,
     disconnectedAt: number | null,
   ): Promise<void> {
+    if (disconnectedAt === null) {
+      await this.prisma.matchPlayer.updateMany({
+        where: { matchId, playerId },
+        data: { disconnectedAt: null, connectedOnce: true },
+      });
+      return;
+    }
+    // A repeated disconnect notification belongs to the same episode. The
+    // conditional update also keeps concurrent writers from counting it twice.
     await this.prisma.matchPlayer.updateMany({
-      where: { matchId, playerId },
-      data: {
-        disconnectedAt: disconnectedAt === null ? null : new Date(disconnectedAt),
-        ...(disconnectedAt === null ? { connectedOnce: true } : {}),
-      },
+      where: { matchId, playerId, disconnectedAt: null },
+      data: { disconnectedAt: new Date(disconnectedAt), disconnectCount: { increment: 1 } },
     });
   }
 }

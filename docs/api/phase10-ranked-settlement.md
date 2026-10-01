@@ -8,7 +8,7 @@ Issue #58。rating 計算の契約は [phase10-ranked.md](phase10-ranked.md) に
 - `player_season_ratings`: season ごとの現在 rating と完了済み試合数。カード資産とは独立した行。
 - `ranked_matches` と `ranked_match_players`: match 作成と同じ transaction で season、設定 version、両者の開始時 rating と完了済み試合数を固定する。参加者は `match_players` の複合 FK で制約する。
 - `rating_history`: match/player に一件だけ。対戦相手、勝敗、開始時 rating、更新前後、K、E、S、damage と設定 version を記録する。
-- `rating_abuse_flags`: 後続の K05 が判定根拠を格納するための match/player/type ごとの一意な行。
+- `rating_abuse_flags`: K05 の判定根拠を格納する match/player/type ごとの一意な行。判定・集計・レビュー履歴は [phase10-ranked-analytics.md](phase10-ranked-analytics.md) を参照。
 
 `RANKED` mode の match 作成は、active season が対象時刻を含まなければ失敗し、match 自体も rollback する。season 開始・切替と match 作成は同じ DB advisory transaction lock で直列化する。
 
