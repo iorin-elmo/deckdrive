@@ -42,6 +42,9 @@ against the same state.
 Retries compare the parsed action fields, not JSON property order. A WebSocket
 handshake alone does not reset the browser's reconnect budget; a valid `STATE`
 must arrive before the attempt counter is reset.
+An accepted request is acknowledged separately from replacing the UI state, so
+a cached response for an older action can unlock controls without rolling back
+a newer reconnect snapshot.
 
 `apps/api/src/pvp/protocol.ts` is deliberately independent of the WebSocket
 framing layer. It validates untrusted JSON at runtime and creates the player
@@ -77,6 +80,14 @@ opaque server-loaded values; callers must load and validate decks before
 entering the lobby. It creates a `MatchSession` only after both players are
 known.
 
+The browser consumes the saved private invite when it enters the matched battle,
+allowing the host to return to matchmaking. Current casual queue reservations take
+precedence over retained status records from previous matches.
+
+Run a single API process (`PVP_WORKER_COUNT=1`). The startup guard rejects larger
+configured worker counts; it does not detect independently launched replicas.
+Shared matchmaking is required before deploying multiple API processes.
+
 The WebSocket adapter accepts an injected `PvpWebSocketRegistry`. The production
 server resolves the HttpOnly session cookie through O00's `OAuthService`; the
 development-only player header is accepted only in development and test
@@ -87,3 +98,15 @@ implementation.
 The existing match endpoint keeps its `initialState`/`finalState` response for
 CPU matches. PvP matches use the player-specific `state` projection so hidden
 hands and piles are never exposed over HTTP.
+
+## Validation boundary
+
+The unit suite covers action serialization, idempotency, protocol projection,
+real-socket reconnect, and routed UI recovery (including delayed action
+acknowledgements and returning to the private lobby).
+The socket test currently substitutes in-memory persistence and matchmaking;
+it does not execute `PrismaPvpMatchPersistence` or `PvpMatchService.restore`.
+Issue #21's acceptance gate remains open until a database-backed end-to-end
+test proves cookie-authenticated creation, disconnect, restart, and browser
+recovery with both the player projection and missing events. Passing the
+existing unit and database suites alone does not satisfy that gate.

@@ -54,6 +54,7 @@ export interface PvpSocketLike {
 
 export interface PvpSocketHandlers {
   readonly onMessage: (message: PvpServerMessage) => void;
+  readonly onActionAcknowledged?: (requestId: string) => void;
   readonly onMalformedMessage?: () => void;
   readonly onStatus?: (status: 'CONNECTING' | 'OPEN' | 'RECONNECTING' | 'CLOSED') => void;
 }
@@ -118,7 +119,10 @@ export class PvpSocketClient {
         return;
       }
       if (message.type === 'STATE') {
-        if (typeof message.requestId === 'string') this.pendingActions.delete(message.requestId);
+        if (typeof message.requestId === 'string') {
+          this.pendingActions.delete(message.requestId);
+          this.handlers.onActionAcknowledged?.(message.requestId);
+        }
         if (
           typeof message.actionSequence === 'number' &&
           message.actionSequence < this.lastActionSequence

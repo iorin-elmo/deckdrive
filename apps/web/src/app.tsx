@@ -1527,8 +1527,15 @@ function PvpSetupPage() {
     const matchId =
       casualStatus.data?.matchId ??
       (privateStatus.data?.status === 'MATCHED' ? privateStatus.data.matchId : undefined);
-    if (matchId !== undefined) navigate(`/battle/pvp/${matchId}`);
-  }, [casualStatus.data?.matchId, navigate, privateStatus.data]);
+    if (matchId !== undefined) {
+      if (privateStatus.data?.status === 'MATCHED' && privateStatus.data.matchId === matchId) {
+        window.localStorage.removeItem(inviteStorageKey);
+        setCreatedInvite('');
+        setInviteCode('');
+      }
+      navigate(`/battle/pvp/${matchId}`);
+    }
+  }, [casualStatus.data?.matchId, inviteStorageKey, navigate, privateStatus.data]);
   useEffect(() => {
     if (casualStatus.error instanceof ApiError && casualStatus.error.code === 'QUEUE_NOT_FOUND')
       setQueueId('');
@@ -1696,6 +1703,10 @@ function PvpBattlePage() {
     setSelectedTargetId(undefined);
     setConnectionStatus('CONNECTING');
     const client = new PvpSocketClient(matchId, {
+      onActionAcknowledged: (requestId) => {
+        setPendingRequestId((current) => (current === requestId ? undefined : current));
+        setRetryRequestId((current) => (current === requestId ? undefined : current));
+      },
       onStatus: (status) => {
         setConnectionStatus(status);
         if (status === 'CLOSED') setError('PvP connection could not be established.');
@@ -1704,10 +1715,6 @@ function PvpBattlePage() {
         if (message.type === 'STATE') {
           const projected = message.state as { readonly turn: number; readonly phase: string };
           setStateMessage({ ...message, turn: projected.turn, phase: projected.phase });
-          if (message.requestId !== undefined) {
-            setPendingRequestId((current) => (current === message.requestId ? undefined : current));
-            setRetryRequestId((current) => (current === message.requestId ? undefined : current));
-          }
         }
         if (message.type === 'ERROR') {
           setError(String(message.code ?? 'UNKNOWN_ERROR'));

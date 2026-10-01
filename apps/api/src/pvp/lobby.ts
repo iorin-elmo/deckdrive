@@ -243,6 +243,10 @@ export class PvpLobby<TDeck> {
 
   casualStatusForPlayer(playerId: PlayerId): CasualQueueStatus | undefined {
     this.pruneStatuses();
+    // Retained MATCHED statuses from previous games must not hide a current
+    // queue reservation, including while its new match is being persisted.
+    const queued = this.casualQueue.find((entry) => entry.player.playerId === playerId);
+    if (queued !== undefined) return { status: 'QUEUED', queueId: queued.queueId };
     for (const [queueId, status] of this.queueStatuses) {
       if (!status.playerIds.includes(playerId)) continue;
       return status.status === 'MATCHED' && status.matchId !== undefined
