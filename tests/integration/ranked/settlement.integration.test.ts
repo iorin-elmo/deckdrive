@@ -15,6 +15,7 @@ import { PrismaClient } from '../../../apps/api/src/generated/prisma/client.js';
 import { PrismaPvpMatchPersistence } from '../../../apps/api/src/pvp/persistence.js';
 import { MatchSession } from '../../../apps/api/src/pvp/session.js';
 import { PrismaRankedSettlement } from '../../../apps/api/src/ranked/prisma-ranked-settlement.js';
+import { defaultRatingConfig, calculateRatingChange } from '../../../apps/api/src/ranked/rating.js';
 
 loadRootEnvironment();
 const databaseUrl = process.env.DATABASE_URL;
@@ -196,6 +197,47 @@ describe('ranked settlement in PostgreSQL', () => {
     expect(await prisma.ratingHistory.count({ where: { matchId } })).toBe(2);
     const ratings = await prisma.playerSeasonRating.findMany({ where: { seasonId: seasonOne } });
     expect(ratings.map((entry) => entry.completedGames)).toEqual([3, 3]);
+  });
+
+  it('settles a v1 match with its immutable policy after switching workers', async () => {
+    const { matchId, initial, cardId } = await createRankedSession();
+    const snapshots = await prisma.rankedMatchPlayer.findMany({ where: { matchId } });
+    expect(Reflect.set(defaultRatingConfig.kValues, 'provisional', 80)).toBe(false);
+
+    const replacementWorker = new PrismaPvpMatchPersistence(prisma);
+    const replacementSession = new MatchSession({
+      state: initial,
+      definitions: [definition],
+      onAction: (action) => replacementWorker.append(action),
+    });
+    const response = await replacementSession.receive(playerIds[0]!, {
+      type: 'ACTION',
+      requestId: 'replacement-worker',
+      sequence: 0,
+      action: { type: 'PLAY_CARD', playerId: playerIds[0]!, cardInstanceId: cardId },
+    });
+    expect(response.some((entry) => entry.type === 'STATE')).toBe(true);
+
+    const winner = await prisma.ratingHistory.findUniqueOrThrow({
+      where: { matchId_playerId: { matchId, playerId: playerIds[0]! } },
+    });
+    const start = snapshots.find((entry) => entry.playerId === playerIds[0])!;
+    const opponent = snapshots.find((entry) => entry.playerId === playerIds[1])!;
+    const ratingInput = {
+      rating: start.ratingAtStart,
+      opponentRating: opponent.ratingAtStart,
+      completedGames: start.completedGamesAtStart,
+      outcome: 'WIN' as const,
+      damageDealt: winner.damageDealt,
+      opponentInitialHp: winner.opponentInitialHp,
+    };
+    const changedConfig = {
+      ...defaultRatingConfig,
+      kValues: { ...defaultRatingConfig.kValues, provisional: 80 },
+    };
+    expect(winner.ratingConfigVersion).toBe('elo-damage-v1');
+    expect(winner.delta).toBeCloseTo(calculateRatingChange(ratingInput, defaultRatingConfig).delta);
+    expect(winner.delta).not.toBeCloseTo(calculateRatingChange(ratingInput, changedConfig).delta);
   });
 
   it('rejects a season transition with an open match and serializes duplicate workers', async () => {

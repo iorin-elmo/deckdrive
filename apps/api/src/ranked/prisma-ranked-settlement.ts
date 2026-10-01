@@ -2,13 +2,8 @@ import type { BattleState, PlayerId, Replay } from '@deck-drive/game-engine';
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 
 import { sumHpDamageDealt } from './performance.js';
-import {
-  calculateRatingChange,
-  defaultRatingConfig,
-  softResetRating,
-  type RatingConfig,
-  type RatingInput,
-} from './rating.js';
+import { currentRatingPolicyVersion, ratingPolicyForVersion } from './rating-policy.js';
+import { calculateRatingChange, softResetRating, type RatingInput } from './rating.js';
 
 const seasonLockKey = 2026100102;
 
@@ -30,11 +25,7 @@ export class RankedSettlementError extends Error {
 
 /** Owns season boundaries and the atomic rating portion of a PvP commit. */
 export class PrismaRankedSettlement {
-  constructor(
-    private readonly prisma: PrismaClient,
-    private readonly config: RatingConfig = defaultRatingConfig,
-    private readonly configVersion = 'elo-damage-v1',
-  ) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   async activateSeason(input: ActivateSeasonInput): Promise<void> {
     validateSeason(input);
@@ -48,7 +39,7 @@ export class PrismaRankedSettlement {
           existing.endsAt.getTime() === input.endsAt.getTime() &&
           existing.initialRating === input.initialRating &&
           existing.resetRetention === input.resetRetention &&
-          existing.ratingConfigVersion === this.configVersion
+          existing.ratingConfigVersion === currentRatingPolicyVersion
         )
           return;
         throw new RankedSettlementError('SEASON_ID_CONFLICT');
@@ -71,7 +62,7 @@ export class PrismaRankedSettlement {
           endsAt: input.endsAt,
           initialRating: input.initialRating,
           resetRetention: input.resetRetention,
-          ratingConfigVersion: this.configVersion,
+          ratingConfigVersion: currentRatingPolicyVersion,
         },
       });
       if (current === null) return;
@@ -107,7 +98,7 @@ export class PrismaRankedSettlement {
       where: { status: 'ACTIVE', startsAt: { lte: at }, endsAt: { gt: at } },
     });
     if (season === null) throw new RankedSettlementError('ACTIVE_SEASON_NOT_FOUND');
-    if (season.ratingConfigVersion !== this.configVersion)
+    if (ratingPolicyForVersion(season.ratingConfigVersion) === undefined)
       throw new RankedSettlementError('RATING_CONFIG_VERSION_MISMATCH');
     if (state.players.length !== 2 || state.players[0]?.id === state.players[1]?.id)
       throw new RankedSettlementError('INVALID_RANKED_PARTICIPANTS');
@@ -141,7 +132,7 @@ export class PrismaRankedSettlement {
       data: {
         matchId: state.matchId,
         seasonId: season.id,
-        ratingConfigVersion: this.configVersion,
+        ratingConfigVersion: season.ratingConfigVersion,
       },
     });
     await transaction.rankedMatchPlayer.createMany({ data: snapshots });
@@ -156,8 +147,8 @@ export class PrismaRankedSettlement {
     });
     if (ranked === null || ranked.players.length !== 2)
       throw new RankedSettlementError('RANKED_SNAPSHOT_NOT_FOUND');
-    if (ranked.ratingConfigVersion !== this.configVersion)
-      throw new RankedSettlementError('RATING_CONFIG_VERSION_MISMATCH');
+    const policy = ratingPolicyForVersion(ranked.ratingConfigVersion);
+    if (policy === undefined) throw new RankedSettlementError('RATING_CONFIG_VERSION_MISMATCH');
     const existing = await transaction.ratingHistory.findMany({
       where: { matchId: replay.matchId },
       select: { playerId: true },
@@ -208,7 +199,7 @@ export class PrismaRankedSettlement {
         damageDealt,
         opponentInitialHp: opponentInitial.hp,
       };
-      const change = calculateRatingChange(input, this.config);
+      const change = calculateRatingChange(input, policy.config);
       const before = await transaction.playerSeasonRating.findUniqueOrThrow({
         where: {
           seasonId_playerId: { seasonId: ranked.seasonId, playerId: snapshot.playerId },

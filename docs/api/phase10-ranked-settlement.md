@@ -16,6 +16,8 @@ match 終了時は server engine から `recordReplay` した結果だけで勝�
 
 計算には開始時の rating snapshot を使用し、更新前後には transaction 内で lock 済みの現在値を記録する。これにより同時進行する試合は開始時の情報で K/E を決めつつ、結果の合計を失わない。浮動小数点の丸めは表示と別契約で扱う。
 
+計算設定は `rating-policy.ts` の変更不可な version registry に登録する。settlement は `ranked_matches.rating_config_version` から設定を選び、現在の worker の新規 season 用設定を参照しない。新 version を導入するときは別 entry を追加し、進行中 match と履歴の再現に必要な旧 entry の値を保持する。未対応 version は rating を書き換えず transaction を失敗させる。
+
 ## Season 切替と復旧
 
 `activateSeason()` は既存 active season と期間が重なる場合、または進行中の ranked match がある場合に失敗する。すべて終了後、旧 season を閉じ、新 season の行と soft reset した rating 行を同じ transaction で作る。完了済み試合数は 0 から始める。player のカード・通貨・cosmetics は変更しない。同じ season ID と同じ設定の再試行は無害で、設定が異なる再利用は拒否する。
