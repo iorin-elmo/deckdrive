@@ -3,7 +3,7 @@ import type { MatchId, PlayerId } from '@deck-drive/game-engine';
 
 import { MatchSession, type MatchSessionOptions } from './session.js';
 
-export type PvpMode = 'CASUAL' | 'PRIVATE';
+export type PvpMode = 'CASUAL' | 'PRIVATE' | 'RANKED';
 
 export interface LobbyPlayer<TDeck> {
   readonly playerId: PlayerId;
@@ -140,6 +140,13 @@ export class PvpLobby<TDeck> {
       opponent.reserved = false;
       throw error;
     }
+  }
+
+  createRanked(first: LobbyPlayer<TDeck>, second: LobbyPlayer<TDeck>) {
+    if (first.playerId === second.playerId) throw new Error('RANKED_SELF_MATCH');
+    if (!(this.options.canPair?.(first, second) ?? true))
+      throw new Error('RANKED_VERSION_MISMATCH');
+    return this.createSession('RANKED', first, second);
   }
 
   createPrivate(host: LobbyPlayer<TDeck>): PrivateMatchResult<TDeck> {
@@ -282,12 +289,16 @@ export class PvpLobby<TDeck> {
   }
 
   restore(session: MatchSession, metadata?: RestoredPvpMatch): void {
-    if (session.isActive) this.activeSessions.set(session.matchId, session);
-    else
+    if (session.isActive) {
+      this.activeSessions.set(session.matchId, session);
+      this.retainedSessions.delete(session.matchId);
+    } else {
+      this.activeSessions.delete(session.matchId);
       this.retainedSessions.set(session.matchId, {
         session,
         expiresAt: this.now() + (this.options.statusRetentionMs ?? 5 * 60_000),
       });
+    }
     if (metadata?.mode === 'CASUAL' && metadata.queueId !== undefined) {
       this.queueStatuses.set(metadata.queueId, {
         playerIds: [...metadata.playerIds],

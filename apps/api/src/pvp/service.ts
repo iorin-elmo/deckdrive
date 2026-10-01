@@ -14,8 +14,9 @@ import {
   type PlayerId,
 } from '@deck-drive/game-engine';
 import type { IncomingMessage } from 'node:http';
-import type { PrismaClient } from '../generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import { deckSize } from '../decks/deck-validation.js';
+import { rankedSeasonLockKey } from '../ranked/prisma-ranked-settlement.js';
 import { PrismaPvpMatchPersistence, PvpConcurrentMatchError } from './persistence.js';
 import {
   PvpLobby,
@@ -31,6 +32,8 @@ import {
 } from './session.js';
 
 const pvpStatusRetentionMs = 5 * 60_000;
+const rankedQueueWaitMs = 15 * 60_000;
+const rankedQueueLockKey = 2026100103;
 
 class PvpRateLimiter {
   private readonly attempts = new Map<string, number[]>();
@@ -84,11 +87,12 @@ export class PvpMatchService {
   ) {
     this.persistence = new PrismaPvpMatchPersistence(prisma);
     this.lobby = new PvpLobby({
-      createState: ({ matchId, players }) => createState(matchId, players),
+      createState: ({ mode, matchId, players }) => createState(mode, matchId, players),
       canPair: (candidate, incoming) =>
         candidate.deck.cardDataVersion === incoming.deck.cardDataVersion,
-      createSession: ({ matchId, players }) => ({
+      createSession: ({ mode, matchId, players }) => ({
         definitions: mergeDefinitions(players.flatMap((player) => player.deck.definitions)),
+        ratedAbandonment: mode === 'RANKED',
         onPlayerConnect: (playerId) => this.queuePresenceWrite(matchId, playerId, null),
         onPlayerDisconnect: (playerId, disconnectedAt) =>
           this.queuePresenceWrite(matchId, playerId, disconnectedAt),
@@ -111,6 +115,235 @@ export class PvpMatchService {
     } finally {
       if (this.casualInFlight.get(playerId) === operation) this.casualInFlight.delete(playerId);
     }
+  }
+
+  async enqueueRanked(playerId: string, deckId: string) {
+    this.matchmakingRateLimiter.consume(`${playerId}:ranked`, 10, 10_000);
+    let createdSession: MatchSession | undefined;
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedQueueLockKey})::text`;
+        await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedSeasonLockKey})::text`;
+        const now = new Date();
+        await transaction.rankedQueueEntry.updateMany({
+          where: { status: 'WAITING', expiresAt: { lte: now } },
+          data: { status: 'EXPIRED' },
+        });
+        const activeMatch = await transaction.match.findFirst({
+          where: { mode: 'RANKED', status: 'IN_PROGRESS', players: { some: { playerId } } },
+          select: { id: true },
+        });
+        if (activeMatch !== null) {
+          const entry = await transaction.rankedQueueEntry.findFirst({
+            where: { playerId, matchId: activeMatch.id },
+            select: { id: true },
+          });
+          if (entry === null) throw new PvpRequestError('RANKED_MATCH_CONFLICT');
+          return { status: 'MATCHED' as const, queueId: entry.id, matchId: activeMatch.id };
+        }
+        const season = await transaction.season.findFirst({
+          where: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
+          select: { id: true, initialRating: true },
+        });
+        if (season === null) throw new PvpRequestError('ACTIVE_SEASON_NOT_FOUND');
+        await transaction.rankedQueueEntry.updateMany({
+          where: { status: 'WAITING', seasonId: { not: season.id } },
+          data: { status: 'EXPIRED' },
+        });
+        const existing = await transaction.rankedQueueEntry.findFirst({
+          where: { playerId, status: 'WAITING' },
+        });
+        if (existing !== null) {
+          if (existing.deckId !== deckId || existing.seasonId !== season.id)
+            throw new PvpRequestError('REQUEST_CONFLICT');
+        }
+        const rating =
+          existing === null
+            ? await transaction.playerSeasonRating.findUnique({
+                where: { seasonId_playerId: { seasonId: season.id, playerId } },
+                select: { rating: true },
+              })
+            : null;
+        const playerRating = existing?.rating ?? rating?.rating ?? season.initialRating;
+        const queuedPlayer: LobbyPlayer<PvpDeck> =
+          existing === null
+            ? await this.loadPlayerDeck(playerId, deckId, transaction)
+            : { playerId: playerId as PlayerId, deck: existing.deckData as unknown as PvpDeck };
+        const candidates = await transaction.rankedQueueEntry.findMany({
+          where: {
+            status: 'WAITING',
+            seasonId: season.id,
+            cardDataVersion: queuedPlayer.deck.cardDataVersion,
+            playerId: { not: playerId },
+            rating: { gte: playerRating - 500, lte: playerRating + 500 },
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+        const opponent = candidates
+          .filter(
+            (candidate) =>
+              Math.abs(candidate.rating - playerRating) <=
+              Math.min(
+                500,
+                100 +
+                  50 *
+                    Math.floor(
+                      (now.getTime() -
+                        Math.min(
+                          candidate.createdAt.getTime(),
+                          existing?.createdAt.getTime() ?? now.getTime(),
+                        )) /
+                        30_000,
+                    ),
+              ),
+          )
+          .sort(
+            (left, right) =>
+              Math.abs(left.rating - playerRating) - Math.abs(right.rating - playerRating) ||
+              left.createdAt.getTime() - right.createdAt.getTime(),
+          )[0];
+        const queueId = existing?.id ?? randomUUID();
+        const expiresAt = new Date(now.getTime() + rankedQueueWaitMs);
+        if (opponent === undefined) {
+          if (existing === null)
+            await transaction.rankedQueueEntry.create({
+              data: {
+                id: queueId,
+                playerId,
+                seasonId: season.id,
+                deckId,
+                deckData: asInputJson(queuedPlayer.deck),
+                cardDataVersion: queuedPlayer.deck.cardDataVersion,
+                rating: playerRating,
+                expiresAt,
+              },
+            });
+          return { status: 'QUEUED' as const, queueId };
+        }
+        const waitingPlayer: LobbyPlayer<PvpDeck> = {
+          playerId: opponent.playerId as PlayerId,
+          deck: opponent.deckData as unknown as PvpDeck,
+        };
+        const paired = this.lobby.createRanked(waitingPlayer, queuedPlayer);
+        createdSession = paired.session;
+        await this.persistence.createInTransaction(
+          transaction,
+          paired.session.currentState,
+          [
+            { playerId: waitingPlayer.playerId, deckSnapshot: waitingPlayer.deck.snapshot },
+            { playerId: queuedPlayer.playerId, deckSnapshot: queuedPlayer.deck.snapshot },
+          ],
+          { mode: 'RANKED', queueId: opponent.id },
+        );
+        const reservedOpponent = await transaction.rankedQueueEntry.updateMany({
+          where: { id: opponent.id, status: 'WAITING' },
+          data: { status: 'MATCHED', matchId: paired.matchId },
+        });
+        if (reservedOpponent.count !== 1) throw new PvpRequestError('QUEUE_NOT_FOUND');
+        if (existing === null)
+          await transaction.rankedQueueEntry.create({
+            data: {
+              id: queueId,
+              playerId,
+              seasonId: season.id,
+              deckId,
+              deckData: asInputJson(queuedPlayer.deck),
+              cardDataVersion: queuedPlayer.deck.cardDataVersion,
+              rating: playerRating,
+              status: 'MATCHED',
+              matchId: paired.matchId,
+              expiresAt,
+            },
+          });
+        else {
+          const reservedPlayer = await transaction.rankedQueueEntry.updateMany({
+            where: { id: queueId, status: 'WAITING' },
+            data: { status: 'MATCHED', matchId: paired.matchId },
+          });
+          if (reservedPlayer.count !== 1) throw new PvpRequestError('QUEUE_NOT_FOUND');
+        }
+        return { status: 'MATCHED' as const, queueId, matchId: paired.matchId };
+      });
+    } catch (error) {
+      if (createdSession !== undefined) this.lobby.remove(createdSession.matchId);
+      throw error;
+    }
+  }
+
+  async rankedStatus(
+    playerId: string,
+    queueId: string,
+  ): Promise<{
+    readonly status: 'WAITING' | 'MATCHED' | 'EXPIRED' | 'CANCELLED';
+    readonly queueId: string;
+    readonly matchId?: string;
+  }> {
+    if (!isUuid(queueId)) throw new PvpRequestError('QUEUE_NOT_FOUND');
+    const entry = await this.prisma.rankedQueueEntry.findFirst({
+      where: { id: queueId, playerId },
+      select: {
+        status: true,
+        matchId: true,
+        expiresAt: true,
+        season: { select: { status: true, startsAt: true, endsAt: true } },
+      },
+    });
+    if (entry === null) throw new PvpRequestError('QUEUE_NOT_FOUND');
+    const now = new Date();
+    if (
+      entry.status === 'WAITING' &&
+      (entry.expiresAt <= now ||
+        entry.season.status !== 'ACTIVE' ||
+        entry.season.startsAt > now ||
+        entry.season.endsAt <= now)
+    ) {
+      const expired = await this.prisma.rankedQueueEntry.updateMany({
+        where: { id: queueId, status: 'WAITING' },
+        data: { status: 'EXPIRED' },
+      });
+      if (expired.count === 0) return this.rankedStatus(playerId, queueId);
+      return { status: 'EXPIRED' as const, queueId };
+    }
+    return entry.status === 'MATCHED' && entry.matchId !== null
+      ? { status: 'MATCHED' as const, queueId, matchId: entry.matchId }
+      : { status: entry.status, queueId };
+  }
+
+  async cancelRanked(playerId: string, queueId: string) {
+    if (!isUuid(queueId)) throw new PvpRequestError('QUEUE_NOT_FOUND');
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedQueueLockKey})::text`;
+      const entry = await transaction.rankedQueueEntry.findFirst({
+        where: { id: queueId, playerId },
+        select: { status: true, matchId: true },
+      });
+      if (entry === null) throw new PvpRequestError('QUEUE_NOT_FOUND');
+      if (entry.status === 'WAITING') {
+        await transaction.rankedQueueEntry.update({
+          where: { id: queueId },
+          data: { status: 'CANCELLED' },
+        });
+        return { status: 'CANCELLED' as const, queueId };
+      }
+      return entry.status === 'MATCHED' && entry.matchId !== null
+        ? { status: 'MATCHED' as const, queueId, matchId: entry.matchId }
+        : { status: entry.status, queueId };
+    });
+  }
+
+  async forfeitRanked(playerId: string, matchId: string) {
+    const match = await this.prisma.match.findFirst({
+      where: { id: matchId, mode: 'RANKED', players: { some: { playerId } } },
+      select: { status: true },
+    });
+    if (match === null) throw new PvpRequestError('MATCH_NOT_FOUND');
+    if (match.status !== 'IN_PROGRESS') return { status: match.status };
+    const session = await this.find(matchId);
+    if (session === undefined) throw new PvpRequestError('MATCH_NOT_FOUND');
+    const responses = await session.forfeit(playerId as PlayerId);
+    if (responses.some((message) => message.type === 'ERROR'))
+      throw new PvpRequestError('RANKED_FORFEIT_FAILED');
+    return { status: 'COMPLETED' as const };
   }
 
   private async enqueueCasualLocked(playerId: string, deckId: string) {
@@ -276,7 +509,7 @@ export class PvpMatchService {
 
   async restoreActive(): Promise<void> {
     const matches = await this.prisma.match.findMany({
-      where: { status: 'IN_PROGRESS', mode: { in: ['CASUAL', 'PRIVATE'] } },
+      where: { status: 'IN_PROGRESS', mode: { in: ['CASUAL', 'PRIVATE', 'RANKED'] } },
       select: { id: true },
     });
     await Promise.all(matches.map((match) => this.find(match.id)));
@@ -286,8 +519,13 @@ export class PvpMatchService {
     return this.authenticator(request);
   }
 
-  private async loadPlayerDeck(playerId: string, deckId: string): Promise<LobbyPlayer<PvpDeck>> {
-    const deck = await this.prisma.deck.findFirst({
+  private async loadPlayerDeck(
+    playerId: string,
+    deckId: string,
+    database: PrismaClient | Prisma.TransactionClient = this.prisma,
+  ): Promise<LobbyPlayer<PvpDeck>> {
+    if (!isUuid(deckId)) throw new PvpRequestError('DECK_NOT_FOUND');
+    const deck = await database.deck.findFirst({
       where: { id: deckId, playerId },
       include: { cards: { orderBy: { position: 'asc' }, include: { cardVersion: true } } },
     });
@@ -317,7 +555,13 @@ export class PvpMatchService {
       where: { id: matchId },
       include: {
         players: {
-          select: { playerId: true, seat: true, deckSnapshot: true, disconnectedAt: true },
+          select: {
+            playerId: true,
+            seat: true,
+            deckSnapshot: true,
+            disconnectedAt: true,
+            connectedOnce: true,
+          },
         },
         actions: { orderBy: { sequence: 'asc' } },
         events: { orderBy: { sequence: 'asc' } },
@@ -393,6 +637,7 @@ export class PvpMatchService {
       state: (match.finalState as unknown as BattleState | null) ?? replay.replay.finalState,
       initialState,
       definitions,
+      ratedAbandonment: match.mode === 'RANKED',
       history: {
         actions,
         events,
@@ -403,6 +648,9 @@ export class PvpMatchService {
           playerId: player.playerId as PlayerId,
           at: restoredAt,
         })),
+        connectedPlayers: match.players
+          .filter((player) => player.connectedOnce)
+          .map((player) => player.playerId as PlayerId),
       },
       onAction: async (accepted) => {
         await this.persistAction(accepted);
@@ -433,7 +681,7 @@ export class PvpMatchService {
     session: MatchSession,
     players: readonly [LobbyPlayer<PvpDeck>, LobbyPlayer<PvpDeck>],
     metadata: {
-      readonly mode: 'CASUAL' | 'PRIVATE';
+      readonly mode: 'CASUAL' | 'PRIVATE' | 'RANKED';
       readonly queueId?: string;
       readonly inviteCode?: string;
     } = {
@@ -546,6 +794,10 @@ export class PvpRequestError extends Error {
       | 'PRIVATE_STATUS_NOT_FOUND'
       | 'PRIVATE_INVITE_LIMIT'
       | 'REQUEST_CONFLICT'
+      | 'RANKED_MATCH_CONFLICT'
+      | 'ACTIVE_SEASON_NOT_FOUND'
+      | 'MATCH_NOT_FOUND'
+      | 'RANKED_FORFEIT_FAILED'
       | 'RATE_LIMITED',
   ) {
     super(code);
@@ -554,6 +806,7 @@ export class PvpRequestError extends Error {
 }
 
 function createState(
+  mode: 'CASUAL' | 'PRIVATE' | 'RANKED',
   matchId: MatchId,
   players: readonly [LobbyPlayer<PvpDeck>, LobbyPlayer<PvpDeck>],
 ) {
@@ -562,8 +815,8 @@ function createState(
   const seed = randomUUID();
   return createInitialBattleState({
     matchId,
-    engineVersion: '1.0.0',
-    rulesVersion: '1.0.0',
+    engineVersion: mode === 'RANKED' ? '1.1.0' : '1.0.0',
+    rulesVersion: mode === 'RANKED' ? '1.1.0' : '1.0.0',
     cardDataVersion: players[0].deck.cardDataVersion,
     seed,
     initialDrawCount: 5,
@@ -608,6 +861,14 @@ function definitionsFromDeckSnapshots(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function developmentAuthenticator(request: IncomingMessage): PlayerId | null {

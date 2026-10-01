@@ -51,6 +51,7 @@ import {
   type ApiPackProduct,
 } from '../packs/pack-opening.js';
 import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
+import { PrismaRankedReadService, RankedHistoryCursorError } from '../ranked/read-service.js';
 import { RewardValidationError } from '../rewards/reward-ledger.js';
 import {
   LoginRewardConfigurationError,
@@ -117,12 +118,15 @@ export class ApiApplication {
 
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
+      const rankedForfeitMatchId = path.match(/^\/api\/v1\/matches\/([^/]+)\/forfeit$/u)?.[1];
       const privateJoin = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/join$/u)?.[1];
       const queueId = path.match(/^\/api\/v1\/matches\/queue\/([^/]+)$/u)?.[1];
+      const rankedQueueId = path.match(/^\/api\/v1\/matches\/ranked\/queue\/([^/]+)$/u)?.[1];
       const privateStatusCode = path.match(/^\/api\/v1\/matches\/private\/([^/]+)\/status$/u)?.[1];
       const packProductId = path.match(/^\/api\/v1\/packs\/([^/]+)\/open$/u)?.[1];
       const missionId = path.match(/^\/api\/v1\/missions\/([^/]+)\/claim$/u)?.[1];
       const authenticatedRoute =
+        (request.method === 'DELETE' && rankedQueueId !== undefined) ||
         (request.method === 'GET' &&
           (path === '/api/v1/me' ||
             path === '/api/v1/collection' ||
@@ -131,11 +135,18 @@ export class ApiApplication {
             path === '/api/v1/missions' ||
             path === '/api/v1/progression' ||
             path === '/api/v1/cosmetics')) ||
-        (request.method === 'GET' && (queueId !== undefined || privateStatusCode !== undefined)) ||
+        (request.method === 'GET' &&
+          (queueId !== undefined ||
+            rankedQueueId !== undefined ||
+            privateStatusCode !== undefined ||
+            path === '/api/v1/ranked/profile' ||
+            path === '/api/v1/ranked/history')) ||
         (request.method === 'POST' &&
           (path === '/api/v1/decks' ||
             path === '/api/v1/matches' ||
             path === '/api/v1/matches/casual' ||
+            path === '/api/v1/matches/ranked' ||
+            rankedForfeitMatchId !== undefined ||
             path === '/api/v1/matches/private' ||
             privateJoin !== undefined ||
             path === '/api/v1/login-rewards/claim' ||
@@ -160,6 +171,23 @@ export class ApiApplication {
         return await this.listCosmetics(player.id);
       if (request.method === 'GET' && queueId !== undefined)
         return await this.getCasualStatus(player.id, queueId);
+      if (request.method === 'GET' && rankedQueueId !== undefined)
+        return await this.getRankedStatus(player.id, rankedQueueId);
+      if (request.method === 'DELETE' && rankedQueueId !== undefined)
+        return await this.cancelRankedQueue(player.id, rankedQueueId);
+      if (request.method === 'GET' && path === '/api/v1/ranked/profile')
+        return {
+          status: 200,
+          body: await new PrismaRankedReadService(this.prisma).profile(player.id),
+        };
+      if (request.method === 'GET' && path === '/api/v1/ranked/history')
+        return {
+          status: 200,
+          body: await new PrismaRankedReadService(this.prisma).history(
+            player.id,
+            request.query?.cursor,
+          ),
+        };
       if (request.method === 'GET' && privateStatusCode !== undefined)
         return await this.getPrivateStatus(player.id, privateStatusCode);
       if (request.method === 'POST' && packProductId !== undefined)
@@ -178,6 +206,10 @@ export class ApiApplication {
         return await this.startCpuMatch(player.id, request.body);
       if (request.method === 'POST' && path === '/api/v1/matches/casual')
         return await this.startCasualMatch(player.id, request.body);
+      if (request.method === 'POST' && path === '/api/v1/matches/ranked')
+        return await this.startRankedMatch(player.id, request.body);
+      if (request.method === 'POST' && rankedForfeitMatchId !== undefined)
+        return await this.forfeitRankedMatch(player.id, rankedForfeitMatchId);
       if (request.method === 'POST' && path === '/api/v1/matches/private')
         return await this.createPrivateMatch(player.id, request.body);
       if (request.method === 'POST' && privateJoin !== undefined)
@@ -653,7 +685,7 @@ export class ApiApplication {
       },
     });
     if (match === null) return { status: 404, body: { error: 'MATCH_NOT_FOUND' } };
-    if (match.mode !== 'CASUAL' && match.mode !== 'PRIVATE') {
+    if (match.mode !== 'CASUAL' && match.mode !== 'PRIVATE' && match.mode !== 'RANKED') {
       return {
         status: 200,
         body: {
@@ -696,6 +728,28 @@ export class ApiApplication {
     return result.status === 'QUEUED'
       ? { status: 202, body: result }
       : { status: 201, body: { status: result.status, matchId: result.matchId } };
+  }
+
+  private async startRankedMatch(playerId: string, body: unknown): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    const value = object(body);
+    const result = await this.pvp.enqueueRanked(playerId, string(value.deckId, 'deckId'));
+    return { status: result.status === 'QUEUED' ? 202 : 201, body: result };
+  }
+
+  private async getRankedStatus(playerId: string, queueId: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: await this.pvp.rankedStatus(playerId, queueId) };
+  }
+
+  private async cancelRankedQueue(playerId: string, queueId: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: await this.pvp.cancelRanked(playerId, queueId) };
+  }
+
+  private async forfeitRankedMatch(playerId: string, matchId: string): Promise<ApiResponse> {
+    if (this.pvp === undefined) throw new PvpUnavailableError();
+    return { status: 200, body: await this.pvp.forfeitRanked(playerId, matchId) };
   }
 
   private async createPrivateMatch(playerId: string, body: unknown): Promise<ApiResponse> {
@@ -858,7 +912,8 @@ export class ApiApplication {
         error.code === 'DECK_NOT_FOUND' ||
         error.code === 'PRIVATE_INVITE_NOT_FOUND' ||
         error.code === 'QUEUE_NOT_FOUND' ||
-        error.code === 'PRIVATE_STATUS_NOT_FOUND'
+        error.code === 'PRIVATE_STATUS_NOT_FOUND' ||
+        error.code === 'MATCH_NOT_FOUND'
       )
         return { status: 404, body: { error: error.code } };
       if (error.code === 'PRIVATE_INVITE_SELF_JOIN')
@@ -866,9 +921,15 @@ export class ApiApplication {
       if (error.code === 'PRIVATE_INVITE_LIMIT')
         return { status: 409, body: { error: error.code } };
       if (error.code === 'REQUEST_CONFLICT') return { status: 409, body: { error: error.code } };
+      if (error.code === 'RANKED_MATCH_CONFLICT' || error.code === 'ACTIVE_SEASON_NOT_FOUND')
+        return { status: 409, body: { error: error.code } };
+      if (error.code === 'RANKED_FORFEIT_FAILED')
+        return { status: 503, body: { error: error.code } };
       if (error.code === 'RATE_LIMITED') return { status: 429, body: { error: error.code } };
       return { status: 400, body: { error: error.code } };
     }
+    if (error instanceof RankedHistoryCursorError)
+      return { status: 404, body: { error: 'RANKED_HISTORY_CURSOR_NOT_FOUND' } };
     if (error instanceof PvpUnavailableError)
       return { status: 503, body: { error: 'PVP_UNAVAILABLE' } };
     return { status: 500, body: { error: 'INTERNAL_ERROR' } };

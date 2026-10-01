@@ -122,6 +122,38 @@ export interface PvpMatchQueue {
   readonly matchId?: string;
 }
 
+export interface RankedQueueStatus {
+  readonly status: 'QUEUED' | 'WAITING' | 'MATCHED' | 'EXPIRED' | 'CANCELLED';
+  readonly queueId: string;
+  readonly matchId?: string;
+}
+
+export interface RankedProfile {
+  readonly season: {
+    readonly id: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+  } | null;
+  readonly rating: number | null;
+  readonly rank: { readonly name: string; readonly division: 'III' | 'II' | 'I' } | null;
+  readonly rr: number | null;
+  readonly completedGames?: number;
+}
+
+export interface RankedHistoryPage {
+  readonly items: readonly {
+    readonly id: string;
+    readonly matchId: string;
+    readonly seasonId: string;
+    readonly outcome: 'WIN' | 'LOSS' | 'DRAW';
+    readonly ratingBefore: number;
+    readonly ratingAfter: number;
+    readonly delta: number;
+    readonly createdAt: string;
+  }[];
+  readonly nextCursor: string | null;
+}
+
 export interface PvpInvite {
   readonly inviteCode: string;
 }
@@ -192,6 +224,12 @@ export interface DeckDriveClient {
   ): Promise<CpuMatch>;
   startCasualMatch(playerId: string, deckId: string): Promise<PvpMatchQueue>;
   casualMatchStatus(playerId: string, queueId: string): Promise<PvpMatchQueue>;
+  startRankedMatch(playerId: string, deckId: string): Promise<RankedQueueStatus>;
+  rankedMatchStatus(playerId: string, queueId: string): Promise<RankedQueueStatus>;
+  cancelRankedMatch(playerId: string, queueId: string): Promise<RankedQueueStatus>;
+  forfeitRankedMatch(playerId: string, matchId: string): Promise<{ readonly status: string }>;
+  rankedProfile(playerId: string): Promise<RankedProfile>;
+  rankedHistory(playerId: string, cursor?: string): Promise<RankedHistoryPage>;
   createPrivateMatch(playerId: string, deckId: string, requestId?: string): Promise<PvpInvite>;
   joinPrivateMatch(
     playerId: string,
@@ -351,6 +389,48 @@ export class DeckDriveApi implements DeckDriveClient {
     return this.request(`/api/v1/matches/queue/${encodeURIComponent(queueId)}`, { playerId });
   }
 
+  async startRankedMatch(playerId: string, deckId: string): Promise<RankedQueueStatus> {
+    return this.request('/api/v1/matches/ranked', {
+      method: 'POST',
+      playerId,
+      body: { deckId },
+    });
+  }
+
+  async rankedMatchStatus(playerId: string, queueId: string): Promise<RankedQueueStatus> {
+    return this.request(`/api/v1/matches/ranked/queue/${encodeURIComponent(queueId)}`, {
+      playerId,
+    });
+  }
+
+  async cancelRankedMatch(playerId: string, queueId: string): Promise<RankedQueueStatus> {
+    return this.request(`/api/v1/matches/ranked/queue/${encodeURIComponent(queueId)}`, {
+      method: 'DELETE',
+      playerId,
+    });
+  }
+
+  async forfeitRankedMatch(
+    playerId: string,
+    matchId: string,
+  ): Promise<{ readonly status: string }> {
+    return this.request(`/api/v1/matches/${encodeURIComponent(matchId)}/forfeit`, {
+      method: 'POST',
+      playerId,
+    });
+  }
+
+  async rankedProfile(playerId: string): Promise<RankedProfile> {
+    return this.request('/api/v1/ranked/profile', { playerId });
+  }
+
+  async rankedHistory(playerId: string, cursor?: string): Promise<RankedHistoryPage> {
+    return this.request(
+      `/api/v1/ranked/history${cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`}`,
+      { playerId },
+    );
+  }
+
   async createPrivateMatch(
     playerId: string,
     deckId: string,
@@ -417,7 +497,7 @@ export class DeckDriveApi implements DeckDriveClient {
   private async request<Result>(
     path: string,
     options: {
-      readonly method?: 'GET' | 'POST' | 'PUT';
+      readonly method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
       readonly playerId?: string;
       readonly body?: unknown;
       readonly idempotencyKey?: string;
@@ -671,6 +751,28 @@ export const previewApi: DeckDriveClient = {
   },
   async casualMatchStatus() {
     return { status: 'MATCHED' as const, queueId: 'preview-queue', matchId: 'preview-pvp-match' };
+  },
+  async startRankedMatch() {
+    return { status: 'QUEUED' as const, queueId: 'preview-ranked-queue' };
+  },
+  async rankedMatchStatus() {
+    return {
+      status: 'MATCHED' as const,
+      queueId: 'preview-ranked-queue',
+      matchId: 'preview-pvp-match',
+    };
+  },
+  async cancelRankedMatch() {
+    return { status: 'CANCELLED' as const, queueId: 'preview-ranked-queue' };
+  },
+  async forfeitRankedMatch() {
+    return { status: 'COMPLETED' };
+  },
+  async rankedProfile() {
+    return { season: null, rating: null, rank: null, rr: null };
+  },
+  async rankedHistory() {
+    return { items: [], nextCursor: null };
   },
   async createPrivateMatch() {
     return { inviteCode: 'PREVIEW' };

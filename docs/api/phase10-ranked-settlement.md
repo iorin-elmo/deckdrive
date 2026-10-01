@@ -26,7 +26,7 @@ match 終了時は server engine から `recordReplay` した結果だけで勝�
 
 ## 境界と後続作業
 
-K02 は永続化層だけを追加する。`RANKED` の queue と認証済み API、再接続、rated abandon / disconnect の扱いは K03（#59）で接続する。現在の PvP サービスから `RANKED` match は作成されない。abuse signal の生成と analytics は K05（#61）。season の実運用スケジュール、初期 rating、retention は別途運用設定として指定する。
+K02 は永続化層だけを追加した。`RANKED` の queue と認証済み API、再接続、rated abandon / disconnect は [K03](phase10-ranked-matchmaking.md) で接続した。abuse signal の生成と analytics は K05（#61）。season の実運用スケジュール、初期 rating、retention は別途運用設定として指定する。
 
 ## 検証
 

@@ -5,7 +5,7 @@ import { sumHpDamageDealt } from './performance.js';
 import { currentRatingPolicyVersion, ratingPolicyForVersion } from './rating-policy.js';
 import { calculateRatingChange, softResetRating, type RatingInput } from './rating.js';
 
-const seasonLockKey = 2026100102;
+export const rankedSeasonLockKey = 2026100102;
 
 export interface ActivateSeasonInput {
   readonly id: string;
@@ -237,7 +237,7 @@ export class PrismaRankedSettlement {
 }
 
 async function lockSeasonTransition(transaction: Prisma.TransactionClient): Promise<void> {
-  await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${seasonLockKey})::text`;
+  await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedSeasonLockKey})::text`;
 }
 
 function outcomeFor(

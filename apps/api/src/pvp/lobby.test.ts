@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialBattleState, type PlayerId } from '@deck-drive/game-engine';
+import { applyAction, createInitialBattleState, type PlayerId } from '@deck-drive/game-engine';
 
 import { PvpLobby } from './lobby.js';
+import { MatchSession } from './session.js';
 
 describe('PvpLobby queue lifecycle', () => {
   it('returns the newest queue instead of a retained status from the previous match', () => {
@@ -27,6 +28,16 @@ describe('PvpLobby queue lifecycle', () => {
     lobby.markCasualMatched(matched.queueId, matched.matchId);
     lobby.setCasualParticipants(matched.queueId, [first.playerId, second.playerId]);
     lobby.commitCasual(matched.queueId);
+    const finished = applyAction(matched.session.currentState, {
+      type: 'FORFEIT',
+      playerId: first.playerId,
+      reason: 'DISCONNECT',
+    });
+    expect(finished.ok).toBe(true);
+    if (!finished.ok) throw new Error('Expected terminal state.');
+    lobby.restore(new MatchSession({ state: finished.state }));
+    expect(lobby.sessions()).toHaveLength(0);
+    expect(lobby.find(matched.matchId)?.isActive).toBe(false);
     lobby.remove(matched.matchId);
 
     const next = lobby.enqueueCasual(first);

@@ -152,6 +152,7 @@ model Player {
   rankedSnapshots RankedMatchPlayer[]
   ratingHistory RatingHistory[]
   ratingAbuseFlags RatingAbuseFlag[]
+  rankedQueueEntries RankedQueueEntry[]
 
   @@map("players")
 }
@@ -383,6 +384,7 @@ model Match {
   rankedMatch     RankedMatch?
   ratingHistory   RatingHistory[]
   ratingAbuseFlags RatingAbuseFlag[]
+  rankedQueueEntries RankedQueueEntry[]
 
   @@index([status, createdAt])
   @@index([cardDataVersion, rulesVersion, engineVersion])
@@ -405,6 +407,7 @@ model MatchPlayer {
   seat         Int
   deckSnapshot Json   @map("deck_snapshot")
   disconnectedAt DateTime? @map("disconnected_at") @db.Timestamptz(6)
+  connectedOnce Boolean @default(false) @map("connected_once")
   match        Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player       Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
   rankedSnapshot RankedMatchPlayer?
@@ -437,12 +440,42 @@ model MatchAction {
 enum MatchActionSource {
   CLIENT
   TIMEOUT
+  FORFEIT
 }
 
 enum MatchMode {
   CASUAL
   PRIVATE
   RANKED
+}
+
+enum RankedQueueStatus {
+  WAITING
+  MATCHED
+  EXPIRED
+  CANCELLED
+}
+
+model RankedQueueEntry {
+  id              String            @id @db.Uuid
+  playerId        String            @map("player_id") @db.Uuid
+  seasonId        String            @map("season_id") @db.Uuid
+  deckId          String            @map("deck_id") @db.Uuid
+  deckData        Json              @map("deck_data")
+  cardDataVersion String            @map("card_data_version")
+  rating          Float
+  status          RankedQueueStatus @default(WAITING)
+  matchId         String?           @map("match_id")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime          @map("expires_at") @db.Timestamptz(6)
+  player          Player            @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  season          Season            @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  match           Match?            @relation(fields: [matchId], references: [id], onDelete: Restrict)
+
+  @@index([status, seasonId, cardDataVersion, createdAt])
+  @@index([playerId, createdAt])
+  @@index([matchId])
+  @@map("ranked_queue_entries")
 }
 
 model Season {
@@ -457,6 +490,7 @@ model Season {
   ratings             PlayerSeasonRating[]
   rankedMatches       RankedMatch[]
   ratingHistory       RatingHistory[]
+  rankedQueueEntries  RankedQueueEntry[]
 
   @@index([status, startsAt])
   @@map("seasons")

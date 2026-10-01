@@ -105,13 +105,26 @@ export interface EndTurnAction {
   readonly playerId: PlayerId;
 }
 
-/** Only player decisions belong here; effects and random values are engine-owned. */
-export type GameAction = PlayCardAction | EndTurnAction;
+/** Created by the server after a rated abandonment or explicit surrender. */
+export interface ForfeitAction {
+  readonly type: 'FORFEIT';
+  readonly playerId: PlayerId;
+  readonly reason: 'DISCONNECT' | 'TIMEOUT' | 'SURRENDER';
+}
+
+/** Replayable player decisions and server forfeits; effects and random values are engine-owned. */
+export type GameAction = PlayCardAction | EndTurnAction | ForfeitAction;
 
 export type TerminalBattleResult =
   { readonly status: 'DRAW' } | { readonly status: 'WIN'; readonly winnerId: PlayerId };
 
 export type GameEvent =
+  | {
+      readonly type: 'PLAYER_FORFEITED';
+      readonly sequence: number;
+      readonly playerId: PlayerId;
+      readonly reason: ForfeitAction['reason'];
+    }
   | {
       readonly type: 'CARD_PLAYED';
       readonly sequence: number;

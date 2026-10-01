@@ -11,6 +11,17 @@ export class PvpConcurrentMatchError extends Error {
   }
 }
 
+type NewMatchPlayers = readonly [
+  { readonly playerId: string; readonly deckSnapshot: unknown },
+  { readonly playerId: string; readonly deckSnapshot: unknown },
+];
+
+type NewMatchMetadata = {
+  readonly mode: 'CASUAL' | 'PRIVATE' | 'RANKED';
+  readonly queueId?: string;
+  readonly inviteCode?: string;
+};
+
 /** Persists the accepted engine transition and its replay boundary atomically. */
 export class PrismaPvpMatchPersistence {
   private readonly ranked: PrismaRankedSettlement;
@@ -21,54 +32,56 @@ export class PrismaPvpMatchPersistence {
 
   async create(
     state: BattleState,
-    players: readonly [
-      { readonly playerId: string; readonly deckSnapshot: unknown },
-      { readonly playerId: string; readonly deckSnapshot: unknown },
-    ],
-    metadata: {
-      readonly mode: 'CASUAL' | 'PRIVATE' | 'RANKED';
-      readonly queueId?: string;
-      readonly inviteCode?: string;
-    },
+    players: NewMatchPlayers,
+    metadata: NewMatchMetadata,
   ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.match.create({
-        data: {
-          id: state.matchId,
-          engineVersion: state.engineVersion,
-          rulesVersion: state.rulesVersion,
-          cardDataVersion: state.cardDataVersion,
-          seed: state.seed,
-          mode: metadata.mode,
-          ...(metadata.queueId === undefined ? {} : { queueId: metadata.queueId }),
-          ...(metadata.inviteCode === undefined ? {} : { inviteCode: metadata.inviteCode }),
-          initialState: asInputJson(state),
-          players: {
-            create: players.map((player, index) => ({
-              playerId: player.playerId,
-              seat: index + 1,
-              deckSnapshot: asInputJson(player.deckSnapshot),
-              disconnectedAt: new Date(),
-            })),
-          },
+    await this.prisma.$transaction((transaction) =>
+      this.createInTransaction(transaction, state, players, metadata),
+    );
+  }
+
+  async createInTransaction(
+    transaction: Prisma.TransactionClient,
+    state: BattleState,
+    players: NewMatchPlayers,
+    metadata: NewMatchMetadata,
+  ): Promise<void> {
+    await transaction.match.create({
+      data: {
+        id: state.matchId,
+        engineVersion: state.engineVersion,
+        rulesVersion: state.rulesVersion,
+        cardDataVersion: state.cardDataVersion,
+        seed: state.seed,
+        mode: metadata.mode,
+        ...(metadata.queueId === undefined ? {} : { queueId: metadata.queueId }),
+        ...(metadata.inviteCode === undefined ? {} : { inviteCode: metadata.inviteCode }),
+        initialState: asInputJson(state),
+        players: {
+          create: players.map((player, index) => ({
+            playerId: player.playerId,
+            seat: index + 1,
+            deckSnapshot: asInputJson(player.deckSnapshot),
+            disconnectedAt: new Date(),
+          })),
         },
-      });
-      for (const event of state.events) {
-        await transaction.matchEvent.create({
-          data: { matchId: state.matchId, sequence: event.sequence, event: asInputJson(event) },
-        });
-      }
-      const snapshotState = withoutEvents(state);
-      await transaction.matchSnapshot.create({
-        data: {
-          matchId: state.matchId,
-          actionIndex: 0,
-          eventSequence: state.events.at(-1)?.sequence ?? 0,
-          state: asInputJson(snapshotState),
-        },
-      });
-      if (metadata.mode === 'RANKED') await this.ranked.captureMatchStart(transaction, state);
+      },
     });
+    for (const event of state.events) {
+      await transaction.matchEvent.create({
+        data: { matchId: state.matchId, sequence: event.sequence, event: asInputJson(event) },
+      });
+    }
+    const snapshotState = withoutEvents(state);
+    await transaction.matchSnapshot.create({
+      data: {
+        matchId: state.matchId,
+        actionIndex: 0,
+        eventSequence: state.events.at(-1)?.sequence ?? 0,
+        state: asInputJson(snapshotState),
+      },
+    });
+    if (metadata.mode === 'RANKED') await this.ranked.captureMatchStart(transaction, state);
   }
 
   async append(accepted: AcceptedAction): Promise<void> {
@@ -151,7 +164,10 @@ export class PrismaPvpMatchPersistence {
   ): Promise<void> {
     await this.prisma.matchPlayer.updateMany({
       where: { matchId, playerId },
-      data: { disconnectedAt: disconnectedAt === null ? null : new Date(disconnectedAt) },
+      data: {
+        disconnectedAt: disconnectedAt === null ? null : new Date(disconnectedAt),
+        ...(disconnectedAt === null ? { connectedOnce: true } : {}),
+      },
     });
   }
 }
