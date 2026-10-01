@@ -69,3 +69,25 @@ describe('Replay V2 migration', () => {
     expect(replayV2Migration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
   });
 });
+
+describe('Ranked settlement migration', () => {
+  const rankedMigration = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261001000000_add_ranked_settlement/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  it('adds season, rating snapshot, history, and abuse flag integrity constraints', () => {
+    expect(rankedMigration).toContain('CREATE TABLE "seasons"');
+    expect(rankedMigration).toContain('CREATE TABLE "player_season_ratings"');
+    expect(rankedMigration).toContain('CREATE TABLE "ranked_match_players"');
+    expect(rankedMigration).toContain('CREATE TABLE "rating_history"');
+    expect(rankedMigration).toContain('CREATE TABLE "rating_abuse_flags"');
+    expect(rankedMigration).toContain('seasons_one_active_key');
+    expect(rankedMigration).toContain('rating_history_match_id_player_id_key');
+    expect(rankedMigration).toContain('rating_history_loss_delta_check');
+    expect(rankedMigration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
+  });
+});
