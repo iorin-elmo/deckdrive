@@ -6,6 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import type { PlayerId } from '@deck-drive/game-engine';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+import { packCardDefinitions } from '../../../packages/card-definitions/src/index.js';
 import { ApiApplication } from '../../../apps/api/src/api/application.js';
 import { closePvpWebSocket, createApiHttpServer } from '../../../apps/api/src/api/http.js';
 import { parseCookies, sessionCookieName } from '../../../apps/api/src/auth/cookies.js';
@@ -148,7 +149,13 @@ describe('DB-backed PvP restart and reconnect', () => {
   it('restores cookie-authenticated state and missed events from Prisma after API restart', async () => {
     const suffix = randomUUID();
     const oauth = new OAuthService(prisma, { NODE_ENV: 'development' });
-    const versions = await prisma.cardVersion.findMany({ take: 10, orderBy: { id: 'asc' } });
+    const versions = await prisma.cardVersion.findMany({
+      where: {
+        cardId: { in: packCardDefinitions.slice(0, 10).map((definition) => definition.id) },
+        version: '1.0.0',
+      },
+      orderBy: { id: 'asc' },
+    });
     expect(versions).toHaveLength(10);
     const users: string[] = [];
     const playerIds: string[] = [];
