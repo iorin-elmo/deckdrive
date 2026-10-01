@@ -330,6 +330,16 @@ export class PvpMatchService {
       match.players.length !== 2
     )
       return undefined;
+    // No socket survives an API restart. Rebase the grace period for every
+    // participant, including a player whose last presence write failed before
+    // the previous process died. Never trust an old connected/disconnected row
+    // as evidence of a live socket in this process.
+    const restoredAt = Date.now();
+    if (match.status === 'IN_PROGRESS')
+      await this.prisma.matchPlayer.updateMany({
+        where: { matchId },
+        data: { disconnectedAt: new Date(restoredAt) },
+      });
     const definitions = definitionsFromDeckSnapshots(match.players);
     const initialState = match.initialState as unknown as BattleState;
     const actions = match.actions.map((entry) => entry.action as unknown as GameAction);
@@ -389,11 +399,10 @@ export class PvpMatchService {
         snapshots,
         turnStartedAt: turnStartedAt.getTime(),
         requests,
-        disconnectedAt: match.players.flatMap((player) =>
-          player.disconnectedAt === null
-            ? []
-            : [{ playerId: player.playerId as PlayerId, at: player.disconnectedAt.getTime() }],
-        ),
+        disconnectedAt: match.players.map((player) => ({
+          playerId: player.playerId as PlayerId,
+          at: restoredAt,
+        })),
       },
       onAction: async (accepted) => {
         await this.persistAction(accepted);
@@ -480,16 +489,22 @@ export class PvpMatchService {
     playerId: PlayerId,
     disconnectedAt: number | null,
   ): Promise<void> {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; ; attempt += 1) {
       try {
         await this.persistence.setPlayerDisconnected(matchId, playerId, disconnectedAt);
         return;
       } catch (error) {
-        lastError = error;
+        if (attempt === 2)
+          console.error('PvP presence persistence failed; retrying until recovery', {
+            matchId,
+            playerId,
+            error,
+          });
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, Math.min(30_000, 250 * 2 ** Math.min(attempt, 7))),
+        );
       }
     }
-    throw lastError;
   }
 
   private async findPersistedCasualMatch(

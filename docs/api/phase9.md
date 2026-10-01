@@ -104,9 +104,9 @@ hands and piles are never exposed over HTTP.
 The unit suite covers action serialization, idempotency, protocol projection,
 real-socket reconnect, and routed UI recovery (including delayed action
 acknowledgements and returning to the private lobby).
-The socket test currently substitutes in-memory persistence and matchmaking;
-it does not execute `PrismaPvpMatchPersistence` or `PvpMatchService.restore`.
-Issue #21's acceptance gate remains open until a database-backed end-to-end
-test proves cookie-authenticated creation, disconnect, restart, and browser
-recovery with both the player projection and missing events. Passing the
-existing unit and database suites alone does not satisfy that gate.
+The database-backed reconnect integration test exercises cookie-authenticated
+private match creation, real Prisma persistence, disconnect, a fresh API server
+and `PvpMatchService.restore`, then snapshot and missing-event recovery through
+the WebSocket protocol. An API restart resets every active player's disconnect
+grace period because no old socket survives the restart; presence writes retry
+until the database recovers rather than silently stopping after three failures.
