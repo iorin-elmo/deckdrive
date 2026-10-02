@@ -514,7 +514,7 @@ export class DeckDriveApi implements DeckDriveClient {
             ? {}
             : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...((options.method === 'POST' || options.method === 'PUT') && csrf !== undefined
+          ...((options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE') && csrf !== undefined
             ? { 'X-CSRF-Token': csrf }
             : {}),
         },

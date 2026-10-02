@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+test-results/
+playwright-report/
 apps/api/src/generated/
 
 .env
