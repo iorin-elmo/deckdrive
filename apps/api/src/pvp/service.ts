@@ -118,7 +118,7 @@ export class PvpMatchService {
   }
 
   async enqueueRanked(playerId: string, deckId: string) {
-    this.matchmakingRateLimiter.consume(`${playerId}:ranked`, 10, 10_000);
+    await this.consumeRankedEnqueueRateLimit(playerId);
     let createdSession: MatchSession | undefined;
     try {
       return await this.prisma.$transaction(async (transaction) => {
@@ -268,6 +268,32 @@ export class PvpMatchService {
       if (createdSession !== undefined) this.lobby.remove(createdSession.matchId);
       throw error;
     }
+  }
+
+  private async consumeRankedEnqueueRateLimit(playerId: string): Promise<void> {
+    // Commit the attempt before matchmaking so even a failed enqueue consumes
+    // a slot, as it did with the previous process-local limiter.
+    const allowed = await this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedQueueLockKey})::text`;
+      const now = (await transaction.$queryRaw<{ now: Date }[]>`
+        SELECT clock_timestamp() AS now
+      `)[0]!.now;
+      const row = await transaction.rankedEnqueueRateLimit.findUnique({
+        where: { playerId },
+        select: { attemptedAt: true },
+      });
+      const attempts = (row?.attemptedAt ?? []).filter(
+        (attempt) => attempt.getTime() > now.getTime() - 10_000,
+      );
+      if (attempts.length >= 10) return false;
+      await transaction.rankedEnqueueRateLimit.upsert({
+        where: { playerId },
+        create: { playerId, attemptedAt: [...attempts, now] },
+        update: { attemptedAt: [...attempts, now] },
+      });
+      return true;
+    });
+    if (!allowed) throw new PvpRequestError('RATE_LIMITED');
   }
 
   async rankedStatus(
