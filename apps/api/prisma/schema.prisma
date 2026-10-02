@@ -24,6 +24,12 @@ enum RatingOutcome {
   DRAW
 }
 
+enum AbuseReviewStatus {
+  OPEN
+  DISMISSED
+  CONFIRMED
+}
+
 enum Currency {
   GEM
   EXCHANGE_POINT
@@ -409,6 +415,7 @@ model MatchPlayer {
   deckSnapshot Json   @map("deck_snapshot")
   disconnectedAt DateTime? @map("disconnected_at") @db.Timestamptz(6)
   connectedOnce Boolean @default(false) @map("connected_once")
+  disconnectCount Int @default(0) @map("disconnect_count")
   match        Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player       Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
   rankedSnapshot RankedMatchPlayer?
@@ -583,13 +590,31 @@ model RatingAbuseFlag {
   playerId  String   @map("player_id") @db.Uuid
   type      String
   evidence  Json
+  status    AbuseReviewStatus @default(OPEN)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   match     Match    @relation(fields: [matchId], references: [id], onDelete: Restrict)
   player    Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  reviews   RatingAbuseReview[]
 
   @@unique([matchId, playerId, type])
   @@index([playerId, createdAt])
   @@map("rating_abuse_flags")
+}
+
+model RatingAbuseReview {
+  id            String @id @default(uuid()) @db.Uuid
+  flagId        String @map("flag_id") @db.Uuid
+  requestId     String @map("request_id")
+  operatorId    String @map("operator_id")
+  previousStatus AbuseReviewStatus @map("previous_status")
+  nextStatus    AbuseReviewStatus @map("next_status")
+  note          String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  flag          RatingAbuseFlag @relation(fields: [flagId], references: [id], onDelete: Restrict)
+
+  @@unique([flagId, requestId])
+  @@index([flagId, createdAt])
+  @@map("rating_abuse_reviews")
 }
 
 model MatchServerCommand {

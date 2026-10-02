@@ -14,6 +14,7 @@ import { PrismaClient } from '../../../apps/api/src/generated/prisma/client.js';
 import { PrismaPvpMatchPersistence } from '../../../apps/api/src/pvp/persistence.js';
 import { PvpMatchService } from '../../../apps/api/src/pvp/service.js';
 import { PrismaRankedSettlement } from '../../../apps/api/src/ranked/prisma-ranked-settlement.js';
+import { PrismaRankedAnalytics } from '../../../apps/api/src/ranked/prisma-analytics.js';
 
 loadRootEnvironment();
 const databaseUrl = process.env.DATABASE_URL;
@@ -201,8 +202,19 @@ describe('ranked matchmaking and authenticated reads', () => {
     expect(history.find((row) => row.playerId === playerIds[1])).toMatchObject({ outcome: 'LOSS' });
     expect(history.find((row) => row.playerId === playerIds[1])!.delta).toBeLessThanOrEqual(0);
     expect(
-      (await prisma.matchAction.findFirstOrThrow({ where: { matchId: matched.matchId } })).source,
-    ).toBe('FORFEIT');
+      await prisma.matchAction.findFirstOrThrow({ where: { matchId: matched.matchId } }),
+    ).toMatchObject({
+      source: 'FORFEIT',
+      action: { type: 'FORFEIT', playerId: playerIds[1], reason: 'SURRENDER' },
+    });
+    expect(
+      await prisma.matchEvent.findFirstOrThrow({
+        where: { matchId: matched.matchId, event: { path: ['type'], equals: 'PLAYER_FORFEITED' } },
+      }),
+    ).toMatchObject({
+      event: { type: 'PLAYER_FORFEITED', playerId: playerIds[1], reason: 'SURRENDER' },
+    });
+    expect((await new PrismaRankedAnalytics(prisma).report(seasonId)).surrenderCount).toBe(1);
     const ownHistory = await request(api, 'GET', '/api/v1/ranked/history', 1);
     expect(ownHistory.status).toBe(200);
     const body = ownHistory.body as { items: readonly { id: string; outcome: string }[] };
@@ -273,6 +285,7 @@ describe('ranked matchmaking and authenticated reads', () => {
         select: { outcome: true },
       }),
     ).toMatchObject({ outcome: 'LOSS' });
+    expect((await new PrismaRankedAnalytics(prisma).report(seasonId)).surrenderCount).toBe(1);
   });
 
   it('keeps Casual and Private outside rating settlement', async () => {
