@@ -426,6 +426,10 @@ function isEffectStackItem(value: unknown): boolean {
 function isGameAction(value: unknown): value is GameAction {
   if (!isRecord(value) || typeof value.playerId !== 'string') return false;
   if (value.type === 'END_TURN') return true;
+  if (value.type === 'FORFEIT')
+    return (
+      value.reason === 'DISCONNECT' || value.reason === 'TIMEOUT' || value.reason === 'SURRENDER'
+    );
   return (
     value.type === 'PLAY_CARD' &&
     typeof value.cardInstanceId === 'string' &&
@@ -466,6 +470,13 @@ function isGameEvent(value: unknown): value is GameEvent {
     case 'TURN_STARTED':
     case 'TURN_ENDED':
       return typeof value.playerId === 'string';
+    case 'PLAYER_FORFEITED':
+      return (
+        typeof value.playerId === 'string' &&
+        (value.reason === 'DISCONNECT' ||
+          value.reason === 'TIMEOUT' ||
+          value.reason === 'SURRENDER')
+      );
     case 'MATCH_FINISHED':
       return isTerminalBattleResult(value.result);
     default:

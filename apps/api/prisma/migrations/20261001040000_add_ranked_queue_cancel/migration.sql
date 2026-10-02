@@ -1,0 +1,1 @@
+ALTER TYPE "RankedQueueStatus" ADD VALUE 'CANCELLED';

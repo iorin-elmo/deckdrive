@@ -26,9 +26,9 @@ K00 の最初の実装単位（Issue #57）。親 Issue #22 と `IMPLEMENTATION_
 
 ## 仕様上の未決事項
 
-- Bronze から Grand Master までの rating 境界、I/II/III、RR 目盛りは未指定。
+- Bronze から Grand Master までの rating 境界、I/II/III、RR 目盛りは K03 の [matchmaking と履歴 API](phase10-ranked-matchmaking.md) で確定した。
 - season の期間、soft reset の anchor / retention、placement K、報酬・称号の条件は未指定。
-- abuse signal の閾値と rated disconnect / abandon の勝敗扱いは未指定。
+- abuse signal の閾値は未指定。rated disconnect / abandon の勝敗扱いは K03 の [matchmaking と履歴 API](phase10-ranked-matchmaking.md) で確定した。
 
 ## 次のレビュー単位
 

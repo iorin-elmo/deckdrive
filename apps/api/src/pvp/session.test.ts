@@ -22,6 +22,80 @@ function state(): BattleState {
 }
 
 describe('MatchSession', () => {
+  it('settles a rated disconnect after the grace period through a server replay action', async () => {
+    let now = 0;
+    const accepted: unknown[] = [];
+    const session = new MatchSession({
+      state: state(),
+      ratedAbandonment: true,
+      now: () => now,
+      onAction: (action) => {
+        accepted.push(action);
+      },
+    });
+    const first = { playerId: 'player-1' as PlayerId, send: vi.fn() };
+    session.connect(first);
+    session.connect({ playerId: 'player-2' as PlayerId, send: vi.fn() });
+    session.disconnect(first);
+    now = 60_000;
+    session.tick();
+    await vi.waitFor(() => expect(session.currentState.phase).toBe('MATCH_END'));
+    expect(accepted).toMatchObject([
+      {
+        source: 'FORFEIT',
+        action: { type: 'FORFEIT', playerId: 'player-1', reason: 'DISCONNECT' },
+      },
+    ]);
+    expect(session.currentState.events.at(-1)).toMatchObject({
+      type: 'MATCH_FINISHED',
+      result: { status: 'WIN', winnerId: 'player-2' },
+    });
+  });
+
+  it('voids a rated match if neither player connected', async () => {
+    let now = 0;
+    const onAbandoned = vi.fn();
+    const session = new MatchSession({
+      state: state(),
+      ratedAbandonment: true,
+      now: () => now,
+      onAbandoned,
+    });
+    now = 60_000;
+    session.tick();
+    await vi.waitFor(() => expect(onAbandoned).toHaveBeenCalledOnce());
+    expect(session.actionSequence).toBe(0);
+    expect(session.currentState.phase).toBe('PLAYER_TURN');
+  });
+
+  it('commits a rated forfeit queued behind an in-flight action', async () => {
+    let release!: () => void;
+    const session = new MatchSession({
+      state: state(),
+      ratedAbandonment: true,
+      onAction: async (accepted) => {
+        if (accepted.action.type === 'END_TURN')
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+      },
+    });
+    const turn = session.receive('player-1' as PlayerId, {
+      type: 'ACTION',
+      requestId: 'before-forfeit',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId: 'player-1' },
+    });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const forfeit = session.forfeit('player-2' as PlayerId);
+    release();
+    await turn;
+    expect(await forfeit).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'STATE' })]),
+    );
+    expect(session.currentState.phase).toBe('MATCH_END');
+    expect(session.actionSequence).toBe(2);
+  });
   it('serializes concurrent actions and makes retries idempotent', async () => {
     const sent1: unknown[] = [];
     const sent2: unknown[] = [];

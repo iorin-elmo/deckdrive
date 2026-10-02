@@ -91,3 +91,54 @@ describe('Ranked settlement migration', () => {
     expect(rankedMigration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
   });
 });
+
+describe('Ranked matchmaking migrations', () => {
+  const queue = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261001010000_add_ranked_queue/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const forfeit = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261001020000_add_ranked_forfeit/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const presence = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261001030000_track_pvp_connect/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const cancellation = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261001040000_add_ranked_queue_cancel/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const rateLimit = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261002000000_add_ranked_enqueue_rate_limit/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  it('persists unique waiting players and replayable rated abandonment', () => {
+    expect(queue).toContain('CREATE TABLE "ranked_queue_entries"');
+    expect(queue).toContain('ranked_queue_entries_one_waiting_player_idx');
+    expect(queue).toContain('ranked_queue_entries_status_match_check');
+    expect(forfeit).toContain("ADD VALUE 'FORFEIT'");
+    expect(presence).toContain('"connected_once" BOOLEAN NOT NULL DEFAULT false');
+    expect(cancellation).toContain("ADD VALUE 'CANCELLED'");
+    expect(rateLimit).toContain('CREATE TABLE "ranked_enqueue_rate_limits"');
+    expect(rateLimit).toContain('ranked_enqueue_rate_limits_attempts_check');
+    for (const migration of [queue, forfeit, presence, cancellation, rateLimit])
+      expect(migration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
+  });
+});

@@ -89,6 +89,14 @@ describe('PvP protocol', () => {
     expect(
       parseClientMessage({
         type: 'ACTION',
+        requestId: 'forged-forfeit',
+        sequence: 0,
+        action: { type: 'FORFEIT', playerId: 'player-1', reason: 'DISCONNECT' },
+      }),
+    ).toBeNull();
+    expect(
+      parseClientMessage({
+        type: 'ACTION',
         requestId: 'r',
         sequence: 0,
         action: { type: 'END_TURN' },

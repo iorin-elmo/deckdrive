@@ -45,7 +45,7 @@ export interface ActionMessage {
   readonly requestId: string;
   /** The number of accepted actions known by the client before this action. */
   readonly sequence: number;
-  readonly action: GameAction;
+  readonly action: Exclude<GameAction, { readonly type: 'FORFEIT' }>;
 }
 
 export interface PingMessage {
@@ -217,7 +217,7 @@ export function parseClientMessage(value: unknown): ClientMessage | null {
   };
 }
 
-function isGameAction(value: unknown): value is GameAction {
+function isGameAction(value: unknown): value is ActionMessage['action'] {
   if (!isRecord(value) || typeof value.playerId !== 'string') return false;
   if (value.type === 'END_TURN') return true;
   return (

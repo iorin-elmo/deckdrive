@@ -143,6 +143,7 @@ export function prepareRuleAction(
   }
   if (calculateResult(state).status !== 'IN_PROGRESS')
     return prepared(invalid('MATCH_FINISHED', 'The match has finished.'));
+  if (action.type === 'FORFEIT') return prepared({ ok: true });
   if (player.hp <= 0) return prepared(invalid('PLAYER_DEFEATED', 'A defeated player cannot act.'));
   if (state.phase !== 'PLAYER_TURN')
     return prepared(invalid('INVALID_PHASE', 'Actions require PLAYER_TURN.'));
@@ -189,6 +190,7 @@ export function applyRuleAction(
   action: GameAction,
   resolvedDefinition?: CardDefinition,
 ) {
+  if (action.type === 'FORFEIT') return forfeit(state, action.playerId, action.reason);
   if (action.type === 'END_TURN') return endTurn(state, action.playerId);
   const playerIndex = state.players.findIndex((player) => player.id === action.playerId);
   const card = state.players[playerIndex]!.hand.find(
@@ -224,6 +226,21 @@ export function applyRuleAction(
     { ...state, players, phase: result.status === 'IN_PROGRESS' ? 'PLAYER_TURN' : 'MATCH_END' },
     emitted.values,
   );
+}
+
+function forfeit(
+  state: BattleState,
+  playerId: PlayerId,
+  reason: 'DISCONNECT' | 'TIMEOUT' | 'SURRENDER',
+) {
+  const players = clonePlayers(state.players);
+  const loserIndex = players.findIndex((player) => player.id === playerId);
+  players[loserIndex] = { ...players[loserIndex]!, hp: 0 };
+  const winner = players.find((player) => player.id !== playerId)!;
+  const emitted = eventEmitter(state.events);
+  emitted.emit({ type: 'PLAYER_FORFEITED', playerId, reason });
+  emitted.emit({ type: 'MATCH_FINISHED', result: { status: 'WIN', winnerId: winner.id } });
+  return finish(state, { ...state, players, phase: 'MATCH_END' }, emitted.values);
 }
 
 function endTurn(state: BattleState, playerId: PlayerId) {
@@ -445,6 +462,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isValidAction(action: unknown): action is GameAction {
   if (!isRecord(action) || typeof action.playerId !== 'string') return false;
   if (action.type === 'END_TURN') return true;
+  if (action.type === 'FORFEIT')
+    return (
+      action.reason === 'DISCONNECT' || action.reason === 'TIMEOUT' || action.reason === 'SURRENDER'
+    );
   return (
     action.type === 'PLAY_CARD' &&
     typeof action.cardInstanceId === 'string' &&
