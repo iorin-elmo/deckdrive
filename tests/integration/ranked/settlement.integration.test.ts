@@ -252,18 +252,24 @@ describe('ranked settlement in PostgreSQL', () => {
       status: 'OPEN',
       evidence: { seasonId: seasonOne, matchIds: [matchId] },
     });
-    const [review, concurrentRetry] = await Promise.all(
-      Array.from({ length: 2 }, () =>
-        analytics.review(
-          flag!.id,
-          'review-request-1',
-          'operator-test',
-          'DISMISSED',
-          'Connection outage confirmed',
-        ),
+    const [review, concurrentRetry] = await Promise.all([
+      analytics.review(
+        flag!.id,
+        ' review-request-1 ',
+        ' operator-test ',
+        'DISMISSED',
+        'Connection outage confirmed',
       ),
-    );
+      analytics.review(
+        flag!.id,
+        'review-request-1',
+        'operator-test',
+        'DISMISSED',
+        'Connection outage confirmed',
+      ),
+    ]);
     expect(concurrentRetry.id).toBe(review.id);
+    expect(review).toMatchObject({ requestId: 'review-request-1', operatorId: 'operator-test' });
     expect(
       (
         await analytics.review(

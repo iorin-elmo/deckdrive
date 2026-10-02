@@ -113,11 +113,13 @@ export class PrismaRankedAnalytics {
     status: 'OPEN' | 'DISMISSED' | 'CONFIRMED',
     note: string,
   ) {
+    const normalizedRequestId = requestId.trim();
+    const normalizedOperatorId = operatorId.trim();
     if (
-      requestId.trim().length === 0 ||
-      requestId.length > 100 ||
-      operatorId.trim().length === 0 ||
-      operatorId.length > 100 ||
+      normalizedRequestId.length === 0 ||
+      normalizedRequestId.length > 100 ||
+      normalizedOperatorId.length === 0 ||
+      normalizedOperatorId.length > 100 ||
       note.trim().length === 0 ||
       note.length > 2000
     )
@@ -127,11 +129,11 @@ export class PrismaRankedAnalytics {
       const flag = await tx.ratingAbuseFlag.findUnique({ where: { id: flagId } });
       if (flag === null) throw new Error('FLAG_NOT_FOUND');
       const existing = await tx.ratingAbuseReview.findUnique({
-        where: { flagId_requestId: { flagId, requestId } },
+        where: { flagId_requestId: { flagId, requestId: normalizedRequestId } },
       });
       if (existing !== null) {
         if (
-          existing.operatorId !== operatorId ||
+          existing.operatorId !== normalizedOperatorId ||
           existing.nextStatus !== status ||
           existing.note !== note
         )
@@ -142,8 +144,8 @@ export class PrismaRankedAnalytics {
       return tx.ratingAbuseReview.create({
         data: {
           flagId,
-          requestId,
-          operatorId,
+          requestId: normalizedRequestId,
+          operatorId: normalizedOperatorId,
           previousStatus: flag.status,
           nextStatus: status,
           note,

@@ -37,7 +37,7 @@ pnpm --filter @deck-drive/api ranked:analytics flags <season-id>
 pnpm --filter @deck-drive/api ranked:analytics review <flag-id> <request-id> DISMISSED "通信障害を確認"
 ```
 
-`request-id` には操作ごとに生成した UUID を渡す。通信失敗などで結果が不明な場合は同じ ID で再実行し、別の調査・再確認では新しい ID を使う。既存レビューの request ID は migration 時にレビュー ID で補完する。
+`request-id` には操作ごとに生成した UUID を渡す。通信失敗などで結果が不明な場合は同じ ID で再実行し、別の調査・再確認では新しい ID を使う。request ID と operator ID の前後の空白は保存前に除去する。既存レビューの request ID は migration 時にレビュー ID で補完する。
 
 `report` は aggregate のみで player ID、match ID、開封者 ID を含まない。完了/放棄試合数、平均試合秒数と turn 数、切断数、rating 差分、class/card/deck ごとの使用回数・勝利数・勝率、pack product/rarity 分布と重複率を返す。card は定義 ID と version を区別する。deck はカード version ID と枚数から作る fingerprint を表示し、所有者や deck ID は返さない。class/card/deck の使用回数は「その試合で使った座席」単位で数え、保存済み deck snapshot がない座席は該当 breakdown から除外する。pack は season の期間中の開封を集計し、ranked 参加者だけには限定しない。
 
