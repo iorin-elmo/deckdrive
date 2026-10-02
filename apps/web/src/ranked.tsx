@@ -115,6 +115,12 @@ export function RankedPage({
   const queueId = queueEntry?.queueId ?? '';
   const [queueNotice, setQueueNotice] = useState<'EXPIRED' | 'CANCELLED' | null>(null);
   const [deckId, setDeckId] = useState('');
+  useEffect(() => {
+    const entry = readQueue(storageKey);
+    queueEntryRef.current = entry;
+    setQueueEntry(entry);
+    setQueueNotice(null);
+  }, [storageKey]);
   const profile = useQuery({
     queryKey: ['ranked-profile', playerId, previewMode],
     queryFn: () => client.rankedProfile(playerId),
@@ -270,19 +276,22 @@ export function RankedPage({
               <div>
                 <p className="text-sm text-stone-300">{w.rank}</p>
                 <p className="mt-1 text-3xl font-black text-amber-200">
-                  {rankNames[rank.name as keyof typeof rankNames] ?? rank.name} {rank.division ?? ''}
+                  {rankNames[rank.name as keyof typeof rankNames] ?? rank.name}{' '}
+                  {rank.division ?? ''}
                 </p>
               </div>
               <div>
                 <div className="flex justify-between gap-2 text-sm">
                   <span>{w.rr}</span>
-                  <strong>{rr} / 100</strong>
+                  <strong>
+                    {rr} / {profile.data.rrGoal}
+                  </strong>
                 </div>
                 <progress
                   className="mt-2 h-3 w-full accent-cyan-300"
-                  max={100}
+                  max={profile.data.rrGoal}
                   value={rr}
-                  aria-label={`${w.rr}: ${rr} / 100`}
+                  aria-label={`${w.rr}: ${rr} / ${profile.data.rrGoal}`}
                 />
               </div>
               <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -343,8 +352,8 @@ export function RankedPage({
                 className="mt-5 w-full"
                 type="button"
                 disabled={
-                  profile.data?.season === null ||
-                  profile.isPending ||
+                  !profile.isSuccess ||
+                  profile.data.season === null ||
                   queueId.length > 0 ||
                   start.isPending
                 }

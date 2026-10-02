@@ -1,4 +1,5 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
+import { rankPresentationConfig, type RankPresentationConfig } from './rank-presentation.js';
 
 export class RankedHistoryCursorError extends Error {
   constructor() {
@@ -6,32 +7,42 @@ export class RankedHistoryCursorError extends Error {
   }
 }
 
-const rankBands = [
-  { name: 'BRONZE', floor: 0 },
-  { name: 'SILVER', floor: 1200 },
-  { name: 'GOLD', floor: 1400 },
-  { name: 'PLATINUM', floor: 1600 },
-  { name: 'DIAMOND', floor: 1800 },
-  { name: 'MASTER', floor: 2000 },
-  { name: 'GRAND_MASTER', floor: 2200 },
-] as const;
-
-export function rankProgress(rating: number) {
+export function rankProgress(
+  rating: number,
+  config: RankPresentationConfig = rankPresentationConfig,
+) {
+  if (!Number.isFinite(rating)) throw new RangeError('Rating must be finite.');
+  if (
+    config.bands.length === 0 ||
+    config.divisions.length === 0 ||
+    !Number.isInteger(config.rrPerDivision) ||
+    config.rrPerDivision <= 0 ||
+    !Number.isFinite(config.finalBandWidth) ||
+    config.finalBandWidth <= 0 ||
+    config.bands.some(
+      (band, index) =>
+        !Number.isFinite(band.floor) ||
+        !band.name ||
+        (index > 0 && band.floor <= config.bands[index - 1]!.floor),
+    )
+  )
+    throw new RangeError('Invalid rank presentation configuration.');
   const index = Math.max(
     0,
-    rankBands.findLastIndex((band) => rating >= band.floor),
+    config.bands.findLastIndex((band) => rating >= band.floor),
   );
-  const band = rankBands[index]!;
-  const nextFloor = rankBands[index + 1]?.floor ?? band.floor + 300;
+  const band = config.bands[index]!;
+  const nextFloor = config.bands[index + 1]?.floor ?? band.floor + config.finalBandWidth;
   const fraction = Math.min(
     0.999999,
     Math.max(0, (rating - band.floor) / (nextFloor - band.floor)),
   );
-  const divisionIndex = Math.floor(fraction * 3);
+  const divisionIndex = Math.floor(fraction * config.divisions.length);
   return {
     name: band.name,
-    division: (['III', 'II', 'I'] as const)[divisionIndex]!,
-    rr: Math.floor((fraction * 3 - divisionIndex) * 100),
+    division: config.divisions[divisionIndex]!,
+    rr: Math.floor((fraction * config.divisions.length - divisionIndex) * config.rrPerDivision),
+    rrGoal: config.rrPerDivision,
   };
 }
 
@@ -45,7 +56,14 @@ export class PrismaRankedReadService {
       where: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
       select: { id: true, startsAt: true, endsAt: true, initialRating: true },
     });
-    if (season === null) return { season: null, rating: null, rank: null, rr: null };
+    if (season === null)
+      return {
+        season: null,
+        rating: null,
+        rank: null,
+        rr: null,
+        rrGoal: rankPresentationConfig.rrPerDivision,
+      };
     const row = await this.prisma.playerSeasonRating.findUnique({
       where: { seasonId_playerId: { seasonId: season.id, playerId } },
       select: { rating: true, completedGames: true },
@@ -57,6 +75,7 @@ export class PrismaRankedReadService {
       rating,
       rank: { name: progress.name, division: progress.division },
       rr: progress.rr,
+      rrGoal: progress.rrGoal,
       completedGames: row?.completedGames ?? 0,
     };
   }

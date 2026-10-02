@@ -137,6 +137,7 @@ export interface RankedProfile {
   readonly rating: number | null;
   readonly rank: { readonly name: string; readonly division: 'III' | 'II' | 'I' } | null;
   readonly rr: number | null;
+  readonly rrGoal: number;
   readonly completedGames?: number;
 }
 
@@ -514,7 +515,10 @@ export class DeckDriveApi implements DeckDriveClient {
             ? {}
             : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...((options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE') && csrf !== undefined
+          ...((options.method === 'POST' ||
+            options.method === 'PUT' ||
+            options.method === 'DELETE') &&
+          csrf !== undefined
             ? { 'X-CSRF-Token': csrf }
             : {}),
         },
@@ -769,7 +773,7 @@ export const previewApi: DeckDriveClient = {
     return { status: 'COMPLETED' };
   },
   async rankedProfile() {
-    return { season: null, rating: null, rank: null, rr: null };
+    return { season: null, rating: null, rank: null, rr: null, rrGoal: 100 };
   },
   async rankedHistory() {
     return { items: [], nextCursor: null };

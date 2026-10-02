@@ -1469,6 +1469,7 @@ function CpuBattlePage() {
 
 function PvpSetupPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
+  const { t } = useI18n();
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
   const navigate = useNavigate();
@@ -1562,7 +1563,7 @@ function PvpSetupPage() {
         description="Choose a server-validated deck, find an opponent, or invite one directly."
       />
       <Link className="quiet-link mt-4" to="/ranked">
-        Ranked queue and season <ChevronRight size={16} aria-hidden="true" />
+        {t('rankedQueueAndSeason')} <ChevronRight size={16} aria-hidden="true" />
       </Link>
       <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <article className="surface-panel p-6">

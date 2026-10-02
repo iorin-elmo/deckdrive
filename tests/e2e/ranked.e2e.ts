@@ -30,6 +30,7 @@ async function mockRankedApi(
     queueMatched?: () => boolean;
     queueCancelled?: () => boolean;
     rankedPost?: () => void;
+    rrGoal?: number;
   } = {},
 ) {
   await page.route('**/api/v1/**', async (route) => {
@@ -45,12 +46,13 @@ async function mockRankedApi(
       if (options.profileUnavailable?.()) return json({ error: 'SERVICE_UNAVAILABLE' }, 503);
       return json(
         options.noSeason
-          ? { season: null, rating: null, rank: null, rr: null }
+          ? { season: null, rating: null, rank: null, rr: null, rrGoal: 100 }
           : {
               season,
               rating: 1500,
               rank: { name: 'GOLD', division: 'III' },
               rr: 25,
+              rrGoal: options.rrGoal ?? 100,
               completedGames: 3,
             },
       );
@@ -96,12 +98,12 @@ test('shows rank and history, restores a queued match after reload, and opens th
 }) => {
   let matched = false;
   await signedIn(page);
-  await mockRankedApi(page, { queueMatched: () => matched });
+  await mockRankedApi(page, { queueMatched: () => matched, rrGoal: 80 });
   await page.goto('/ranked');
 
   await expect(page.getByRole('heading', { name: 'Rank and season' })).toBeVisible();
   await expect(page.getByText('Gold III')).toBeVisible();
-  await expect(page.getByRole('progressbar', { name: 'Rank Rating: 25 / 100' })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Rank Rating: 25 / 80' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'View match result' })).toHaveAttribute(
     'href',
     '/result/match-1',
