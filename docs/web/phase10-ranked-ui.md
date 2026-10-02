@@ -1,6 +1,6 @@
 # K04: Rank と season の画面
 
-Issue #60。認証後の `/ranked` に現在の season、rating、rank、RR、完了試合数と rating 履歴を表示する。画面は K03 の `GET /api/v1/ranked/profile` と `GET /api/v1/ranked/history` を読む。rank 境界、division、RR の目盛りは `apps/api/src/ranked/rank-presentation.ts` の version 付き設定で計算し、web は `rrGoal` を含む返却値を表示する。クライアントは rating、勝敗、damage を送らない。
+Issue #60。認証後の `/ranked` に現在の season、rating、rank、RR、完了試合数と rating 履歴を表示する。画面は K03 の `GET /api/v1/ranked/profile` と `GET /api/v1/ranked/history` を読む。rank 境界、division、RR の目盛りは `@deck-drive/shared` の version 付き `rankDisplayConfig` で管理し、web は `rrGoal` を含む API の返却値を表示する。クライアントは rating、勝敗、damage を送らない。
 
 ## 対戦導線
 

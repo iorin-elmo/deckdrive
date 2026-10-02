@@ -1,49 +1,10 @@
+import { rankDisplayConfig, rankProgress } from '@deck-drive/shared';
 import type { PrismaClient } from '../generated/prisma/client.js';
-import { rankPresentationConfig, type RankPresentationConfig } from './rank-presentation.js';
 
 export class RankedHistoryCursorError extends Error {
   constructor() {
     super('RANKED_HISTORY_CURSOR_NOT_FOUND');
   }
-}
-
-export function rankProgress(
-  rating: number,
-  config: RankPresentationConfig = rankPresentationConfig,
-) {
-  if (!Number.isFinite(rating)) throw new RangeError('Rating must be finite.');
-  if (
-    config.bands.length === 0 ||
-    config.divisions.length === 0 ||
-    !Number.isInteger(config.rrPerDivision) ||
-    config.rrPerDivision <= 0 ||
-    !Number.isFinite(config.finalBandWidth) ||
-    config.finalBandWidth <= 0 ||
-    config.bands.some(
-      (band, index) =>
-        !Number.isFinite(band.floor) ||
-        !band.name ||
-        (index > 0 && band.floor <= config.bands[index - 1]!.floor),
-    )
-  )
-    throw new RangeError('Invalid rank presentation configuration.');
-  const index = Math.max(
-    0,
-    config.bands.findLastIndex((band) => rating >= band.floor),
-  );
-  const band = config.bands[index]!;
-  const nextFloor = config.bands[index + 1]?.floor ?? band.floor + config.finalBandWidth;
-  const fraction = Math.min(
-    0.999999,
-    Math.max(0, (rating - band.floor) / (nextFloor - band.floor)),
-  );
-  const divisionIndex = Math.floor(fraction * config.divisions.length);
-  return {
-    name: band.name,
-    division: config.divisions[divisionIndex]!,
-    rr: Math.floor((fraction * config.divisions.length - divisionIndex) * config.rrPerDivision),
-    rrGoal: config.rrPerDivision,
-  };
 }
 
 /** All queries are scoped to the authenticated player. */
@@ -62,7 +23,7 @@ export class PrismaRankedReadService {
         rating: null,
         rank: null,
         rr: null,
-        rrGoal: rankPresentationConfig.rrPerDivision,
+        rrGoal: rankDisplayConfig.rrPerDivision,
       };
     const row = await this.prisma.playerSeasonRating.findUnique({
       where: { seasonId_playerId: { seasonId: season.id, playerId } },
@@ -75,7 +36,7 @@ export class PrismaRankedReadService {
       rating,
       rank: { name: progress.name, division: progress.division },
       rr: progress.rr,
-      rrGoal: progress.rrGoal,
+      rrGoal: rankDisplayConfig.rrPerDivision,
       completedGames: row?.completedGames ?? 0,
     };
   }
