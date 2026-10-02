@@ -120,6 +120,14 @@ export function RankedPage({
     queueEntryRef.current = entry;
     setQueueEntry(entry);
     setQueueNotice(null);
+    const syncQueue = (event: StorageEvent) => {
+      if (event.key !== storageKey) return;
+      const saved = readQueue(storageKey);
+      queueEntryRef.current = saved;
+      setQueueEntry(saved);
+    };
+    window.addEventListener('storage', syncQueue);
+    return () => window.removeEventListener('storage', syncQueue);
   }, [storageKey]);
   const profile = useQuery({
     queryKey: ['ranked-profile', playerId, previewMode],
@@ -130,9 +138,9 @@ export function RankedPage({
     queryFn: () => client.decks(playerId),
   });
   const playableDecks = (decks.data ?? []).filter(isReadyDeck);
-  const selectedDeckId = playableDecks.some((deck) => deck.id === deckId)
-    ? deckId
-    : (playableDecks[0]?.id ?? '');
+  const selectedDeckId =
+    queueEntry?.deckId ??
+    (playableDecks.some((deck) => deck.id === deckId) ? deckId : (playableDecks[0]?.id ?? ''));
   const history = useInfiniteQuery({
     queryKey: ['ranked-history', playerId, previewMode],
     initialPageParam: undefined as string | undefined,

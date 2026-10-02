@@ -42,7 +42,12 @@ async function mockRankedApi(
       return json({ playerId: 'player-1', displayName: 'Player', csrfToken: 'token' });
     if (path === '/api/v1/me') return json({ id: 'player-1', displayName: 'Player', balances: {} });
     if (path === '/api/v1/decks')
-      return json({ decks: [{ id: 'deck-1', name: 'Ready deck', cards: [{ quantity: 30 }] }] });
+      return json({
+        decks: [
+          { id: 'deck-1', name: 'Ready deck', cards: [{ quantity: 30 }] },
+          { id: 'deck-2', name: 'Second deck', cards: [{ quantity: 30 }] },
+        ],
+      });
     if (path === '/api/v1/ranked/profile') {
       if (options.profileUnavailable?.()) return json({ error: 'SERVICE_UNAVAILABLE' }, 503);
       return json(
@@ -111,13 +116,17 @@ test('shows rank and history, restores a queued match after reload, and opens th
     'href',
     '/result/match-1',
   );
+  await page.getByRole('combobox', { name: 'Deck' }).selectOption('deck-2');
   await page.getByRole('button', { name: 'Find ranked opponent' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Waiting for an opponent' }),
   ).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('deckdrive:ranked:queue:player-1')))
-    .toBe(JSON.stringify({ queueId: 'queue-1', deckId: 'deck-1' }));
+    .toBe(JSON.stringify({ queueId: 'queue-1', deckId: 'deck-2' }));
+
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Deck' })).toHaveValue('deck-2');
 
   matched = true;
   await page.reload();
