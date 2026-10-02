@@ -94,6 +94,7 @@ export class PrismaRankedAnalytics {
         reviews: {
           orderBy: { createdAt: 'asc' },
           select: {
+            requestId: true,
             operatorId: true,
             previousStatus: true,
             nextStatus: true,
@@ -107,11 +108,14 @@ export class PrismaRankedAnalytics {
 
   async review(
     flagId: string,
+    requestId: string,
     operatorId: string,
     status: 'OPEN' | 'DISMISSED' | 'CONFIRMED',
     note: string,
   ) {
     if (
+      requestId.trim().length === 0 ||
+      requestId.length > 100 ||
       operatorId.trim().length === 0 ||
       operatorId.length > 100 ||
       note.trim().length === 0 ||
@@ -122,20 +126,28 @@ export class PrismaRankedAnalytics {
       await tx.$queryRaw`SELECT id FROM rating_abuse_flags WHERE id = ${flagId}::uuid FOR UPDATE`;
       const flag = await tx.ratingAbuseFlag.findUnique({ where: { id: flagId } });
       if (flag === null) throw new Error('FLAG_NOT_FOUND');
-      const latest = await tx.ratingAbuseReview.findFirst({
-        where: { flagId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      const existing = await tx.ratingAbuseReview.findUnique({
+        where: { flagId_requestId: { flagId, requestId } },
       });
-      if (
-        flag.status === status &&
-        latest?.operatorId === operatorId &&
-        latest.nextStatus === status &&
-        latest.note === note
-      )
-        return latest;
+      if (existing !== null) {
+        if (
+          existing.operatorId !== operatorId ||
+          existing.nextStatus !== status ||
+          existing.note !== note
+        )
+          throw new Error('REVIEW_REQUEST_CONFLICT');
+        return existing;
+      }
       await tx.ratingAbuseFlag.update({ where: { id: flagId }, data: { status } });
       return tx.ratingAbuseReview.create({
-        data: { flagId, operatorId, previousStatus: flag.status, nextStatus: status, note },
+        data: {
+          flagId,
+          requestId,
+          operatorId,
+          previousStatus: flag.status,
+          nextStatus: status,
+          note,
+        },
       });
     });
   }

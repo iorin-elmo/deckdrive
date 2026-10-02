@@ -11,7 +11,7 @@ if (!databaseUrl || !operatorId?.trim())
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
 const analytics = new PrismaRankedAnalytics(prisma);
-const [command, id, status, ...noteParts] = process.argv.slice(2);
+const [command, id, requestId, status, ...noteParts] = process.argv.slice(2);
 try {
   let result: unknown;
   if (command === 'report' && id) result = await analytics.report(id);
@@ -20,12 +20,13 @@ try {
   else if (
     command === 'review' &&
     id &&
+    requestId &&
     (status === 'OPEN' || status === 'DISMISSED' || status === 'CONFIRMED')
   )
-    result = await analytics.review(id, operatorId, status, noteParts.join(' '));
+    result = await analytics.review(id, requestId, operatorId, status, noteParts.join(' '));
   else
     throw new Error(
-      'Usage: ranked:analytics <report|scan|flags> <season-id> OR review <flag-id> <OPEN|DISMISSED|CONFIRMED> <note>',
+      'Usage: ranked:analytics <report|scan|flags> <season-id> OR review <flag-id> <request-id> <OPEN|DISMISSED|CONFIRMED> <note>',
     );
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {

@@ -252,27 +252,65 @@ describe('ranked settlement in PostgreSQL', () => {
       status: 'OPEN',
       evidence: { seasonId: seasonOne, matchIds: [matchId] },
     });
-    const review = await analytics.review(
-      flag!.id,
-      'operator-test',
-      'DISMISSED',
-      'Connection outage confirmed',
+    const [review, concurrentRetry] = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        analytics.review(
+          flag!.id,
+          'review-request-1',
+          'operator-test',
+          'DISMISSED',
+          'Connection outage confirmed',
+        ),
+      ),
     );
+    expect(concurrentRetry.id).toBe(review.id);
     expect(
       (
         await analytics.review(
           flag!.id,
+          'review-request-1',
           'operator-test',
           'DISMISSED',
           'Connection outage confirmed',
         )
       ).id,
     ).toBe(review.id);
+    await expect(
+      analytics.review(
+        flag!.id,
+        'review-request-1',
+        'operator-test',
+        'CONFIRMED',
+        'Connection outage confirmed',
+      ),
+    ).rejects.toThrow('REVIEW_REQUEST_CONFLICT');
+    const reaffirmation = await analytics.review(
+      flag!.id,
+      'review-request-2',
+      'operator-test',
+      'DISMISSED',
+      'Connection outage confirmed',
+    );
+    expect(reaffirmation.id).not.toBe(review.id);
+    expect(reaffirmation.previousStatus).toBe('DISMISSED');
     await analytics.scan(seasonOne);
     expect((await analytics.flags(seasonOne)).find((entry) => entry.id === flag!.id)).toMatchObject(
       {
         status: 'DISMISSED',
-        reviews: [{ operatorId: 'operator-test', previousStatus: 'OPEN', nextStatus: 'DISMISSED' }],
+        reviews: [
+          {
+            requestId: 'review-request-1',
+            operatorId: 'operator-test',
+            previousStatus: 'OPEN',
+            nextStatus: 'DISMISSED',
+          },
+          {
+            requestId: 'review-request-2',
+            operatorId: 'operator-test',
+            previousStatus: 'DISMISSED',
+            nextStatus: 'DISMISSED',
+          },
+        ],
       },
     );
     const report = await analytics.report(seasonOne);

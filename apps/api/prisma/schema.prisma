@@ -604,6 +604,7 @@ model RatingAbuseFlag {
 model RatingAbuseReview {
   id            String @id @default(uuid()) @db.Uuid
   flagId        String @map("flag_id") @db.Uuid
+  requestId     String @map("request_id")
   operatorId    String @map("operator_id")
   previousStatus AbuseReviewStatus @map("previous_status")
   nextStatus    AbuseReviewStatus @map("next_status")
@@ -611,6 +612,7 @@ model RatingAbuseReview {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   flag          RatingAbuseFlag @relation(fields: [flagId], references: [id], onDelete: Restrict)
 
+  @@unique([flagId, requestId])
   @@index([flagId, createdAt])
   @@map("rating_abuse_reviews")
 }
