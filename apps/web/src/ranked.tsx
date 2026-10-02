@@ -85,6 +85,7 @@ const words = {
   },
 } as const;
 
+// The UI rank names are canonical English labels in IMPLEMENTATION_SPEC §32.
 const rankNames = {
   BRONZE: 'Bronze',
   SILVER: 'Silver',
@@ -149,7 +150,16 @@ export function RankedPage({
   });
   const queue = useQuery({
     queryKey: ['ranked-queue', playerId, queueId],
-    queryFn: () => client.rankedMatchStatus(playerId, queueId),
+    queryFn: async () => {
+      try {
+        return await client.rankedMatchStatus(playerId, queueId);
+      } catch (error) {
+        // Keep the requested queue ID when a missing queue has no response body.
+        if (error instanceof ApiError && error.status === 404)
+          return { status: 'EXPIRED', queueId } as const;
+        throw error;
+      }
+    },
     enabled: queueId.length > 0 && !previewMode,
     refetchInterval: (query) =>
       query.state.data?.status === 'MATCHED' || query.state.data?.status === 'EXPIRED'
@@ -233,22 +243,19 @@ export function RankedPage({
   }, [previewMode, queueEntry, refresh.isPending, refresh.mutate]);
 
   useEffect(() => {
-    if (queue.data?.status === 'MATCHED' && queue.data.matchId !== undefined) {
+    if (queue.data === undefined || queue.data.queueId !== queueEntryRef.current?.queueId) return;
+    if (queue.data.status === 'MATCHED' && queue.data.matchId !== undefined) {
       queueEntryRef.current = null;
       window.localStorage.removeItem(storageKey);
       navigate(`/battle/pvp/${queue.data.matchId}`, { replace: true });
     }
-    if (
-      queue.data?.status === 'EXPIRED' ||
-      queue.data?.status === 'CANCELLED' ||
-      (queue.error instanceof ApiError && queue.error.status === 404)
-    ) {
+    if (queue.data.status === 'EXPIRED' || queue.data.status === 'CANCELLED') {
       queueEntryRef.current = null;
       window.localStorage.removeItem(storageKey);
       setQueueEntry(null);
-      setQueueNotice(queue.data?.status === 'CANCELLED' ? 'CANCELLED' : 'EXPIRED');
+      setQueueNotice(queue.data.status === 'CANCELLED' ? 'CANCELLED' : 'EXPIRED');
     }
-  }, [navigate, queue.data, queue.error, storageKey]);
+  }, [navigate, queue.data, storageKey]);
 
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
   const rank = profile.data?.rank;

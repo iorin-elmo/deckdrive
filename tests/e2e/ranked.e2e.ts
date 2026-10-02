@@ -171,6 +171,72 @@ test('refreshes a waiting search and can cancel it', async ({ page }) => {
     .toBeNull();
 });
 
+for (const staleStatus of ['EXPIRED', 'NOT_FOUND'] as const) {
+  test(`keeps a new season queue when the old queue returns ${staleStatus}`, async ({ page }) => {
+    await page.clock.install();
+    await signedIn(page);
+    await mockRankedApi(page);
+    let posts = 0;
+    let oldReadStarted!: () => void;
+    const oldRead = new Promise<void>((resolve) => {
+      oldReadStarted = resolve;
+    });
+    let releaseOldRead!: () => void;
+    const delayedOldRead = new Promise<void>((resolve) => {
+      releaseOldRead = resolve;
+    });
+    await page.route('**/api/v1/matches/ranked**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const json = (body: unknown, status = 200) =>
+        route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (path === '/api/v1/matches/ranked' && route.request().method() === 'POST') {
+        posts += 1;
+        return json({ status: 'QUEUED', queueId: posts === 1 ? 'queue-1' : 'queue-2' }, 202);
+      }
+      if (path.endsWith('/queue-1')) {
+        oldReadStarted();
+        await delayedOldRead;
+        return staleStatus === 'NOT_FOUND'
+          ? json({ error: 'NOT_FOUND' }, 404)
+          : json({ status: 'EXPIRED', queueId: 'queue-1' });
+      }
+      if (path.endsWith('/queue-2')) return json({ status: 'WAITING', queueId: 'queue-2' });
+      return route.fallback();
+    });
+    await page.goto('/ranked');
+    await page.getByRole('button', { name: 'Find ranked opponent' }).click();
+    await oldRead;
+    await page.clock.runFor(30_100);
+    await expect.poll(() => posts).toBeGreaterThanOrEqual(2);
+    const storedQueue = () =>
+      page.evaluate(() => localStorage.getItem('deckdrive:ranked:queue:player-1'));
+    await expect.poll(storedQueue).toBe(JSON.stringify({ queueId: 'queue-2', deckId: 'deck-1' }));
+    releaseOldRead();
+    await expect.poll(storedQueue).toBe(JSON.stringify({ queueId: 'queue-2', deckId: 'deck-1' }));
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Cancel matchmaking' })).toBeVisible();
+    await expect.poll(storedQueue).toBe(JSON.stringify({ queueId: 'queue-2', deckId: 'deck-1' }));
+  });
+}
+
+test('clears the current queue when its status endpoint returns 404', async ({ page }) => {
+  await signedIn(page);
+  await mockRankedApi(page);
+  await page.route('**/api/v1/matches/ranked/queue/queue-1', (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'NOT_FOUND' }),
+    }),
+  );
+  await page.goto('/ranked');
+  await page.getByRole('button', { name: 'Find ranked opponent' }).click();
+  await expect(page.getByText('Your queue expired. Choose a deck and try again.')).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('deckdrive:ranked:queue:player-1')))
+    .toBeNull();
+});
+
 test('shows empty season and history on mobile and exposes keyboard navigation', async ({
   page,
 }) => {
