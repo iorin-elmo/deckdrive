@@ -16,6 +16,7 @@ export interface RankedMatchFact {
   readonly completedAt: Date;
   readonly status: 'COMPLETED' | 'ABANDONED';
   readonly turnCount: number;
+  readonly forfeitReason: 'SURRENDER' | 'DISCONNECT' | 'TIMEOUT' | null;
   readonly players: readonly [RankedPlayerFact, RankedPlayerFact];
 }
 
@@ -219,7 +220,7 @@ export function buildRankedReport(facts: readonly RankedMatchFact[], packs: read
       completed.length === 0
         ? null
         : total(completed.map((fact) => fact.turnCount)) / completed.length,
-    surrenderCount: null as null, // The current game protocol has no surrender action.
+    surrenderCount: completed.filter((fact) => fact.forfeitReason === 'SURRENDER').length,
     disconnectCount: total(
       facts.flatMap((fact) => fact.players.map((player) => player.disconnectCount)),
     ),

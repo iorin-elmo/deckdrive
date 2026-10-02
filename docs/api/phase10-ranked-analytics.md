@@ -4,7 +4,7 @@ Issue #61。基礎となる rating 履歴と season は [ranked settlement](phas
 
 ## 入力と再集計
 
-`ranked_matches` に紐付く終了済み match、サーバーが確定した `rating_history`、保存済み `match_events`、対戦開始時の `deck_snapshot`、`pack_openings.result` だけを読む。完了試合は両者の rating 履歴がそろった場合のみ対象にする。試合の長さは `created_at` から `completed_at`、turn 数は最終 state の `turn`、切断回数は接続済み状態から切断状態へ移った回数を使う。切断通知の重複では増やさない。
+`ranked_matches` に紐付く終了済み match、サーバーが確定した `rating_history`、保存済み `match_actions` / `match_events`、対戦開始時の `deck_snapshot`、`pack_openings.result` だけを読む。完了試合は両者の rating 履歴がそろった場合のみ対象にする。試合の長さは `created_at` から `completed_at`、turn 数は最終 state の `turn`、切断回数は接続済み状態から切断状態へ移った回数を使う。切断通知の重複では増やさない。投了は `source: FORFEIT` の action と `PLAYER_FORFEITED` event の player・reason が一致する場合のみ、`SURRENDER` として数える。不一致の replay では集計を失敗させる。
 
 集計値は保存済みの原本からその都度計算し、累積カウンターを更新しない。同じ season を再集計しても加算されない。flag は `(match_id, player_id, type)` の一意制約と `skipDuplicates` で再走査を安全にし、途中失敗後も再実行できる。既存のレビュー状態と証拠は再走査で変更しない。判定閾値を変えるときは設定 version を更新し、既存 flag の再評価は運用レビューで行う。
 
@@ -39,4 +39,4 @@ pnpm --filter @deck-drive/api ranked:analytics review <flag-id> DISMISSED "通�
 
 `flags` と `review` の出力には player ID、match ID、調査理由が含まれる。運用担当者以外へ転送しない。閲覧権限は DB 接続資格情報と運用端末の権限で管理する。一般プレイヤーの認証 Cookie や development player ID では到達できない。
 
-現在の game action には surrender が存在しないため、`surrenderCount` は `null`（未計測）とする。後続のサーバー権威 surrender event が導入されたら、その event を原本として集計する。存在しないイベントを 0 件として扱わない。
+`surrenderCount` は完了した ranked 試合のうち、サーバーが記録した `FORFEIT` の理由が `SURRENDER` だった試合数。`DISCONNECT` と `TIMEOUT` は含めず、K03以前の試合は 0 件として扱う。`ABANDONED` の無効試合も対象外。

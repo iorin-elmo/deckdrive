@@ -154,6 +154,7 @@ async function loadMatchFacts(tx: Reader, seasonId: string): Promise<readonly Ra
         orderBy: { seat: 'asc' },
         select: { playerId: true, deckSnapshot: true, disconnectCount: true },
       },
+      actions: { select: { source: true, action: true } },
       events: { select: { event: true } },
     },
     orderBy: [{ completedAt: 'asc' }, { id: 'asc' }],
@@ -193,10 +194,39 @@ async function loadMatchFacts(tx: Reader, seasonId: string): Promise<readonly Ra
           match.finalState,
           match.events.map((entry) => entry.event),
         ),
+        forfeitReason: verifiedForfeitReason(
+          match.actions,
+          match.events.map((entry) => entry.event),
+        ),
         players,
       },
     ];
   });
+}
+
+function verifiedForfeitReason(
+  actions: readonly { readonly source: string; readonly action: unknown }[],
+  events: readonly unknown[],
+): RankedMatchFact['forfeitReason'] {
+  const forfeits = actions.filter(
+    (entry) => entry.source === 'FORFEIT' || record(entry.action)?.type === 'FORFEIT',
+  );
+  const forfeitedEvents = events.filter((event) => record(event)?.type === 'PLAYER_FORFEITED');
+  if (forfeits.length === 0 && forfeitedEvents.length === 0) return null;
+  if (forfeits.length !== 1 || forfeitedEvents.length !== 1)
+    throw new Error('RANKED_FORFEIT_REPLAY_MISMATCH');
+  const action = record(forfeits[0]?.action);
+  const event = record(forfeitedEvents[0]);
+  const reason = action?.reason;
+  if (
+    forfeits[0]?.source !== 'FORFEIT' ||
+    action?.type !== 'FORFEIT' ||
+    (reason !== 'SURRENDER' && reason !== 'DISCONNECT' && reason !== 'TIMEOUT') ||
+    event?.reason !== reason ||
+    event.playerId !== action.playerId
+  )
+    throw new Error('RANKED_FORFEIT_REPLAY_MISMATCH');
+  return reason;
 }
 
 function terminalTurnCount(finalState: unknown, events: readonly unknown[]): number {

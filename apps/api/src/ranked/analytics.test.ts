@@ -15,6 +15,7 @@ function match(index: number, outcome: 'WIN' | 'LOSS' = 'LOSS', damageRatio = 0)
     completedAt: new Date(start.getTime() + index * 60_000 + 30_000),
     status: 'COMPLETED',
     turnCount: 2,
+    forfeitReason: null,
     players: [
       {
         playerId: 'one',
@@ -103,7 +104,7 @@ describe('ranked signals and analytics', () => {
       abandonedMatches: 1,
       averageLengthSeconds: 30,
       averageTurns: 2,
-      surrenderCount: null,
+      surrenderCount: 0,
       disconnectCount: 1,
       ratingChanges: { count: 2, total: 10, averageAbsolute: 15 },
       classes: [
@@ -133,8 +134,22 @@ describe('ranked signals and analytics', () => {
       abandonedMatches: 0,
       averageLengthSeconds: null,
       averageTurns: null,
+      surrenderCount: 0,
       ratingChanges: { count: 0, total: 0, averageAbsolute: null },
       packs: { openings: 0, duplicateRate: null },
     });
+  });
+
+  it('counts only surrender forfeits from completed ranked matches', () => {
+    const report = buildRankedReport(
+      [
+        { ...match(0), forfeitReason: 'SURRENDER' },
+        { ...match(1), forfeitReason: 'DISCONNECT' },
+        { ...match(2), forfeitReason: 'TIMEOUT' },
+        { ...match(3), status: 'ABANDONED', forfeitReason: 'SURRENDER' },
+      ],
+      [],
+    );
+    expect(report.surrenderCount).toBe(1);
   });
 });
