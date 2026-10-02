@@ -121,6 +121,13 @@ describe('Ranked matchmaking migrations', () => {
     ),
     'utf8',
   );
+  const rateLimit = readFileSync(
+    new URL(
+      '../../prisma/migrations/20261002000000_add_ranked_enqueue_rate_limit/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
 
   it('persists unique waiting players and replayable rated abandonment', () => {
     expect(queue).toContain('CREATE TABLE "ranked_queue_entries"');
@@ -129,7 +136,9 @@ describe('Ranked matchmaking migrations', () => {
     expect(forfeit).toContain("ADD VALUE 'FORFEIT'");
     expect(presence).toContain('"connected_once" BOOLEAN NOT NULL DEFAULT false');
     expect(cancellation).toContain("ADD VALUE 'CANCELLED'");
-    for (const migration of [queue, forfeit, presence, cancellation])
+    expect(rateLimit).toContain('CREATE TABLE "ranked_enqueue_rate_limits"');
+    expect(rateLimit).toContain('ranked_enqueue_rate_limits_attempts_check');
+    for (const migration of [queue, forfeit, presence, cancellation, rateLimit])
       expect(migration).not.toMatch(/DROP\s+(?:TABLE|COLUMN)/u);
   });
 });

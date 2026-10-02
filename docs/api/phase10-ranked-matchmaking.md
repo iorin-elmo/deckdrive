@@ -19,7 +19,7 @@ Issue #59。K02 の [transactional settlement](phase10-ranked-settlement.md) と
 
 `ranked_queue_entries` は待機時の season、rating、deck snapshot、カードデータ version を保持する。同じ player に有効な待機行は DB partial unique index で一つだけ。同じ deck の再要求は同じ queue ID を返し、異なる deck は conflict にする。待機行は 15 分で期限切れ。開始時の許容 rating 差は 100、30 秒ごとに 50 広げ、最大 500 とする。候補の中では rating 差が最小の相手を選び、同点なら先着順。既存待機者が再び POST すると拡大後の範囲で再評価する。
 
-待機中の client は GET で状態を確認し、許容差の再評価が必要なときは同じ deck ID で POST を再試行する。enqueue は player ごとに 10 秒で 10 回までとし、超過時は 429 を返す。season が切り替わった場合は旧 season の待機行を `EXPIRED` にしてから新しい queue ID を発行する。
+待機中の client は GET で状態を確認し、許容差の再評価が必要なときは同じ deck ID で POST を再試行する。ranked enqueue は player ごとに直近 10 秒で 10 回までとし、超過時は 429 を返す。試行時刻は DB の `ranked_enqueue_rate_limits` に保存し、queue lock で複数 worker 間の判定を直列化する。season が切り替わった場合は旧 season の待機行を `EXPIRED` にしてから新しい queue ID を発行する。
 
 複数 API worker の queue 操作を PostgreSQL transaction advisory lock で直列化する。同じ transaction で K02 の season lock も取得してから active season を読むため、切替と match 開始の間で season がずれない。両者の待機状態変更、match、deck snapshot、season/rating snapshot は一つの transaction で確定する。失敗時は全体を rollback し、仮 session を破棄する。待機と match 状態は DB に残り、API 再起動後も queue ID で照会できる。進行中 match は既存 PvP の replay から復元し、WebSocket の `STATE` と欠落イベントを再送する。
 

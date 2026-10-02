@@ -153,6 +153,7 @@ model Player {
   ratingHistory RatingHistory[]
   ratingAbuseFlags RatingAbuseFlag[]
   rankedQueueEntries RankedQueueEntry[]
+  rankedEnqueueRateLimit RankedEnqueueRateLimit?
 
   @@map("players")
 }
@@ -476,6 +477,14 @@ model RankedQueueEntry {
   @@index([playerId, createdAt])
   @@index([matchId])
   @@map("ranked_queue_entries")
+}
+
+model RankedEnqueueRateLimit {
+  playerId    String     @id @map("player_id") @db.Uuid
+  attemptedAt DateTime[] @map("attempted_at") @db.Timestamptz(6)
+  player      Player     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@map("ranked_enqueue_rate_limits")
 }
 
 model Season {

@@ -37,7 +37,7 @@ describe('ranked matchmaking and authenticated reads', () => {
       orderBy: { id: 'asc' },
     });
     expect(versions).toHaveLength(10);
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const user = await prisma.user.create({
         data: { displayName: `K03 ${index}`, player: { create: {} } },
         include: { player: true },
@@ -74,6 +74,7 @@ describe('ranked matchmaking and authenticated reads', () => {
   afterAll(async () => {
     await prisma.ratingHistory.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.ratingAbuseFlag.deleteMany({ where: { playerId: { in: playerIds } } });
+    await prisma.rankedEnqueueRateLimit.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.rankedQueueEntry.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.rankedMatchPlayer.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.rankedMatch.deleteMany({ where: { matchId: { in: matchIds } } });
@@ -304,23 +305,53 @@ describe('ranked matchmaking and authenticated reads', () => {
     }
   });
 
-  it('rate limits repeated ranked enqueue requests', async () => {
-    const api = new ApiApplication(prisma, { NODE_ENV: 'test' }, new PvpMatchService(prisma));
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const response = await request(api, 'POST', '/api/v1/matches/ranked', 0, {
-        deckId: deckIds[0],
-      });
-      expect(response.status).toBe(202);
-    }
-    expect(
-      await request(api, 'POST', '/api/v1/matches/ranked', 0, { deckId: deckIds[0] }),
-    ).toMatchObject({
-      status: 429,
-      body: { error: 'RATE_LIMITED' },
+  it('shares the ranked enqueue rate limit across competing API workers', async () => {
+    await prisma.playerSeasonRating.create({
+      data: { seasonId, playerId: playerIds[4]!, rating: 3000 },
     });
+    const otherWorkerPrisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: databaseUrl }),
+    });
+    try {
+      const workers = [
+        new ApiApplication(prisma, { NODE_ENV: 'test' }, new PvpMatchService(prisma)),
+        new ApiApplication(
+          otherWorkerPrisma,
+          { NODE_ENV: 'test' },
+          new PvpMatchService(otherWorkerPrisma),
+        ),
+      ];
+      const responses = await Promise.all(
+        Array.from({ length: 12 }, (_, attempt) =>
+          request(workers[attempt % workers.length]!, 'POST', '/api/v1/matches/ranked', 4, {
+            deckId: deckIds[4],
+          }),
+        ),
+      );
+      expect(responses.filter((response) => response.status === 202)).toHaveLength(10);
+      expect(responses.filter((response) => response.status === 429)).toHaveLength(2);
+      expect(responses.filter((response) => response.status === 429)).toEqual([
+        expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
+        expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
+      ]);
+      await prisma.rankedEnqueueRateLimit.update({
+        where: { playerId: playerIds[4]! },
+        data: { attemptedAt: [new Date(Date.now() - 60_000)] },
+      });
+      expect(
+        await request(workers[1]!, 'POST', '/api/v1/matches/ranked', 4, {
+          deckId: deckIds[4],
+        }),
+      ).toMatchObject({ status: 202 });
+    } finally {
+      await otherWorkerPrisma.$disconnect();
+    }
   });
 
   it('expires a waiting queue when a new season begins', async () => {
+    expect(await serviceOne.enqueueRanked(playerIds[0]!, deckIds[0]!)).toMatchObject({
+      status: 'QUEUED',
+    });
     const previous = await prisma.rankedQueueEntry.findFirstOrThrow({
       where: { playerId: playerIds[0]!, status: 'WAITING' },
     });
