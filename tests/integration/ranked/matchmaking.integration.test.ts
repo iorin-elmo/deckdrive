@@ -308,32 +308,43 @@ describe('ranked matchmaking and authenticated reads', () => {
     await prisma.playerSeasonRating.create({
       data: { seasonId, playerId: playerIds[4]!, rating: 3000 },
     });
-    const workers = [
-      new ApiApplication(prisma, { NODE_ENV: 'test' }, new PvpMatchService(prisma)),
-      new ApiApplication(prisma, { NODE_ENV: 'test' }, new PvpMatchService(prisma)),
-    ];
-    const responses = await Promise.all(
-      Array.from({ length: 12 }, (_, attempt) =>
-        request(workers[attempt % workers.length]!, 'POST', '/api/v1/matches/ranked', 4, {
+    const otherWorkerPrisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: databaseUrl }),
+    });
+    try {
+      const workers = [
+        new ApiApplication(prisma, { NODE_ENV: 'test' }, new PvpMatchService(prisma)),
+        new ApiApplication(
+          otherWorkerPrisma,
+          { NODE_ENV: 'test' },
+          new PvpMatchService(otherWorkerPrisma),
+        ),
+      ];
+      const responses = await Promise.all(
+        Array.from({ length: 12 }, (_, attempt) =>
+          request(workers[attempt % workers.length]!, 'POST', '/api/v1/matches/ranked', 4, {
+            deckId: deckIds[4],
+          }),
+        ),
+      );
+      expect(responses.filter((response) => response.status === 202)).toHaveLength(10);
+      expect(responses.filter((response) => response.status === 429)).toHaveLength(2);
+      expect(responses.filter((response) => response.status === 429)).toEqual([
+        expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
+        expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
+      ]);
+      await prisma.rankedEnqueueRateLimit.update({
+        where: { playerId: playerIds[4]! },
+        data: { attemptedAt: [new Date(Date.now() - 60_000)] },
+      });
+      expect(
+        await request(workers[1]!, 'POST', '/api/v1/matches/ranked', 4, {
           deckId: deckIds[4],
         }),
-      ),
-    );
-    expect(responses.filter((response) => response.status === 202)).toHaveLength(10);
-    expect(responses.filter((response) => response.status === 429)).toHaveLength(2);
-    expect(responses.filter((response) => response.status === 429)).toEqual([
-      expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
-      expect.objectContaining({ body: { error: 'RATE_LIMITED' } }),
-    ]);
-    await prisma.rankedEnqueueRateLimit.update({
-      where: { playerId: playerIds[4]! },
-      data: { attemptedAt: [new Date(Date.now() - 60_000)] },
-    });
-    expect(
-      await request(workers[1]!, 'POST', '/api/v1/matches/ranked', 4, {
-        deckId: deckIds[4],
-      }),
-    ).toMatchObject({ status: 202 });
+      ).toMatchObject({ status: 202 });
+    } finally {
+      await otherWorkerPrisma.$disconnect();
+    }
   });
 
   it('expires a waiting queue when a new season begins', async () => {
