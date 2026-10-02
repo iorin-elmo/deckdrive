@@ -1,5 +1,6 @@
 /** Display policy shared by the ranked API and the ranked UI. */
 export const rankDisplayConfig = {
+  version: 'rank-display-v1',
   bands: [
     { name: 'BRONZE', floor: 0 },
     { name: 'SILVER', floor: 1200 },

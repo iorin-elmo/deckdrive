@@ -31,7 +31,7 @@ Issue #59。K02 の [transactional settlement](phase10-ranked-settlement.md) と
 
 ## Rank 表示値
 
-表示設定と rank・RR の計算は `@deck-drive/shared` の `rankDisplayConfig` / `rankProgress` に置く。API と K04 の UI はこの共有モジュールを参照する。rank 境界は Bronze 0、Silver 1200、Gold 1400、Platinum 1600、Diamond 1800、Master 2000、Grand Master 2200。各 rank の幅を III、II、I に三分し、区間内の進捗を RR 0–99 で返す。Grand Master の表示幅は 300（2200–2500）とし、2500 以上は RR 99 に固定する。rating 自体は丸めず保持する。
+表示設定と rank・RR の計算は `@deck-drive/shared` の version 付き `rankDisplayConfig` / `rankProgress` に置く。API と K04 の UI はこの共有モジュールを参照する。rank 境界は Bronze 0、Silver 1200、Gold 1400、Platinum 1600、Diamond 1800、Master 2000、Grand Master 2200。各 rank の幅を III、II、I に三分し、区間内の進捗を RR 0–99 で返す。Grand Master の表示幅は 300（2200–2500）とし、2500 以上は RR 99 に固定する。rating 自体は丸めず保持する。API は設定由来の `rrGoal` を返す。
 
 ## 検証・適用外
 

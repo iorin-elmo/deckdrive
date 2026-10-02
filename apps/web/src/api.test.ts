@@ -11,6 +11,66 @@ import { ApiError, DeckDriveApi, previewApi } from './api.js';
 describe('DeckDriveApi', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('uses authenticated ranked profile, history, queue, and queue status endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ season: null, rating: null, rank: null, rr: null })),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], nextCursor: null })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'QUEUED', queueId: 'queue-1' }), { status: 202 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'WAITING', queueId: 'queue-1' })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi();
+
+    await client.rankedProfile('player-1');
+    await client.rankedHistory('player-1', 'cursor/1');
+    await client.startRankedMatch('player-1', 'deck-1');
+    await client.rankedMatchStatus('player-1', 'queue-1');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/ranked/profile',
+      '/api/v1/ranked/history?cursor=cursor%2F1',
+      '/api/v1/matches/ranked',
+      '/api/v1/matches/ranked/queue/queue-1',
+    ]);
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ deckId: 'deck-1' }),
+      headers: { 'X-Deckdrive-Player-Id': 'player-1', 'content-type': 'application/json' },
+    });
+  });
+
+  it('sends the authenticated CSRF token when cancelling a ranked queue', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ playerId: 'player-1', displayName: 'Player', csrfToken: 'csrf' }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'CANCELLED', queueId: 'queue-1' })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DeckDriveApi();
+
+    await client.session();
+    await client.cancelRankedMatch('player-1', 'queue-1');
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/v1/matches/ranked/queue/queue-1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: { 'X-Deckdrive-Player-Id': 'player-1', 'X-CSRF-Token': 'csrf' },
+      }),
+    );
+  });
+
   it('uses the versioned cards endpoint without a player header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

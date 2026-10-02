@@ -1,4 +1,4 @@
-import { rankProgress } from '@deck-drive/shared';
+import { rankDisplayConfig, rankProgress } from '@deck-drive/shared';
 import type { PrismaClient } from '../generated/prisma/client.js';
 
 export class RankedHistoryCursorError extends Error {
@@ -17,7 +17,14 @@ export class PrismaRankedReadService {
       where: { status: 'ACTIVE', startsAt: { lte: now }, endsAt: { gt: now } },
       select: { id: true, startsAt: true, endsAt: true, initialRating: true },
     });
-    if (season === null) return { season: null, rating: null, rank: null, rr: null };
+    if (season === null)
+      return {
+        season: null,
+        rating: null,
+        rank: null,
+        rr: null,
+        rrGoal: rankDisplayConfig.rrPerDivision,
+      };
     const row = await this.prisma.playerSeasonRating.findUnique({
       where: { seasonId_playerId: { seasonId: season.id, playerId } },
       select: { rating: true, completedGames: true },
@@ -29,6 +36,7 @@ export class PrismaRankedReadService {
       rating,
       rank: { name: progress.name, division: progress.division },
       rr: progress.rr,
+      rrGoal: rankDisplayConfig.rrPerDivision,
       completedGames: row?.completedGames ?? 0,
     };
   }

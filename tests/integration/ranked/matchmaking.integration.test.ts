@@ -171,6 +171,7 @@ describe('ranked matchmaking and authenticated reads', () => {
       rating: 1500,
       rank: { name: 'GOLD', division: 'II' },
       rr: 50,
+      rrGoal: 100,
     });
     const matchResponse = await request(api, 'GET', `/api/v1/matches/${matched.matchId}`, 0);
     expect(matchResponse.status).toBe(200);

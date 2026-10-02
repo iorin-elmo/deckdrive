@@ -54,6 +54,7 @@ import {
   type PvpProjectedMatchState,
 } from './api.js';
 import { PvpSocketClient, type PvpServerMessage } from './pvp.js';
+import { RankedPage } from './ranked.js';
 import { useSessionStore } from './store.js';
 import {
   I18nProvider,
@@ -74,6 +75,7 @@ const navigation = [
   { to: '/packs', labelKey: 'navPacks', icon: Trophy },
   { to: '/missions', labelKey: 'navMissions', icon: BadgeCheck },
   { to: '/battle/cpu', labelKey: 'navCpu', icon: Swords },
+  { to: '/ranked', labelKey: 'navRanked', icon: Trophy },
   { to: '/settings', labelKey: 'navSettings', icon: SettingsIcon },
 ] as const;
 
@@ -98,6 +100,7 @@ export function App() {
           <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
           <Route path="/battle/pvp" element={<PvpSetupPage />} />
           <Route path="/battle/pvp/:matchId" element={<PvpBattlePage />} />
+          <Route path="/ranked" element={<RankedRoute />} />
           <Route path="/result/:matchId" element={<ResultPage />} />
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
@@ -1466,6 +1469,7 @@ function CpuBattlePage() {
 
 function PvpSetupPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
+  const { t } = useI18n();
   const previewMode = useSessionStore((state) => state.previewMode);
   const client = useApiClient();
   const navigate = useNavigate();
@@ -1558,6 +1562,9 @@ function PvpSetupPage() {
         title="Enter the arena"
         description="Choose a server-validated deck, find an opponent, or invite one directly."
       />
+      <Link className="quiet-link mt-4" to="/ranked">
+        {t('rankedQueueAndSeason')} <ChevronRight size={16} aria-hidden="true" />
+      </Link>
       <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <article className="surface-panel p-6">
           {decks.isLoading ? <LoadingNotice title="Loading decks" /> : null}
@@ -1990,6 +1997,9 @@ function ResultPage() {
         title={localizedResultTitle(match.data?.status, t)}
         description={t('resultDescription')}
       />
+      <Link className="quiet-link mt-4" to="/ranked">
+        {t('navRanked')} <ChevronRight size={16} aria-hidden="true" />
+      </Link>
       {pvpState !== undefined ? (
         <PvpResultBoard state={pvpState} playerId={playerId} />
       ) : state === null || state === undefined ? (
@@ -2514,6 +2524,13 @@ function ApiFailure({
 function useApiClient(): DeckDriveClient {
   const previewMode = useSessionStore((state) => state.previewMode);
   return previewMode ? previewApi : api;
+}
+
+function RankedRoute() {
+  const playerId = useSessionStore((state) => state.playerId)!;
+  const previewMode = useSessionStore((state) => state.previewMode);
+  const client = useApiClient();
+  return <RankedPage client={client} playerId={playerId} previewMode={previewMode} />;
 }
 
 function formatBalances(

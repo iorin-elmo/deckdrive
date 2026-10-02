@@ -5,7 +5,7 @@ import {
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 import { openPack, type PackCard } from '@deck-drive/pack-engine';
-import type { RankDivision, RankName } from '@deck-drive/shared';
+import { rankDisplayConfig, type RankDivision, type RankName } from '@deck-drive/shared';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -138,6 +138,7 @@ export interface RankedProfile {
   readonly rating: number | null;
   readonly rank: { readonly name: RankName; readonly division: RankDivision } | null;
   readonly rr: number | null;
+  readonly rrGoal: number;
   readonly completedGames?: number;
 }
 
@@ -515,7 +516,10 @@ export class DeckDriveApi implements DeckDriveClient {
             ? {}
             : { 'Idempotency-Key': options.idempotencyKey }),
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...((options.method === 'POST' || options.method === 'PUT') && csrf !== undefined
+          ...((options.method === 'POST' ||
+            options.method === 'PUT' ||
+            options.method === 'DELETE') &&
+          csrf !== undefined
             ? { 'X-CSRF-Token': csrf }
             : {}),
         },
@@ -770,7 +774,13 @@ export const previewApi: DeckDriveClient = {
     return { status: 'COMPLETED' };
   },
   async rankedProfile() {
-    return { season: null, rating: null, rank: null, rr: null };
+    return {
+      season: null,
+      rating: null,
+      rank: null,
+      rr: null,
+      rrGoal: rankDisplayConfig.rrPerDivision,
+    };
   },
   async rankedHistory() {
     return { items: [], nextCursor: null };
