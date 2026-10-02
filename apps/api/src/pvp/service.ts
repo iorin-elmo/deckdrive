@@ -275,9 +275,11 @@ export class PvpMatchService {
     // a slot, as it did with the previous process-local limiter.
     const allowed = await this.prisma.$transaction(async (transaction) => {
       await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${rankedQueueLockKey})::text`;
-      const now = (await transaction.$queryRaw<{ now: Date }[]>`
+      const now = (
+        await transaction.$queryRaw<{ now: Date }[]>`
         SELECT clock_timestamp() AS now
-      `)[0]!.now;
+      `
+      )[0]!.now;
       const row = await transaction.rankedEnqueueRateLimit.findUnique({
         where: { playerId },
         select: { attemptedAt: true },
