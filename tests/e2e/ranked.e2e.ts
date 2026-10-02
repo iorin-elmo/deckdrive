@@ -73,8 +73,8 @@ async function mockRankedApi(
                 matchId: 'match-1',
                 seasonId: 'season-1',
                 outcome: 'WIN',
-                ratingBefore: 1480,
-                ratingAfter: 1500,
+                ratingBefore: 1395,
+                ratingAfter: 1415,
                 delta: 20,
                 createdAt: '2026-09-20T00:00:00.000Z',
               },
@@ -112,6 +112,12 @@ test('shows rank and history, restores a queued match after reload, and opens th
   await expect(page.getByRole('heading', { name: 'Rank and season' })).toBeVisible();
   await expect(page.getByText('Gold III')).toBeVisible();
   await expect(page.getByRole('progressbar', { name: 'Rank Rating: 25 / 80' })).toBeVisible();
+  const historyRow = page
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('link', { name: 'View match result' }) });
+  await expect(historyRow).toContainText('1395 → 1415');
+  await expect(historyRow).toContainText('Rating +20');
+  await expect(historyRow).not.toContainText('+20 RR');
   await expect(page.getByRole('link', { name: 'View match result' })).toHaveAttribute(
     'href',
     '/result/match-1',

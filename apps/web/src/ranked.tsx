@@ -481,8 +481,8 @@ function HistoryRow({
       </div>
       <div className="flex items-center gap-4">
         <strong className={entry.delta >= 0 ? 'text-cyan-200' : 'text-rose-200'}>
-          {entry.delta >= 0 ? '+' : ''}
-          {entry.delta.toFixed(0)} RR
+          {w.rating} {entry.delta >= 0 ? '+' : ''}
+          {entry.delta.toFixed(0)}
         </strong>
         <Link className="quiet-link" to={`/result/${encodeURIComponent(entry.matchId)}`}>
           {w.result}
