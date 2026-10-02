@@ -5,6 +5,7 @@ import {
   type CardDefinition,
 } from '@deck-drive/card-definitions';
 import { openPack, type PackCard } from '@deck-drive/pack-engine';
+import type { RankDivision, RankName } from '@deck-drive/shared';
 
 export interface CardSummary {
   readonly cardId: string;
@@ -135,7 +136,7 @@ export interface RankedProfile {
     readonly endsAt: string;
   } | null;
   readonly rating: number | null;
-  readonly rank: { readonly name: string; readonly division: 'III' | 'II' | 'I' } | null;
+  readonly rank: { readonly name: RankName; readonly division: RankDivision } | null;
   readonly rr: number | null;
   readonly completedGames?: number;
 }

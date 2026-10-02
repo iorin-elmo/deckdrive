@@ -4,15 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @deck-drive/pack-engine build && tsc -p tsconfig.json --noEmit && vite build",
-    "dev": "vite",
+    "build": "pnpm --filter @deck-drive/shared build && pnpm --filter @deck-drive/pack-engine build && tsc -p tsconfig.json --noEmit && vite build",
+    "dev": "pnpm --filter @deck-drive/shared build && vite",
     "preview": "vite preview",
-    "test": "pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/pack-engine build && pnpm --filter @deck-drive/ui build && vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "pnpm --filter @deck-drive/shared build && pnpm --filter @deck-drive/card-definitions build && pnpm --filter @deck-drive/pack-engine build && pnpm --filter @deck-drive/ui build && vitest run",
+    "typecheck": "pnpm --filter @deck-drive/shared build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@deck-drive/card-definitions": "workspace:*",
     "@deck-drive/pack-engine": "workspace:*",
+    "@deck-drive/shared": "workspace:*",
     "@deck-drive/ui": "workspace:*",
     "@tanstack/react-query": "5.66.8",
     "lucide-react": "0.468.0",

@@ -1,38 +1,10 @@
+import { rankProgress } from '@deck-drive/shared';
 import type { PrismaClient } from '../generated/prisma/client.js';
 
 export class RankedHistoryCursorError extends Error {
   constructor() {
     super('RANKED_HISTORY_CURSOR_NOT_FOUND');
   }
-}
-
-const rankBands = [
-  { name: 'BRONZE', floor: 0 },
-  { name: 'SILVER', floor: 1200 },
-  { name: 'GOLD', floor: 1400 },
-  { name: 'PLATINUM', floor: 1600 },
-  { name: 'DIAMOND', floor: 1800 },
-  { name: 'MASTER', floor: 2000 },
-  { name: 'GRAND_MASTER', floor: 2200 },
-] as const;
-
-export function rankProgress(rating: number) {
-  const index = Math.max(
-    0,
-    rankBands.findLastIndex((band) => rating >= band.floor),
-  );
-  const band = rankBands[index]!;
-  const nextFloor = rankBands[index + 1]?.floor ?? band.floor + 300;
-  const fraction = Math.min(
-    0.999999,
-    Math.max(0, (rating - band.floor) / (nextFloor - band.floor)),
-  );
-  const divisionIndex = Math.floor(fraction * 3);
-  return {
-    name: band.name,
-    division: (['III', 'II', 'I'] as const)[divisionIndex]!,
-    rr: Math.floor((fraction * 3 - divisionIndex) * 100),
-  };
 }
 
 /** All queries are scoped to the authenticated player. */
