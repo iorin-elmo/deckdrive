@@ -30,6 +30,7 @@ async function mockRankedApi(
     queueMatched?: () => boolean;
     queueCancelled?: () => boolean;
     rankedPost?: () => void;
+    queueRead?: () => void;
     rrGoal?: number;
   } = {},
 ) {
@@ -81,7 +82,8 @@ async function mockRankedApi(
     }
     if (path === '/api/v1/matches/ranked/queue/queue-1' && route.request().method() === 'DELETE')
       return json({ status: 'CANCELLED', queueId: 'queue-1' });
-    if (path === '/api/v1/matches/ranked/queue/queue-1')
+    if (path === '/api/v1/matches/ranked/queue/queue-1') {
+      options.queueRead?.();
       return json(
         options.queueCancelled?.()
           ? { status: 'CANCELLED', queueId: 'queue-1' }
@@ -89,6 +91,7 @@ async function mockRankedApi(
             ? { status: 'MATCHED', queueId: 'queue-1', matchId: 'match-1' }
             : { status: 'WAITING', queueId: 'queue-1' },
       );
+    }
     return json({ error: 'NOT_FOUND' }, 404);
   });
 }
@@ -126,16 +129,22 @@ test('shows rank and history, restores a queued match after reload, and opens th
 
 test('refreshes a waiting search and can cancel it', async ({ page }) => {
   let posts = 0;
+  let queueReads = 0;
   await page.clock.install();
   await signedIn(page);
   await mockRankedApi(page, {
     rankedPost: () => {
       posts += 1;
     },
+    queueRead: () => {
+      queueReads += 1;
+    },
   });
   await page.goto('/ranked');
   await page.getByRole('button', { name: 'Find ranked opponent' }).click();
   await expect.poll(() => posts).toBe(1);
+  await expect(page.getByRole('button', { name: 'Cancel matchmaking' })).toBeVisible();
+  await expect.poll(() => queueReads).toBeGreaterThan(0);
 
   await page.clock.runFor(30_100);
   await expect.poll(() => posts).toBeGreaterThanOrEqual(2);
