@@ -59,8 +59,8 @@ DEPLOY_RELEASE_FILE="$candidate" compose stop --timeout 30 api web
 migration_started=1
 DEPLOY_RELEASE_FILE="$candidate" compose run --rm --no-deps api \
   pnpm --filter @deck-drive/api prisma:migrate:deploy
-DEPLOY_RELEASE_FILE="$candidate" compose up -d --wait --wait-timeout 180 api web caddy
-DEPLOY_RELEASE_FILE="$candidate" compose restart caddy
+DEPLOY_RELEASE_FILE="$candidate" compose up -d --wait --wait-timeout 180 api web
+DEPLOY_RELEASE_FILE="$candidate" compose up -d --wait --wait-timeout 180 --no-deps --force-recreate caddy
 DEPLOY_RELEASE_FILE="$candidate" smoke_check
 bash "$OPS_DIR/install-schedule.sh"
 mv -- "$candidate" "$DEPLOY_DIR/release.env"

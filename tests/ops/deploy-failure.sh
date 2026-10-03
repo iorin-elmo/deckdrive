@@ -91,6 +91,10 @@ if ! cmp -s "$fixture/release.env" "$fixture/current.expected" ||
 fi
 
 run_failing_deploy smoke
+if ! grep -Fq -- 'up -d --wait --wait-timeout 180 --no-deps --force-recreate caddy' "$fixture/docker-events.log"; then
+  printf 'Deployment did not apply the uploaded Caddy configuration.\n' >&2
+  exit 1
+fi
 if ! cmp -s "$fixture/release.env" "$fixture/current.expected" ||
   ! cmp -s "$fixture/release.previous.env" "$fixture/previous.expected" ||
   [[ -e "$fixture/release.candidate.env" || -e "$fixture/release.previous.candidate.env" ]]; then

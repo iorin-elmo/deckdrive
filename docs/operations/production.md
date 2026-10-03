@@ -35,7 +35,7 @@ The Pi keeps the runtime secrets; the workflow never uploads them.
    The workflow uploads Compose and operation scripts to `~/deckdrive-prod`.
    It pulls the new images, takes and verifies an encrypted pre-migration DB
    dump, stops the old API/web services, runs committed migrations, starts the
-   new services, restarts Caddy to load the uploaded configuration, then checks API
+   new services, recreates Caddy with the uploaded configuration, then checks API
    readiness and the web/admin entry points through HTTPS.
    Requests may receive an error during this migration window. The first
    deployment also installs the daily backup and weekly restore-drill cron
