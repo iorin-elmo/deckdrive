@@ -307,7 +307,7 @@ export class MatchSession {
     if (this.pausedAt === undefined) return;
     const pausedAt = this.pausedAt;
     this.pausedAt = undefined;
-    this.turnStartedAt += Math.max(0, at - pausedAt);
+    if (this.turnStartedAt <= pausedAt) this.turnStartedAt += Math.max(0, at - pausedAt);
     for (const [playerId, disconnectedAt] of this.disconnectedAt)
       this.disconnectedAt.set(playerId, at - Math.max(0, pausedAt - disconnectedAt));
   }

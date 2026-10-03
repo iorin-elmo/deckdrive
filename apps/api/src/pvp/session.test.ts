@@ -70,6 +70,36 @@ describe('MatchSession', () => {
     await vi.waitFor(() => expect(turnSession.actionSequence).toBe(1));
   });
 
+  it('keeps the new turn deadline when END_TURN precedes the maintenance resume tick', async () => {
+    let now = 0;
+    const session = new MatchSession({
+      state: state(),
+      now: () => now,
+      turnTimeoutMs: 100,
+    });
+    now = 50;
+    session.pauseTimeouts();
+    now = 1_050;
+    const playerId = session.currentState.activePlayerId;
+    const response = await session.receive(playerId, {
+      type: 'ACTION',
+      requestId: 'after-maintenance',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId },
+    });
+    expect(response.some((message) => message.type === 'ERROR')).toBe(false);
+    expect(session.actionSequence).toBe(1);
+
+    now = 1_051;
+    session.resumeTimeouts();
+    now = 1_149;
+    session.tick();
+    expect(session.actionSequence).toBe(1);
+    now = 1_150;
+    session.tick();
+    await vi.waitFor(() => expect(session.actionSequence).toBe(2));
+  });
+
   it('settles a rated disconnect after the grace period through a server replay action', async () => {
     let now = 0;
     const accepted: unknown[] = [];
