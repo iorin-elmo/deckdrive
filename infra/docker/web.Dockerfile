@@ -1,4 +1,4 @@
-FROM node:26.8.2-bookworm-slim AS build
+FROM --platform=$BUILDPLATFORM node:26.8.2-bookworm-slim AS build
 WORKDIR /app
 RUN npm install --global pnpm@12.3.4
 COPY . .
