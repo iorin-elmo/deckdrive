@@ -23,5 +23,6 @@ if [[ "$(date -u +%u)" == 7 ]]; then tag=weekly; fi
 restic backup --tag deckdrive --tag "$tag" \
   "$work_dir" "$DEPLOY_DIR/runtime.env" "$RELEASE_FILE" \
   "$DEPLOY_DIR/compose.production.yml" "$DEPLOY_DIR/Caddyfile"
-restic forget --tag deckdrive --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
+restic forget --tag deckdrive --group-by host \
+  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
 printf 'Encrypted off-device database backup completed.\n'

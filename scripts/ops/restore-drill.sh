@@ -17,7 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-snapshot="$(restic snapshots --tag deckdrive --latest 1 --json | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["short_id"])')"
+snapshot="$(restic snapshots --tag deckdrive --group-by host --latest 1 --json | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["short_id"])')"
 restic restore "$snapshot" --target "$work_dir"
 dump_file="$(find "$work_dir" -type f -name deckdrive.dump -print -quit)"
 if [[ -z "$dump_file" ]]; then printf 'No database dump in snapshot.\n' >&2; exit 1; fi

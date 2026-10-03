@@ -67,6 +67,8 @@ jobs:
       - name: Validate production operations
         run: |
           bash -n scripts/ops/*.sh
+          cp infra/docker/runtime.env.example infra/docker/runtime.env
+          trap 'rm -f infra/docker/runtime.env' EXIT
           API_IMAGE=ghcr.io/example/deckdrive-api:test \
           WEB_IMAGE=ghcr.io/example/deckdrive-web:test \
           docker compose --env-file infra/docker/runtime.env.example \

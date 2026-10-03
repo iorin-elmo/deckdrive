@@ -44,6 +44,7 @@ DEPLOY_RELEASE_FILE="$compose_release" compose exec -T postgres sh -c \
   'pg_restore --exit-on-error --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
   < "$dump_file"
 mv -- "$compose_release" "$DEPLOY_DIR/release.env"
+rm -f -- "$DEPLOY_DIR/release.previous.env"
 compose up -d --wait api web caddy
 smoke_check
 printf 'Database and matching application images restored from snapshot %s.\n' "$1"
