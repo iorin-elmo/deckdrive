@@ -33,6 +33,26 @@ describe('PrismaFeatureFlags', () => {
 });
 
 describe('feature flag API gates', () => {
+  it('applies N00 private-match and maintenance gates to complete-pool battles', async () => {
+    let maintenance = false;
+    const findUnique = vi.fn().mockImplementation(({ where }: { where: { name: string } }) => ({
+      enabled:
+        where.name === 'MAINTENANCE_MODE' ? maintenance : where.name !== 'ENABLE_PRIVATE_MATCH',
+    }));
+    const app = new ApiApplication({ featureFlag: { findUnique } } as never);
+    for (const request of [
+      { method: 'POST', path: '/api/v1/alpha-battles', body: { mode: 'PRIVATE' }, headers: {} },
+      { method: 'POST', path: '/api/v1/alpha-battles/join/AABBCCDDEEFF', headers: {} },
+    ])
+      expect(await app.handle(request)).toEqual({
+        status: 503,
+        body: { error: 'FEATURE_DISABLED' },
+      });
+    maintenance = true;
+    expect(
+      await app.handle({ method: 'GET', path: '/api/v1/alpha-battles/active', headers: {} }),
+    ).toEqual({ status: 503, body: { error: 'MAINTENANCE_MODE' } });
+  });
   it('blocks ranked requests when disabled and keeps authentication reachable during maintenance', async () => {
     const findUnique = vi.fn().mockImplementation(({ where }: { where: { name: string } }) => {
       if (where.name === 'MAINTENANCE_MODE') return { enabled: false };

@@ -35,7 +35,7 @@ export interface ReplaySnapshotV2 {
 }
 
 export interface ReplayV2 {
-  readonly formatVersion: typeof replayFormatVersionV2;
+  readonly formatVersion: 2 | 3;
   readonly battleProtocolVersion: typeof battleProtocolVersion;
   readonly draftDefinitionRevision: string;
   readonly matchId: string;
@@ -56,7 +56,7 @@ export interface ReplayV2 {
 export const playerReplayProjectionVersionV2 = 1 as const;
 
 export interface PlayerReplayViewV2 {
-  readonly formatVersion: 2;
+  readonly formatVersion: 2 | 3;
   readonly battleProtocolVersion: 2;
   readonly projectionVersion: typeof playerReplayProjectionVersionV2;
   readonly viewerPlayerId: PlayerId;
@@ -181,7 +181,9 @@ export function verifyPlayerReplayViewV2(view: PlayerReplayViewV2):
       'snapshotInterval',
       'projectionChecksum',
     ]) ||
-    view.formatVersion !== 2 ||
+    ![2, 3].includes(view.formatVersion as number) ||
+    (view.formatVersion === 3) !== (view.engineVersion === '3.0.0') ||
+    (view.formatVersion === 3 && view.rulesVersion !== '3.0.0') ||
     view.battleProtocolVersion !== 2 ||
     view.projectionVersion !== playerReplayProjectionVersionV2 ||
     typeof view.viewerPlayerId !== 'string' ||
@@ -404,11 +406,13 @@ function validProjectedState(
         'exhaust',
         'statuses',
         'pendingEffects',
+        'pool',
         'synthesisCount',
         'alchemyStage',
       ]) ||
       typeof player.id !== 'string' ||
       player.id.length === 0 ||
+      (player.pool !== undefined && !validProjectedPool(player.pool, player.id === viewerId)) ||
       !['hp', 'maxHp', 'energy', 'maxEnergy', 'block', 'synthesisCount'].every((key) =>
         isNonNegativeSafeInteger(player[key]),
       ) ||
@@ -531,16 +535,68 @@ function validProjectedPending(value: unknown, viewerId: PlayerId): boolean {
     isNonNegativeSafeInteger(value.maxSelections) &&
     (value.maxSelections as number) >= (value.minSelections as number) &&
     isRecord(value.resolution) &&
-    onlyKeys(value.resolution, ['type']) &&
-    ['MOVE_DRAW_PILE_CARD_TO_HAND', 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE', 'NONE'].includes(
-      String(value.resolution.type),
-    ) &&
+    validChoiceResolution(value.resolution) &&
     (value.deadlineCommandSequence === undefined ||
       isNonNegativeSafeInteger(value.deadlineCommandSequence)) &&
     (value.continuation === undefined || validProjectedContinuation(value.continuation))
   );
 }
 
+function validProjectedPool(value: unknown, owner: boolean): boolean {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.values) ||
+    !Object.values(value.values).every(isNonNegativeSafeInteger)
+  )
+    return false;
+  if (!owner)
+    return onlyKeys(value, ['values', 'arrowCount']) && isNonNegativeSafeInteger(value.arrowCount);
+  if (
+    !onlyKeys(value, ['values', 'arrowQueue', 'modifiers']) ||
+    !Array.isArray(value.arrowQueue) ||
+    !dense(value.arrowQueue) ||
+    !value.arrowQueue.every((id) => typeof id === 'string') ||
+    !isRecord(value.modifiers)
+  )
+    return false;
+  return Object.values(value.modifiers).every(
+    (mod) =>
+      isRecord(mod) &&
+      onlyKeys(mod, ['damage', 'fixedCost', 'expires', 'temporaryCopy', 'returnTop']) &&
+      ['damage', 'fixedCost'].every(
+        (key) => mod[key] === undefined || isNonNegativeSafeInteger(mod[key]),
+      ) &&
+      ['expires', 'temporaryCopy', 'returnTop'].every(
+        (key) => mod[key] === undefined || typeof mod[key] === 'boolean',
+      ),
+  );
+}
+function validChoiceResolution(value: Record<string, unknown>): boolean {
+  if (value.type === 'SYNTHESIS_RECIPE')
+    return (
+      onlyKeys(value, ['type', 'materialIds']) &&
+      Array.isArray(value.materialIds) &&
+      value.materialIds.every((id) => typeof id === 'string')
+    );
+  if (value.type === 'POOL_CHOICE')
+    return (
+      onlyKeys(value, ['type', 'resolution', 'candidateIds']) &&
+      ['TOP_THREE', 'ZERO_COST', 'ARROW_SEARCH'].includes(String(value.resolution)) &&
+      Array.isArray(value.candidateIds) &&
+      value.candidateIds.every((id) => typeof id === 'string')
+    );
+  if (value.type === 'SYNTHESIS')
+    return (
+      onlyKeys(value, ['type', 'mode']) &&
+      ['NORMAL', 'COMPLETE_REACTION', 'SAGE_RECIPE', 'ALL_MATERIALS'].includes(String(value.mode))
+    );
+  return (
+    onlyKeys(value, ['type']) &&
+    ['MOVE_DRAW_PILE_CARD_TO_HAND', 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE', 'NONE'].includes(
+      String(value.type),
+    )
+  );
+}
 function validProjectedContinuation(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -561,7 +617,8 @@ function validProjectedTerminal(value: unknown): boolean {
   if (value.status === 'DRAW')
     return onlyKeys(value, ['status', 'reason']) && value.reason === 'SIMULTANEOUS_HP_DEPLETION';
   if (value.status !== 'WIN' || typeof value.winnerId !== 'string') return false;
-  if (value.reason === 'HP_DEPLETION') return onlyKeys(value, ['status', 'winnerId', 'reason']);
+  if (value.reason === 'HP_DEPLETION' || value.reason === 'FORFEIT')
+    return onlyKeys(value, ['status', 'winnerId', 'reason']);
   return (
     value.reason === 'SPECIAL_VICTORY' &&
     onlyKeys(value, ['status', 'winnerId', 'reason', 'specialVictoryId']) &&
@@ -599,6 +656,26 @@ function validProjectedChant(value: unknown): boolean {
 }
 
 const projectedEventFields: Record<GameEventV2Type, readonly string[]> = {
+  POOL_STATUS_CHANGED: ['playerId', 'key', 'amount', 'sourceDefinitionId'],
+  ARROW_LOADED: ['ownerPlayerId', 'cardInstanceId', 'before', 'after', 'visibility'],
+  ARROW_REMOVED: ['ownerPlayerId', 'cardInstanceId', 'before', 'after', 'visibility'],
+  ARROW_FIRED: [
+    'ownerPlayerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'visibility',
+  ],
+  ARROW_REPEATED: [
+    'ownerPlayerId',
+    'cardInstanceId',
+    'definitionId',
+    'definitionVersion',
+    'repeatOrdinal',
+    'visibility',
+  ],
+  CARD_COST_MODIFIER_APPLIED: ['playerId', 'cardInstanceId', 'fixedCost', 'visibility'],
+  CARD_COST_MODIFIER_EXPIRED: ['playerId', 'cardInstanceId', 'visibility'],
   CARD_PLAYED: ['playerId', 'cardInstanceId', 'definitionId', 'definitionVersion', 'visibility'],
   EFFECT_STARTED: ['effectId'],
   DAMAGE_DEALT: ['sourceId', 'targetId', 'amount', 'attemptedAmount'],
@@ -940,7 +1017,13 @@ function validProjectedEventField(key: string, value: unknown): boolean {
     ].includes(key)
   )
     return Number.isSafeInteger(value);
-  if (key === 'before' || key === 'after') return value === null || Number.isSafeInteger(value);
+  if (key === 'fixedCost' || key === 'repeatOrdinal') return Number.isSafeInteger(value);
+  if (key === 'before' || key === 'after')
+    return (
+      value === null ||
+      Number.isSafeInteger(value) ||
+      (Array.isArray(value) && value.every((id) => typeof id === 'string'))
+    );
   if (key === 'result')
     return value !== undefined && (typeof value === 'string' || validProjectedTerminal(value));
   if (
@@ -957,7 +1040,8 @@ function validProjectedEventField(key: string, value: unknown): boolean {
 function validProjectedAction(action: Record<string, unknown>, viewerId: PlayerId): boolean {
   if (typeof action.playerId !== 'string' || action.playerId.length === 0) return false;
   if (action.playerId === viewerId) return isGameActionV2(action);
-  if (action.type === 'END_TURN') return onlyKeys(action, ['type', 'playerId']);
+  if (action.type === 'END_TURN' || action.type === 'FORFEIT')
+    return onlyKeys(action, ['type', 'playerId']);
   if (action.type === 'PLAY_CARD')
     return (
       onlyKeys(action, ['type', 'playerId', 'cardInstanceId', 'targetId']) &&
@@ -1145,7 +1229,7 @@ export function recordReplayV2(
     };
   }
   const content: Omit<ReplayV2, 'checksum'> = {
-    formatVersion: replayFormatVersionV2,
+    formatVersion: initialState.engineVersion === '3.0.0' ? (3 as const) : replayFormatVersionV2,
     battleProtocolVersion,
     draftDefinitionRevision: actualRevision,
     matchId: initialState.matchId,
@@ -1330,7 +1414,9 @@ function snapshotV2(inputSequence: number, state: BattleStateV2): ReplaySnapshot
 function isReplayV2Shape(value: unknown): value is ReplayV2 {
   if (!isRecord(value)) return false;
   if (
-    value.formatVersion !== replayFormatVersionV2 ||
+    ![replayFormatVersionV2, 3].includes(value.formatVersion as number) ||
+    (value.formatVersion === 3) !== (value.engineVersion === '3.0.0') ||
+    (value.formatVersion === 3 && value.rulesVersion !== '3.0.0') ||
     value.battleProtocolVersion !== battleProtocolVersion ||
     typeof value.draftDefinitionRevision !== 'string' ||
     !/^sha256:[0-9a-f]{64}$/.test(value.draftDefinitionRevision) ||

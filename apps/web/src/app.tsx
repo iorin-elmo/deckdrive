@@ -55,6 +55,7 @@ import {
 } from './api.js';
 import { PvpSocketClient, type PvpServerMessage } from './pvp.js';
 import { RankedPage } from './ranked.js';
+import { AlphaBattlePage, CardExchangePage } from './alpha-battle.js';
 import { useSessionStore } from './store.js';
 import {
   I18nProvider,
@@ -94,11 +95,14 @@ export function App() {
           <Route path="/decks/:deckId" element={<DeckDetailPage />} />
           <Route path="/decks/:deckId/edit" element={<DeckBuilderPage />} />
           <Route path="/packs" element={<PacksPage />} />
+          <Route path="/exchange" element={<CardExchangePage />} />
+          <Route path="/battle/test" element={<AlphaBattlePage />} />
+          <Route path="/battle/test/:battleId" element={<AlphaBattlePage />} />
           <Route path="/missions" element={<MissionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/battle/cpu" element={<CpuSetupPage />} />
+          <Route path="/battle/cpu" element={<CompleteCpuSetup />} />
           <Route path="/battle/cpu/:matchId" element={<CpuBattlePage />} />
-          <Route path="/battle/pvp" element={<PvpSetupPage />} />
+          <Route path="/battle/pvp" element={<CompletePvpSetup />} />
           <Route path="/battle/pvp/:matchId" element={<PvpBattlePage />} />
           <Route path="/ranked" element={<RankedRoute />} />
           <Route path="/result/:matchId" element={<ResultPage />} />
@@ -496,6 +500,12 @@ function AuthenticatedLayout() {
                 {t(labelKey)}
               </NavLink>
             ))}
+            <NavLink className="nav-link" to="/battle/test" onClick={() => setMenuOpen(false)}>
+              全カード対戦
+            </NavLink>
+            <NavLink className="nav-link" to="/exchange" onClick={() => setMenuOpen(false)}>
+              カード交換
+            </NavLink>
             {adminSession.data?.role === 'OWNER' && (
               <a
                 className="nav-link"
@@ -522,6 +532,9 @@ function AuthenticatedLayout() {
           <div className="hidden text-right text-xs sm:block">
             <p className="font-semibold text-stone-100">
               {player.data?.displayName ?? t('loadingPlayer')}
+              {player.data?.adminRole === 'OWNER' && (
+                <span className="ml-2 text-amber-200">Admin</span>
+              )}
             </p>
             <p className="text-amber-200">
               {previewMode ? t('offlinePreview') : formatBalances(player.data?.balances, t)}
@@ -1331,6 +1344,18 @@ function DeckBuilderPage() {
   );
 }
 
+function CompleteCpuSetup() {
+  const preview = useSessionStore((state) => state.previewMode);
+  return preview ? <CpuSetupPage /> : <AlphaBattlePage />;
+}
+function CompletePvpSetup() {
+  const preview = useSessionStore((state) => state.previewMode);
+  const playerId = useSessionStore((state) => state.playerId);
+  const [legacyInvite] = useState(() =>
+    window.localStorage.getItem(`deckdrive:pvp:invite:${playerId}`),
+  );
+  return preview || legacyInvite ? <PvpSetupPage /> : <AlphaBattlePage />;
+}
 function CpuSetupPage() {
   const playerId = useSessionStore((state) => state.playerId)!;
   const previewMode = useSessionStore((state) => state.previewMode);

@@ -412,7 +412,7 @@ function prepared(
   return { validation, definition };
 }
 
-function isValidDefinition(definition: unknown): definition is CardDefinition {
+export function isValidDefinition(definition: unknown): definition is CardDefinition {
   if (!isRecord(definition) || !Array.isArray(definition.effects)) {
     return false;
   }

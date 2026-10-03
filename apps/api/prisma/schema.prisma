@@ -451,6 +451,28 @@ model ReplayDefinitionSnapshot {
   @@map("replay_definition_snapshots")
 }
 
+// Pre-alpha battles use the complete card pool and persist every authoritative input.
+model AlphaBattle {
+  id         String   @id @default(uuid()) @db.Uuid
+  hostId     String   @map("host_id") @db.Uuid
+  guestId    String?  @map("guest_id") @db.Uuid
+  mode       String
+  inviteCode String?  @unique @map("invite_code")
+  status     String   @default("WAITING")
+  decks      Json
+  definitions Json
+  initialState Json? @map("initial_state")
+  state      Json?
+  inputs     Json     @default("[]")
+  receipts   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, mode, createdAt])
+  @@index([hostId, createdAt])
+  @@map("alpha_battles")
+}
+
 model MatchPlayer {
   id           String @id @default(uuid()) @db.Uuid
   matchId      String @map("match_id")
@@ -685,6 +707,19 @@ model MatchEvent {
   @@unique([matchId, sequence])
   @@index([matchId, createdAt])
   @@map("match_events")
+}
+
+model AdminCardEntitlement {
+  id String @id @default(uuid()) @db.Uuid
+  playerId String @map("player_id") @db.Uuid
+  adminUserId String @map("admin_user_id") @db.Uuid
+  cardVersionId String @map("card_version_id") @db.Uuid
+  beforeQuantity Int @map("before_quantity")
+  afterQuantity Int @map("after_quantity")
+  reason String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([playerId, createdAt])
+  @@map("admin_card_entitlements")
 }
 
 model MatchSnapshot {

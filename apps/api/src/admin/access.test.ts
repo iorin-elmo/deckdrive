@@ -15,6 +15,25 @@ const session = {
 };
 
 describe('admin access', () => {
+  it('does not grant Admin collection privileges to a session created before N00', async () => {
+    const findUnique = vi.fn();
+    const application = new ApiApplication(
+      {
+        session: { findUnique: vi.fn().mockResolvedValue({ ...session, authProvider: null }) },
+        oAuthAccount: { findUnique },
+        playerCard: { findMany: vi.fn().mockResolvedValue([]) },
+      } as never,
+      { NODE_ENV: 'production' },
+    );
+    expect(
+      await application.handle({
+        method: 'GET',
+        path: '/api/v1/collection',
+        headers: { cookie: 'deckdrive_session=token' },
+      }),
+    ).toMatchObject({ status: 200, body: { cards: [] } });
+    expect(findUnique).not.toHaveBeenCalled();
+  });
   it('does not accept the development player header as administrator authentication', async () => {
     const application = new ApiApplication({} as never, { NODE_ENV: 'development' });
     await expect(

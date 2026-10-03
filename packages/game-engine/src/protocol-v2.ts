@@ -1,3 +1,17 @@
+import { poolCardIds } from './pool-card-ids.js';
+import {
+  pool,
+  value,
+  effectivePoolCost,
+  poolChoiceRange,
+  beforePoolCard,
+  afterPoolCard,
+  endPoolTurn,
+  startPoolTurn,
+  resolvePoolCard,
+  type PoolState,
+  type PoolContext,
+} from './pool-rules.js';
 import type {
   CardDefinitionId,
   CardInstanceId,
@@ -23,7 +37,7 @@ export type TerminalBattleResultV2 =
   | {
       readonly status: 'WIN';
       readonly winnerId: PlayerId;
-      readonly reason: 'HP_DEPLETION';
+      readonly reason: 'HP_DEPLETION' | 'FORFEIT';
     }
   | {
       readonly status: 'WIN';
@@ -98,11 +112,22 @@ export interface PendingCardChoice {
 }
 
 export type PendingChoiceResolution =
+  | { readonly type: 'SYNTHESIS_RECIPE'; readonly materialIds: readonly CardInstanceId[] }
+  | {
+      readonly type: 'SYNTHESIS';
+      readonly mode: Extract<CardEffectV2, { readonly type: 'SYNTHESIZE' }>['mode'];
+    }
   | { readonly type: 'MOVE_DRAW_PILE_CARD_TO_HAND' }
   | { readonly type: 'MOVE_DRAW_PILE_CARD_TO_HAND_AND_SHUFFLE' }
-  | { readonly type: 'NONE' };
+  | { readonly type: 'NONE' }
+  | {
+      readonly type: 'POOL_CHOICE';
+      readonly resolution: 'TOP_THREE' | 'ZERO_COST' | 'ARROW_SEARCH';
+      readonly candidateIds: readonly string[];
+    };
 
 export interface BattlePlayerStateV2 {
+  readonly pool?: PoolState;
   readonly id: PlayerId;
   readonly hp: number;
   readonly maxHp: number;
@@ -174,7 +199,11 @@ export interface SubmitCardChoiceAction {
   readonly choice: SubmittedCardChoice;
 }
 
-export type GameActionV2 = PlayCardActionV2 | EndTurnActionV2 | SubmitCardChoiceAction;
+export type GameActionV2 =
+  | PlayCardActionV2
+  | EndTurnActionV2
+  | SubmitCardChoiceAction
+  | { readonly type: 'FORFEIT'; readonly playerId: PlayerId };
 
 export interface CardChoiceDeadlineIssuedCommand {
   readonly type: 'CARD_CHOICE_DEADLINE_ISSUED';
@@ -211,6 +240,7 @@ export type BattleInput =
     };
 
 export type CardEffectV2 =
+  | { readonly type: 'POOL_CARD'; readonly cardId: string }
   | { readonly type: 'DAMAGE'; readonly amount: number; readonly target: 'SELF' | 'ENEMY' }
   | { readonly type: 'HEAL'; readonly amount: number; readonly target: 'SELF' }
   | { readonly type: 'GAIN_BLOCK'; readonly amount: number; readonly target: 'SELF' }
@@ -246,6 +276,7 @@ export type CardEffectV2 =
   | { readonly type: 'SEAL_GRIMOIRE' };
 
 export interface CardDefinitionV2 {
+  readonly type?: string;
   readonly id: CardDefinitionId;
   readonly version: string;
   readonly cost: number;
@@ -262,6 +293,13 @@ export type CardDefinitionSourceV2 =
     };
 
 export type GameEventV2Type =
+  | 'POOL_STATUS_CHANGED'
+  | 'ARROW_LOADED'
+  | 'ARROW_FIRED'
+  | 'ARROW_REMOVED'
+  | 'ARROW_REPEATED'
+  | 'CARD_COST_MODIFIER_APPLIED'
+  | 'CARD_COST_MODIFIER_EXPIRED'
   | 'CARD_PLAYED'
   | 'EFFECT_STARTED'
   | 'DAMAGE_DEALT'
@@ -347,7 +385,7 @@ export interface DeckShuffledEventV2 extends GameEventBaseV2<'DECK_SHUFFLED'> {
   readonly playerId: PlayerId;
   readonly ownerPlayerId: PlayerId;
   readonly pile: 'drawPile';
-  readonly reason: 'DRAW_PILE_EMPTY_RECYCLE' | 'ALCHEMY_TRANSFORM';
+  readonly reason: 'DRAW_PILE_EMPTY_RECYCLE' | 'ALCHEMY_TRANSFORM' | 'POOL_SHUFFLE';
   readonly cardInstanceIds: readonly CardInstanceId[];
   readonly cardInstanceIdsBefore: readonly CardInstanceId[];
   readonly sourceCardInstanceId: CardInstanceId | null;
@@ -542,6 +580,14 @@ export function projectBattleStateV2(state: BattleStateV2, viewerId: PlayerId): 
     ...publicState,
     players: state.players.map((player) => ({
       ...player,
+      ...(player.pool === undefined
+        ? {}
+        : {
+            pool:
+              player.id === viewerId
+                ? player.pool
+                : { values: player.pool.values, arrowCount: player.pool.arrowQueue.length },
+          }),
       drawPile: player.drawPile.map((card) =>
         player.id === viewerId ? card : { visibility: 'ownerOnly' },
       ),
@@ -599,6 +645,16 @@ function applyClientAction(
   const playerIndex = state.players.findIndex((player) => player.id === action.playerId);
   if (playerIndex < 0)
     return failure(state, 'PLAYER_NOT_FOUND', 'The action player is not in this battle.');
+  if (action.type === 'FORFEIT') {
+    const mutable = mutableFrom(state);
+    mutable.pendingCardChoice = undefined;
+    mutable.terminalResult = {
+      status: 'WIN',
+      winnerId: state.players[playerIndex === 0 ? 1 : 0]!.id,
+      reason: 'FORFEIT',
+    };
+    return finishResolution(state, inputSequence, mutable, eventEmitter(state.events));
+  }
   if (state.phase === 'PENDING_CARD_CHOICE') {
     if (action.type !== 'SUBMIT_CARD_CHOICE') {
       return failure(state, 'INVALID_PHASE', 'Only the pending card choice may be submitted.');
@@ -643,6 +699,11 @@ function playCard(
     return failure(state, 'INVALID_CARD_DEFINITION', 'The card definition is malformed.');
   }
   if (
+    state.engineVersion !== '3.0.0' &&
+    definition.effects.some((effect) => effect.type === 'POOL_CARD')
+  )
+    return failure(state, 'INVALID_CARD_DEFINITION', 'Complete-pool cards require engine 3.0.0.');
+  if (
     definition.effects.some((effect) => effect.type === 'SYNTHESIZE' && effect.mode === 'NORMAL')
   ) {
     for (const output of normalSynthesisOutputDefinitionsV2) {
@@ -667,7 +728,9 @@ function playCard(
   }
   const choiceError = validatePlayChoices(state, playerIndex, action, definition, definitions);
   if (choiceError !== undefined) return failure(state, choiceError.code, choiceError.message);
-  const cost = Math.max(0, definition.cost + card.costModifier);
+  if (definition.keywords?.includes('arrow'))
+    return failure(state, 'INVALID_CHOICE', 'Arrows must be loaded and fired through a bow.');
+  const cost = effectivePoolCost(player, card, definition);
   if (player.energy < cost) return failure(state, 'INSUFFICIENT_ENERGY', 'Not enough energy.');
 
   const emitter = eventEmitter(state.events);
@@ -688,6 +751,17 @@ function playCard(
     visibility: publicCard.visibility,
   });
 
+  const poolContext = makePoolContext(
+    state,
+    mutable,
+    playerIndex,
+    action,
+    publicCard,
+    definition,
+    definitions,
+    emitter,
+  );
+  if (state.engineVersion === '3.0.0') beforePoolCard(poolContext);
   for (const [effectIndex, effect] of definition.effects.entries()) {
     if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') break;
     emitter.emit({ type: 'EFFECT_STARTED', effectId: `${card.id}:${String(effectIndex + 1)}` });
@@ -716,13 +790,37 @@ function playCard(
     }
   }
 
+  if (state.engineVersion === '3.0.0') afterPoolCard(poolContext);
   const actorAfterEffects = mutable.players[playerIndex]!;
   mutable.players[playerIndex] = {
     ...actorAfterEffects,
-    discard: [...actorAfterEffects.discard, publicCard],
+    discard:
+      definition.id === 'guardian_012'
+        ? actorAfterEffects.discard
+        : [...actorAfterEffects.discard, publicCard],
+    exhaust:
+      definition.id === 'guardian_012'
+        ? [...actorAfterEffects.exhaust, publicCard]
+        : actorAfterEffects.exhaust,
   };
   emitter.emit({
-    type: 'CARD_DISCARDED',
+    type: definition.id === 'guardian_012' ? 'CARD_EXHAUSTED' : 'CARD_DISCARDED',
+    ...(definition.id === 'guardian_012'
+      ? {
+          ownerPlayerId: action.playerId,
+          from: 'hand',
+          fromZone: 'hand',
+          fromIndex: cardIndex,
+          to: 'exhaust',
+          toZone: 'exhaust',
+          toIndex: actorAfterEffects.exhaust.length,
+          sourceCardInstanceId: publicCard.id,
+          sourceDefinitionId: publicCard.definitionId,
+          sourceDefinitionVersion: publicCard.definitionVersion,
+          positionVisibility: 'ownerOnly',
+          reason: 'GUARDIAN_LAST_SHIELD',
+        }
+      : {}),
     playerId: action.playerId,
     cardInstanceId: publicCard.id,
     definitionId: publicCard.definitionId,
@@ -730,6 +828,313 @@ function playCard(
     visibility: publicCard.visibility,
   });
   return finishResolution(state, inputSequence, mutable, emitter);
+}
+
+function makePoolContext(
+  state: BattleStateV2,
+  mutable: MutableResolution,
+  actorIndex: number,
+  action: PlayCardActionV2,
+  source: CardInstanceV2,
+  definition: CardDefinitionV2,
+  definitions: CardDefinitionSourceV2,
+  emitter: EventEmitter,
+): PoolContext {
+  const enemyIndex = actorIndex === 0 ? 1 : 0;
+  const emit = (type: string, data: Readonly<Record<string, unknown>>) =>
+    emitter.emit({ type, ...data } as GameEventInputV2);
+  const ctx: PoolContext = {
+    action,
+    source,
+    definition,
+    actor: () => mutable.players[actorIndex]!,
+    enemy: () => mutable.players[enemyIndex]!,
+    replace: (player) => {
+      const index = mutable.players.findIndex((entry) => entry.id === player.id);
+      mutable.players[index] = player;
+    },
+    resolve: (card) => resolveDefinition(definitions, card.definitionId, card.definitionVersion),
+    alive: () => resultFromMutable(state, mutable).status === 'IN_PROGRESS',
+    emit,
+    damage: (amount, self = false, ignore = false) => {
+      if (!ctx.alive()) return;
+      const magic = definition.keywords?.includes('magic') === true;
+      const sword = definition.keywords?.includes('sword') === true;
+      const repeat = !self && magic ? 1 + value(ctx.actor(), 'blackBook') : 1;
+      for (let index = 0; index < repeat && ctx.alive(); index++) {
+        const actor = ctx.actor();
+        let adjusted = amount;
+        if (!self) {
+          if (sword)
+            adjusted +=
+              value(actor, 'swordForm') +
+              (value(actor, 'firstHit') ? value(actor, 'swordBonus') : 0);
+          if (magic) {
+            adjusted += value(actor, 'nextMagic');
+            if (value(actor, 'nextMagic'))
+              ctx.replace({
+                ...ctx.actor(),
+                pool: {
+                  ...pool(ctx.actor()),
+                  values: { ...pool(ctx.actor()).values, nextMagic: 0 },
+                },
+              });
+          }
+          adjusted -= value(actor, 'trapPenalty');
+          if (value(actor, 'firstHit')) {
+            adjusted += value(ctx.enemy(), 'hitVulnerability') - value(actor, 'attackPenalty');
+            ctx.replace({
+              ...ctx.actor(),
+              pool: { ...pool(ctx.actor()), values: { ...pool(ctx.actor()).values, firstHit: 0 } },
+            });
+          }
+          if (value(actor, 'nullifyAttack') > 0) {
+            adjusted = 0;
+          }
+          if (value(ctx.enemy(), 'cover')) {
+            adjusted = Math.max(0, adjusted - value(ctx.enemy(), 'cover'));
+            const defender = ctx.enemy();
+            ctx.replace({
+              ...defender,
+              pool: { ...pool(defender), values: { ...pool(defender).values, cover: 0 } },
+            });
+          }
+        }
+
+        const defender = self ? ctx.actor() : ctx.enemy();
+        const blocked =
+          ignore || (!self && magic && value(actor, 'redBook') > 0)
+            ? 0
+            : Math.min(defender.block, Math.max(0, adjusted));
+        applyDamage(
+          mutable,
+          actorIndex,
+          action,
+          Math.max(0, adjusted),
+          self ? 'SELF' : 'ENEMY',
+          emitter,
+          ignore || (!self && magic && value(actor, 'redBook') > 0),
+        );
+        if (!self && value(defender, 'revenge') && blocked > 0) {
+          const current = self ? ctx.actor() : ctx.enemy();
+          ctx.replace({
+            ...current,
+            pool: {
+              ...pool(current),
+              values: {
+                ...pool(current).values,
+                revengeBlocked: value(current, 'revengeBlocked') + blocked,
+              },
+            },
+          });
+        }
+        if (!self && blocked > 0 && value(ctx.enemy(), 'parry') > 0 && ctx.alive()) {
+          const defender = ctx.enemy(),
+            retaliation = value(defender, 'parry');
+          ctx.replace({
+            ...defender,
+            pool: { ...pool(defender), values: { ...pool(defender).values, parry: 0 } },
+          });
+          applyDamage(
+            mutable,
+            enemyIndex,
+            { ...action, playerId: defender.id },
+            retaliation,
+            'ENEMY',
+            emitter,
+          );
+        }
+      }
+    },
+    draw: (amount) => {
+      drawCards(mutable, actorIndex, amount, emitter);
+    },
+    block: (amount) => {
+      gainBlock(mutable, actorIndex, amount, emitter);
+    },
+    heal: (amount) => {
+      const actor = ctx.actor(),
+        healed = Math.min(amount, actor.maxHp - actor.hp);
+      ctx.replace({ ...actor, hp: actor.hp + healed });
+      if (healed) emit('HEALED', { targetId: actor.id, amount: healed });
+    },
+    energy: (amount) => {
+      const actor = ctx.actor();
+      ctx.replace({ ...actor, energy: actor.energy + amount });
+      emit('ENERGY_GAINED', { targetId: actor.id, amount });
+    },
+    move: (id, from, to, index) => {
+      const actor = ctx.actor(),
+        fromIndex = actor[from].findIndex((card) => card.id === id);
+      if (fromIndex < 0) return;
+      let card = actor[from][fromIndex]!;
+      if (to === 'discard') card = { ...card, visibility: 'allPlayers' };
+      const destination = from === to ? removeAt(actor[to], fromIndex) : [...actor[to]],
+        toIndex = index ?? destination.length;
+      destination.splice(toIndex, 0, card);
+      const before = pool(actor).arrowQueue,
+        after = before.filter((entry) => entry !== id);
+      ctx.replace({
+        ...actor,
+        [from]: removeAt(actor[from], fromIndex),
+        [to]: destination,
+        ...(actor.pool ? { pool: { ...pool(actor), arrowQueue: after } } : {}),
+      });
+      if (before.length !== after.length)
+        emit('ARROW_REMOVED', {
+          ownerPlayerId: actor.id,
+          cardInstanceId: id,
+          before,
+          after,
+          visibility: 'ownerOnly',
+        });
+      const data = {
+        playerId: actor.id,
+        ownerPlayerId: actor.id,
+        cardInstanceId: card.id,
+        definitionId: card.definitionId,
+        definitionVersion: card.definitionVersion,
+        from,
+        fromZone: from,
+        fromIndex,
+        to,
+        toZone: to,
+        toIndex,
+        sourceCardInstanceId: source.id,
+        sourceDefinitionId: source.definitionId,
+        sourceDefinitionVersion: source.definitionVersion,
+        positionVisibility: 'ownerOnly',
+        reason: source.definitionId.toUpperCase(),
+        visibility: card.visibility,
+      };
+      if (to === 'exhaust') {
+        const { to: destination, positionVisibility, ...exhaustData } = data;
+        void destination;
+        void positionVisibility;
+        emit('CARD_EXHAUSTED', exhaustData);
+      } else {
+        emit('CARD_MOVED', data);
+        if (to === 'discard')
+          emit('CARD_DISCARDED', {
+            playerId: actor.id,
+            cardInstanceId: card.id,
+            definitionId: card.definitionId,
+            definitionVersion: card.definitionVersion,
+            visibility: card.visibility,
+          });
+      }
+    },
+    refill: () => refillDrawPileIfEmpty(mutable, actorIndex, emitter),
+    shuffle: () => shuffleDrawPile(mutable, actorIndex, 'POOL_SHUFFLE', emitter, source),
+    reveal: (card, index, publicCard = false) => {
+      if (publicCard) {
+        const actor = ctx.actor();
+        ctx.replace({
+          ...actor,
+          drawPile: actor.drawPile.map((entry) =>
+            entry.id === card.id ? { ...entry, visibility: 'allPlayers' } : entry,
+          ),
+        });
+      }
+      emit('DECK_CARD_REVEALED', {
+        playerId: ctx.actor().id,
+        ownerPlayerId: ctx.actor().id,
+        cardInstanceId: card.id,
+        definitionId: card.definitionId,
+        definitionVersion: card.definitionVersion,
+        zone: 'drawPile',
+        index,
+        position: index,
+        sourceCardInstanceId: source.id,
+        sourceDefinitionId: source.definitionId,
+        sourceDefinitionVersion: source.definitionVersion,
+        positionVisibility: 'ownerOnly',
+        visibility: publicCard ? 'allPlayers' : card.visibility,
+        reason: source.definitionId.toUpperCase(),
+      });
+    },
+    copy: (card) => {
+      const def = ctx.resolve(card);
+      if (!def || !canCreateCard(ctx.actor(), def)) return undefined;
+      createCard(mutable, actorIndex, def, source, card.costModifier, emitter);
+      return ctx.actor().hand.at(-1);
+    },
+    request: (candidateIds, resolution) => {
+      const choiceRequestId = `choice:${mutable.nextChoiceRequestSequence++}`;
+      mutable.pendingCardChoice = {
+        choiceRequestId,
+        ownerPlayerId: ctx.actor().id,
+        sourceInputSequence: state.lastInputSequence + 1,
+        sourceCardInstanceId: source.id,
+        sourceDefinitionId: source.definitionId,
+        sourceDefinitionVersion: source.definitionVersion,
+        choiceKind: 'CARD',
+        candidateIds,
+        minSelections: 1,
+        maxSelections: 1,
+        resolution: { type: 'POOL_CHOICE', resolution, candidateIds },
+        deadlineCommandSequence: undefined,
+      };
+      emit('CARD_CHOICE_REQUESTED', {
+        choiceRequestId,
+        playerId: ctx.actor().id,
+        choiceKind: 'CARD',
+        candidateIds,
+        visibility: 'ownerOnly',
+      });
+    },
+  };
+  return ctx;
+}
+
+function resolvePoolPending(
+  state: BattleStateV2,
+  mutable: MutableResolution,
+  pending: PendingCardChoice,
+  selected: readonly string[],
+  definitions: CardDefinitionSourceV2,
+  emitter: EventEmitter,
+): void {
+  if (pending.resolution.type !== 'POOL_CHOICE' || !pending.continuation) return;
+  const index = mutable.players.findIndex((player) => player.id === pending.ownerPlayerId);
+  const { sourceCard, sourceDefinition, action } = pending.continuation;
+  const ctx = makePoolContext(
+    state,
+    mutable,
+    index,
+    action,
+    sourceCard,
+    sourceDefinition,
+    definitions,
+    emitter,
+  );
+  const id = selected[0];
+  if (!id) return;
+  if (pending.resolution.resolution === 'ZERO_COST') {
+    const actor = ctx.actor();
+    ctx.replace({
+      ...actor,
+      pool: {
+        ...pool(actor),
+        modifiers: {
+          ...pool(actor).modifiers,
+          [id]: { ...pool(actor).modifiers[id], fixedCost: 0, expires: true },
+        },
+      },
+    });
+    ctx.emit('CARD_COST_MODIFIER_APPLIED', {
+      playerId: actor.id,
+      cardInstanceId: id,
+      fixedCost: 0,
+      visibility: 'ownerOnly',
+    });
+  } else {
+    ctx.move(id, 'drawPile', 'hand');
+    if (pending.resolution.resolution === 'ARROW_SEARCH') ctx.shuffle();
+    else
+      for (const cardId of pending.resolution.candidateIds)
+        if (cardId !== id) ctx.move(cardId, 'drawPile', 'drawPile');
+  }
 }
 
 function applyEffect(
@@ -745,6 +1150,21 @@ function applyEffect(
 ): void {
   const actor = mutable.players[actorIndex]!;
   switch (effect.type) {
+    case 'POOL_CARD':
+      resolvePoolCard(
+        makePoolContext(
+          baseState,
+          mutable,
+          actorIndex,
+          action,
+          sourceCard,
+          sourceDefinition,
+          definitions,
+          emitter,
+        ),
+        effect.cardId,
+      );
+      return;
     case 'DRAW':
       drawCards(mutable, actorIndex, effect.amount, emitter);
       return;
@@ -755,18 +1175,61 @@ function applyEffect(
       return;
     }
     case 'GAIN_BLOCK':
-      mutable.players[actorIndex] = { ...actor, block: actor.block + effect.amount };
-      emitter.emit({ type: 'BLOCK_GAINED', targetId: actor.id, amount: effect.amount });
+      makePoolContext(
+        baseState,
+        mutable,
+        actorIndex,
+        action,
+        sourceCard,
+        sourceDefinition,
+        definitions,
+        emitter,
+      ).block(effect.amount);
       return;
     case 'GAIN_ENERGY':
       mutable.players[actorIndex] = { ...actor, energy: actor.energy + effect.amount };
       emitter.emit({ type: 'ENERGY_GAINED', targetId: actor.id, amount: effect.amount });
       return;
     case 'DAMAGE':
-      applyDamage(mutable, actorIndex, action, effect.amount, effect.target, emitter);
+      makePoolContext(
+        baseState,
+        mutable,
+        actorIndex,
+        action,
+        sourceCard,
+        sourceDefinition,
+        definitions,
+        emitter,
+      ).damage(effect.amount, effect.target === 'SELF');
       return;
     case 'START_CHANT':
-      startChant(mutable, actor.id, sourceCard, effect, emitter);
+      startChant(
+        mutable,
+        actor.id,
+        sourceCard,
+        {
+          ...effect,
+          countdown: Math.max(1, effect.countdown - value(actor, 'nextChantShortening')),
+        },
+        emitter,
+      );
+      if (value(actor, 'nextChantShortening'))
+        makePoolContext(
+          baseState,
+          mutable,
+          actorIndex,
+          action,
+          sourceCard,
+          sourceDefinition,
+          definitions,
+          emitter,
+        ).replace({
+          ...mutable.players[actorIndex]!,
+          pool: {
+            ...pool(mutable.players[actorIndex]!),
+            values: { ...pool(mutable.players[actorIndex]!).values, nextChantShortening: 0 },
+          },
+        });
       return;
     case 'ADVANCE_CHANT': {
       const choice = choiceOf(action, 'CHANT_ENTRY');
@@ -810,10 +1273,8 @@ function applyEffect(
           completed += 1;
       }
       if (completed > 0 && resultFromMutable(baseState, mutable).status === 'IN_PROGRESS') {
-        const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
         const amount = completed * effect.blockPerChant;
-        mutable.players[actorIndex] = { ...current, block: current.block + amount };
-        emitter.emit({ type: 'BLOCK_GAINED', targetId: current.id, amount });
+        gainBlock(mutable, actorIndex, amount, emitter);
       }
       return;
     }
@@ -822,8 +1283,7 @@ function applyEffect(
         effect.amount *
         mutable.chantQueue.filter((entry) => entry.ownerPlayerId === actor.id).length;
       if (amount > 0) {
-        mutable.players[actorIndex] = { ...actor, block: actor.block + amount };
-        emitter.emit({ type: 'BLOCK_GAINED', targetId: actor.id, amount });
+        gainBlock(mutable, actorIndex, amount, emitter);
       }
       return;
     }
@@ -912,10 +1372,46 @@ function endTurn(
   const current = mutable.players[currentIndex]!;
   const nextIndex = currentIndex === 0 ? 1 : 0;
   const next = mutable.players[nextIndex]!;
-  emitter.emit({ type: 'TURN_ENDED', playerId: current.id });
-  mutable.players[nextIndex] = { ...next, energy: next.maxEnergy };
+  const turnCard = {
+    id: 'turn' as CardInstanceId,
+    definitionId: 'turn',
+    definitionVersion: '1.0.0',
+    costModifier: 0,
+    visibility: 'allPlayers' as const,
+  };
+  if (state.engineVersion === '3.0.0') emitter.emit({ type: 'TURN_ENDED', playerId: current.id });
+  if (state.engineVersion === '3.0.0')
+    endPoolTurn(
+      makePoolContext(
+        state,
+        mutable,
+        currentIndex,
+        { type: 'PLAY_CARD', playerId: current.id, cardInstanceId: turnCard.id },
+        turnCard,
+        { id: 'turn', version: '1.0.0', cost: 0, effects: [] },
+        definitions,
+        emitter,
+      ),
+    );
+  if (state.engineVersion !== '3.0.0') emitter.emit({ type: 'TURN_ENDED', playerId: current.id });
+  if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS')
+    return finishResolution(state, inputSequence, mutable, emitter);
+  mutable.players[nextIndex] = { ...mutable.players[nextIndex]!, energy: next.maxEnergy };
   emitter.emit({ type: 'TURN_STARTED', playerId: next.id });
 
+  if (state.engineVersion === '3.0.0' && resultFromMutable(state, mutable).status === 'IN_PROGRESS')
+    startPoolTurn(
+      makePoolContext(
+        state,
+        mutable,
+        nextIndex,
+        { type: 'PLAY_CARD', playerId: next.id, cardInstanceId: turnCard.id },
+        turnCard,
+        { id: 'turn', version: '1.0.0', cost: 0, effects: [] },
+        definitions,
+        emitter,
+      ),
+    );
   const ownChants = mutable.chantQueue
     .filter((entry) => entry.ownerPlayerId === next.id)
     .map((entry) => entry.chantEntryId);
@@ -1155,6 +1651,61 @@ function submitChoice(
         definitionVersion: pending.sourceDefinitionVersion,
       });
     }
+  }
+  if (pending.resolution.type === 'POOL_CHOICE')
+    resolvePoolPending(state, mutable, pending, selected, definitions, emitter);
+  if (pending.resolution.type === 'SYNTHESIS' && pending.continuation) {
+    const continuation = pending.continuation;
+    const actorIndex = mutable.players.findIndex((player) => player.id === pending.ownerPlayerId);
+    mutable.pendingCardChoice = undefined;
+    synthesize(
+      state,
+      mutable,
+      actorIndex,
+      {
+        ...continuation.action,
+        choices: [{ kind: 'CARD_INSTANCES', cardInstanceIds: selected as CardInstanceId[] }],
+      },
+      continuation.sourceCard,
+      continuation.sourceDefinition,
+      pending.resolution.mode,
+      definitions,
+      emitter,
+      true,
+    );
+  }
+  if (pending.resolution.type === 'SYNTHESIS_RECIPE' && pending.continuation) {
+    const continuation = pending.continuation;
+    mutable.pendingCardChoice = undefined;
+    synthesize(
+      state,
+      mutable,
+      mutable.players.findIndex((player) => player.id === pending.ownerPlayerId),
+      {
+        ...continuation.action,
+        choices: [
+          { kind: 'CARD_INSTANCES', cardInstanceIds: pending.resolution.materialIds },
+          { kind: 'RECIPE', recipeId: selected[0]! },
+        ],
+      },
+      continuation.sourceCard,
+      continuation.sourceDefinition,
+      'NORMAL',
+      definitions,
+      emitter,
+      true,
+    );
+  }
+  if (
+    (pending.resolution.type === 'SYNTHESIS' || pending.resolution.type === 'SYNTHESIS_RECIPE') &&
+    mutable.pendingCardChoice &&
+    pending.continuation
+  ) {
+    mutable.pendingCardChoice = {
+      ...mutable.pendingCardChoice,
+      continuation: pending.continuation,
+    };
+    return finishResolution(state, inputSequence, mutable, emitter);
   }
   mutable.pendingCardChoice = undefined;
   resumeChoiceEffects(state, mutable, pending, definitions, emitter);
@@ -1469,7 +2020,69 @@ function synthesize(
   mode: Extract<CardEffectV2, { readonly type: 'SYNTHESIZE' }>['mode'],
   definitions: CardDefinitionSourceV2,
   emitter: EventEmitter,
+  catalystResolved = false,
 ): void {
+  const ctx = makePoolContext(
+    state,
+    mutable,
+    actorIndex,
+    action,
+    sourceCard,
+    sourceDefinition,
+    definitions,
+    emitter,
+  );
+  if (!catalystResolved && value(ctx.actor(), 'sageCatalyst') > 0) {
+    const count = value(ctx.actor(), 'sageCatalyst');
+    ctx.replace({
+      ...ctx.actor(),
+      pool: { ...pool(ctx.actor()), values: { ...pool(ctx.actor()).values, sageCatalyst: 0 } },
+    });
+    for (let index = 0; index < count; index++) {
+      ctx.refill();
+      const top = ctx.actor().drawPile[0];
+      if (top) {
+        ctx.reveal(top, 0, true);
+        if (hasKeyword(top, 'material', definitions)) ctx.move(top.id, 'drawPile', 'hand');
+      }
+    }
+    if (mode !== 'ALL_MATERIALS') {
+      const candidates = (
+        mode === 'SAGE_RECIPE' ? [...ctx.actor().hand, ...ctx.actor().discard] : ctx.actor().hand
+      ).filter(
+        (card) =>
+          hasKeyword(card, 'material', definitions) &&
+          (mode !== 'COMPLETE_REACTION' || hasKeyword(card, 'reagent', definitions)),
+      );
+      const required = mode === 'NORMAL' ? 2 : 3;
+      if (candidates.length >= required) {
+        const choiceRequestId = `choice:${mutable.nextChoiceRequestSequence++}`;
+        mutable.pendingCardChoice = {
+          choiceRequestId,
+          ownerPlayerId: ctx.actor().id,
+          sourceInputSequence: state.lastInputSequence + 1,
+          sourceCardInstanceId: sourceCard.id,
+          sourceDefinitionId: sourceDefinition.id,
+          sourceDefinitionVersion: sourceDefinition.version,
+          choiceKind: 'CARDS',
+          candidateIds: candidates.map((card) => card.id),
+          minSelections: required,
+          maxSelections: required,
+          resolution: { type: 'SYNTHESIS', mode },
+          deadlineCommandSequence: undefined,
+        };
+        emitter.emit({
+          type: 'CARD_CHOICE_REQUESTED',
+          choiceRequestId,
+          playerId: ctx.actor().id,
+          choiceKind: 'CARDS',
+          candidateIds: candidates.map((card) => card.id),
+          visibility: 'ownerOnly',
+        });
+      } else ctx.block(2);
+      return;
+    }
+  }
   const actor = mutable.players[actorIndex]!;
   const selectedChoice = choiceOf(action, 'CARD_INSTANCES');
   const selectedIds =
@@ -1479,6 +2092,42 @@ function synthesize(
           .map((card) => card.id)
       : [...(selectedChoice?.cardInstanceIds ?? [])];
   if (selectedIds.length === 0) return;
+  if (
+    (catalystResolved || state.engineVersion === '3.0.0') &&
+    mode === 'NORMAL' &&
+    !choiceOf(action, 'RECIPE')
+  ) {
+    const candidates = normalSynthesisRecipeCandidates(
+      selectedIds.map((id) => ctx.actor().hand.find((card) => card.id === id)!),
+      definitions,
+    );
+    if (candidates.length > 1) {
+      const choiceRequestId = `choice:${mutable.nextChoiceRequestSequence++}`;
+      mutable.pendingCardChoice = {
+        choiceRequestId,
+        ownerPlayerId: ctx.actor().id,
+        sourceInputSequence: state.lastInputSequence + 1,
+        sourceCardInstanceId: sourceCard.id,
+        sourceDefinitionId: sourceDefinition.id,
+        sourceDefinitionVersion: sourceDefinition.version,
+        choiceKind: 'RECIPE',
+        candidateIds: candidates,
+        minSelections: 1,
+        maxSelections: 1,
+        resolution: { type: 'SYNTHESIS_RECIPE', materialIds: selectedIds },
+        deadlineCommandSequence: undefined,
+      };
+      emitter.emit({
+        type: 'CARD_CHOICE_REQUESTED',
+        choiceRequestId,
+        playerId: ctx.actor().id,
+        choiceKind: 'RECIPE',
+        candidateIds: candidates,
+        visibility: 'ownerOnly',
+      });
+      return;
+    }
+  }
   const selected = selectedIds.map((id) => locateOwnedCard(mutable.players[actorIndex]!, id)!);
   let player = mutable.players[actorIndex]!;
   const exhaustedCards: CardInstanceV2[] = [];
@@ -1572,13 +2221,18 @@ function synthesize(
       ? 'allPlayers'
       : 'ownerOnly',
   });
+  if (value(ctx.actor(), 'catalystCore') > 0 && !value(ctx.actor(), 'coreUsed')) {
+    ctx.energy(value(ctx.actor(), 'catalystCore'));
+    ctx.replace({
+      ...ctx.actor(),
+      pool: { ...pool(ctx.actor()), values: { ...pool(ctx.actor()).values, coreUsed: 1 } },
+    });
+  }
   if (mode === 'SAGE_RECIPE' && synthesisResult === 'SUCCESS' && player.alchemyStage === 0) {
     emitter.emit({ type: 'ALCHEMY_STAGE_CHANGED', playerId: player.id, before: 0, after: 1 });
   }
   if (synthesisResult === 'FAILURE') {
-    const current = mutable.players[actorIndex]!;
-    mutable.players[actorIndex] = { ...current, block: current.block + 2 };
-    emitter.emit({ type: 'BLOCK_GAINED', targetId: current.id, amount: 2 });
+    ctx.block(2);
     return;
   }
   if (mode === 'COMPLETE_REACTION') {
@@ -1587,9 +2241,7 @@ function synthesize(
         applyDamage(mutable, actorIndex, action, 4, 'ENEMY', emitter);
       if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') return;
       if (tags.includes('reagent:blue')) {
-        const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
-        mutable.players[actorIndex] = { ...current, block: current.block + 4 };
-        emitter.emit({ type: 'BLOCK_GAINED', targetId: current.id, amount: 4 });
+        ctx.block(4);
       }
       if (tags.includes('reagent:white')) {
         const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
@@ -1605,9 +2257,7 @@ function synthesize(
       if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') break;
       applyDamage(mutable, actorIndex, action, 4, 'ENEMY', emitter);
       if (resultFromMutable(state, mutable).status !== 'IN_PROGRESS') return;
-      const current: BattlePlayerStateV2 = mutable.players[actorIndex]!;
-      mutable.players[actorIndex] = { ...current, block: current.block + 4 };
-      emitter.emit({ type: 'BLOCK_GAINED', targetId: current.id, amount: 4 });
+      ctx.block(4);
     }
     return;
   }
@@ -1837,6 +2487,7 @@ function applyDamage(
   amount: number,
   target: 'SELF' | 'ENEMY',
   emitter: EventEmitter,
+  bypassBlock = false,
 ): void {
   const actor = mutable.players[actorIndex]!;
   const targetIndex =
@@ -1862,8 +2513,11 @@ function applyDamage(
     for (const seal of seals)
       emitter.emit({ type: 'PENDING_EFFECT_CONSUMED', ...seal, remainingTriggers: 0 });
   }
-  const blocked = Math.min(defender.block, effectiveAmount);
-  const hpDamage = Math.min(defender.hp, effectiveAmount - blocked);
+  const blocked = bypassBlock ? 0 : Math.min(defender.block, effectiveAmount);
+  const hpDamage = Math.min(
+    value(defender, 'immortal') ? Math.max(0, defender.hp - 1) : defender.hp,
+    effectiveAmount - blocked,
+  );
   emitter.emit({
     type: 'DAMAGE_DEALT',
     sourceId: action.playerId,
@@ -1903,6 +2557,18 @@ function applyDamage(
   }
 }
 
+function gainBlock(
+  mutable: MutableResolution,
+  index: number,
+  amount: number,
+  emitter: EventEmitter,
+): void {
+  const actor = mutable.players[index]!;
+  const total = amount > 0 ? amount + value(actor, 'blockLink') : 0;
+  mutable.players[index] = { ...actor, block: actor.block + total };
+  emitter.emit({ type: 'BLOCK_GAINED', targetId: actor.id, amount: total });
+}
+
 function drawCards(
   mutable: MutableResolution,
   playerIndex: number,
@@ -1925,6 +2591,10 @@ function drawCards(
       cardInstanceId: card.id,
       visibility: card.visibility,
     });
+    const afterDraw = mutable.players[playerIndex]!;
+    if (value(afterDraw, 'plannedDraw') > 0) {
+      gainBlock(mutable, playerIndex, value(afterDraw, 'plannedDraw'), emitter);
+    }
   }
 }
 
@@ -1981,7 +2651,7 @@ function refillDrawPileIfEmpty(
 function shuffleDrawPile(
   mutable: MutableResolution,
   playerIndex: number,
-  reason: 'ALCHEMY_TRANSFORM',
+  reason: 'ALCHEMY_TRANSFORM' | 'POOL_SHUFFLE',
   emitter: EventEmitter,
   source?: {
     readonly id: CardInstanceId;
@@ -2078,6 +2748,38 @@ function validatePlayChoices(
   definition: CardDefinitionV2,
   definitions: CardDefinitionSourceV2,
 ): { code: BattleInputValidationCode; message: string } | undefined {
+  const poolEffect = definition.effects.find((effect) => effect.type === 'POOL_CARD');
+  if (poolEffect?.type === 'POOL_CARD') {
+    const range = poolChoiceRange(poolEffect.cardId);
+    const selected = choiceOf(action, 'CARD_INSTANCES')?.cardInstanceIds ?? [];
+    const actor = state.players[playerIndex]!;
+    if (
+      (action.choices ?? []).some((choice) => choice.kind !== 'CARD_INSTANCES') ||
+      new Set(selected).size !== selected.length ||
+      selected.includes(action.cardInstanceId)
+    )
+      return { code: 'INVALID_CHOICE', message: 'Invalid pool selection.' };
+    if (range === undefined)
+      return selected.length
+        ? { code: 'INVALID_CHOICE', message: 'No selection required.' }
+        : undefined;
+    if (
+      selected.length < range.min ||
+      selected.length > range.max ||
+      selected.some((id) => {
+        const card = actor[range.zone].find((entry) => entry.id === id);
+        return (
+          card === undefined ||
+          (range.arrow && !hasKeyword(card, 'arrow', definitions)) ||
+          (range.loaded
+            ? !pool(actor).arrowQueue.includes(id)
+            : pool(actor).arrowQueue.includes(id))
+        );
+      })
+    )
+      return { code: 'INVALID_CHOICE', message: 'Choose owned cards in the required zone.' };
+    return undefined;
+  }
   const choices = action.choices ?? [];
   const kinds = choices.map((choice) => choice.kind);
   if (new Set(kinds).size !== kinds.length)
@@ -2088,6 +2790,11 @@ function validatePlayChoices(
   if (cards.includes(action.cardInstanceId))
     return { code: 'INVALID_CHOICE', message: 'The played card cannot select itself.' };
   const player = state.players[playerIndex]!;
+  if (cards.some((id) => pool(player).arrowQueue.includes(id)))
+    return {
+      code: 'INVALID_CHOICE',
+      message: 'Loaded arrows cannot be selected by other effects.',
+    };
   let normalRecipeChoiceRequired = false;
   for (const effect of definition.effects) {
     if (effect.type === 'ADVANCE_CHANT') {
@@ -2125,6 +2832,14 @@ function validatePlayChoices(
       }
     }
     if (effect.type === 'SYNTHESIZE') {
+      if (value(player, 'sageCatalyst') > 0 && effect.mode !== 'ALL_MATERIALS') {
+        if (choices.length)
+          return {
+            code: 'INVALID_CHOICE',
+            message: 'Catalyst synthesis chooses materials after revealing the top card.',
+          };
+        return undefined;
+      }
       const expected =
         effect.mode === 'NORMAL'
           ? 2
@@ -2161,7 +2876,8 @@ function validatePlayChoices(
         const selectedCards = cards.map((id) => player.hand.find((card) => card.id === id)!);
         const candidates = normalSynthesisRecipeCandidates(selectedCards, definitions);
         const recipeChoice = choiceOf(action, 'RECIPE');
-        normalRecipeChoiceRequired = candidates.length > 1;
+        normalRecipeChoiceRequired =
+          candidates.length > 1 && (state.engineVersion !== '3.0.0' || recipeChoice !== undefined);
         if (
           normalRecipeChoiceRequired &&
           (recipeChoice === undefined ||
@@ -2350,6 +3066,12 @@ function consumesCardInstancesChoice(effect: CardEffectV2): boolean {
 function isValidEffect(effect: unknown): effect is CardEffectV2 {
   if (!isRecord(effect) || typeof effect.type !== 'string') return false;
   switch (effect.type) {
+    case 'POOL_CARD':
+      return (
+        typeof effect.cardId === 'string' &&
+        poolCardIds.includes(effect.cardId) &&
+        hasOnlyKeys(effect, ['type', 'cardId'])
+      );
     case 'DAMAGE':
       return (
         isPositiveSafeInteger(effect.amount) &&
@@ -2574,7 +3296,8 @@ function isBattleInputShape(value: unknown): value is BattleInput {
 export function isGameActionV2(value: unknown): value is GameActionV2 {
   if (!isRecord(value) || typeof value.playerId !== 'string' || value.playerId.length === 0)
     return false;
-  if (value.type === 'END_TURN') return hasOnlyKeys(value, ['type', 'playerId']);
+  if (value.type === 'END_TURN' || value.type === 'FORFEIT')
+    return hasOnlyKeys(value, ['type', 'playerId']);
   if (value.type === 'PLAY_CARD') {
     return (
       hasOnlyKeys(value, ['type', 'playerId', 'cardInstanceId', 'targetId', 'choices']) &&

@@ -38,9 +38,11 @@ describe('createLogger', () => {
     logger.error('api.error', {
       path: '/api/v1/matches/private/secret-invite/status',
     });
+    logger.info('http.request', { path: '/api/v1/alpha-battles/join/AABBCCDDEEFF' });
     expect(lines.map((line) => JSON.parse(line).path)).toEqual([
       '/api/v1/matches/private/:inviteCode/join',
       '/api/v1/matches/private/:inviteCode/status',
+      '/api/v1/alpha-battles/join/:inviteCode',
     ]);
   });
 

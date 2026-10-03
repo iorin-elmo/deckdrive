@@ -13,6 +13,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "pnpm --filter @deck-drive/card-definitions build && tsx src/database/seed-command.ts",
     "prisma:seed:check": "pnpm run prisma:generate && tsc -p tsconfig.seed.json --noEmit",
+    "cards:sync": "pnpm --filter @deck-drive/card-definitions build && tsx src/database/sync-card-catalog.ts",
     "prisma:reset": "tsx src/database/reset.ts",
     "replay": "pnpm run prisma:generate && pnpm --filter @deck-drive/game-engine build && tsx ../../scripts/replay/index.ts",
     "ranked:analytics": "pnpm run prisma:generate && tsx src/ranked/analytics-command.ts",

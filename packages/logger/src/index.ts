@@ -75,10 +75,12 @@ export function createLogger(
       if (typeof value === 'string') {
         const redacted =
           key === 'path'
-            ? value.replace(
-                /(\/api\/v1\/matches\/private\/)[^/]+(?=\/(?:join|status)(?:\/|$))/gu,
-                '$1:inviteCode',
-              )
+            ? value
+                .replace(
+                  /(\/api\/v1\/matches\/private\/)[^/]+(?=\/(?:join|status)(?:\/|$))/gu,
+                  '$1:inviteCode',
+                )
+                .replace(/(\/api\/v1\/alpha-battles\/join\/)[^/?]+/gu, '$1:inviteCode')
             : value;
         safe[key] = redacted.replace(/[\r\n\t]/gu, ' ').slice(0, 200);
       }

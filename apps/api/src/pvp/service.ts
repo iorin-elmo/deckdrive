@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  isValidLegacyCardDefinition,
   createInitialBattleState,
   recordReplay,
   SeededRandom,
@@ -905,14 +906,6 @@ function developmentAuthenticator(request: IncomingMessage): PlayerId | null {
 }
 
 function toDefinition(value: unknown): CardDefinition {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new PvpRequestError('INVALID_DECK');
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.id !== 'string' ||
-    typeof record.cost !== 'number' ||
-    !Array.isArray(record.effects)
-  )
-    throw new PvpRequestError('INVALID_DECK');
-  return record as unknown as CardDefinition;
+  if (!isValidLegacyCardDefinition(value)) throw new PvpRequestError('INVALID_DECK');
+  return value;
 }

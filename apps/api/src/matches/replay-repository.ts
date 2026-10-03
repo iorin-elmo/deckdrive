@@ -326,9 +326,12 @@ export class MatchReplayRepository {
         `No card definitions are available for card data version ${cardDataVersion}.`,
       );
     }
-    return versions.map(({ definition }) => {
-      if (requireVersion && isCardDefinitionV2(definition)) return definition;
-      if (!requireVersion && isCardDefinition(definition, false)) return definition;
+    return versions.flatMap(({ definition }): (CardDefinition | CardDefinitionV2)[] => {
+      if (requireVersion && isCardDefinitionV2(definition)) return [definition];
+      if (!requireVersion && isCardDefinition(definition, false)) return [definition];
+      // A catalogue version may contain cards for the newer protocol. They must not
+      // invalidate old replays; a legacy replay referencing them still fails verification.
+      if (!requireVersion && isCardDefinitionV2(definition)) return [];
       throw new ReplayPersistenceError('Stored card definition has an invalid replay shape.');
     });
   }

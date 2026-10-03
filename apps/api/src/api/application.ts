@@ -1,8 +1,12 @@
+import { adminRoleForUser } from '../admin/identity.js';
 import { randomUUID } from 'node:crypto';
+import { AlphaBattleError, AlphaBattleService } from '../battles/alpha-service.js';
+import { grantAdminCollection, exchangeCard, exchangeCosts } from '../cards/acquisition.js';
 import { createLogger } from '@deck-drive/logger';
 
 import {
   createInitialBattleState,
+  isValidLegacyCardDefinition,
   projectBattleStateV2,
   type BattleState,
   type BattleStateV2,
@@ -53,7 +57,6 @@ import {
 } from '../packs/pack-opening.js';
 import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
 import { PrismaRankedReadService, RankedHistoryCursorError } from '../ranked/read-service.js';
-import { adminRoleForUser } from '../admin/identity.js';
 import { AdminInputError, parseAdminCommand, uuidString } from '../admin/contracts.js';
 import { AdminOperationError, PrismaAdminService } from '../admin/service.js';
 import { PrismaFeatureFlags } from '../admin/feature-flags.js';
@@ -138,6 +141,61 @@ export class ApiApplication {
       const cardId = path.match(/^\/api\/v1\/cards\/([^/]+)$/u)?.[1];
       if (request.method === 'GET' && cardId !== undefined) return await this.getCard(cardId);
 
+      if (path.startsWith('/api/v1/alpha-battles') || path === '/api/v1/card-exchange') {
+        const player = await this.requirePlayer(request);
+        if (path === '/api/v1/card-exchange') {
+          if (request.method === 'GET')
+            return {
+              status: 200,
+              body: {
+                costs: exchangeCosts,
+                cards: await this.prisma.cardVersion.findMany({
+                  where: { version: currentCardDataVersion(this.environment) },
+                  select: { id: true, cardId: true, definition: true },
+                }),
+              },
+            };
+          if (request.method === 'POST')
+            return {
+              status: 200,
+              body: await exchangeCard(
+                this.prisma,
+                player.id,
+                string(object(request.body).cardVersionId, 'cardVersionId'),
+                header(request.headers, 'idempotency-key') ?? '',
+              ),
+            };
+        }
+        const secret = this.environment.BATTLE_COMMAND_SECRET;
+        if (!secret || secret.length < 32)
+          return { status: 503, body: { error: 'BATTLE_NOT_CONFIGURED' } };
+        const service = new AlphaBattleService(this.prisma, secret);
+        const replayBattleId = path.match(
+          /^\/api\/v1\/alpha-battles\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/replay$/u,
+        )?.[1];
+        if (request.method === 'GET' && replayBattleId)
+          return { status: 200, body: await service.replay(player.id, replayBattleId) };
+        if (path === '/api/v1/alpha-battles' && request.method === 'POST')
+          return { status: 201, body: await service.start(player.id, request.body) };
+        if (path === '/api/v1/alpha-battles/active' && request.method === 'GET')
+          return { status: 200, body: await service.active(player.id) };
+        const join = path.match(/^\/api\/v1\/alpha-battles\/join\/([A-Fa-f0-9]{12})$/u)?.[1];
+        if (join && request.method === 'POST')
+          return { status: 200, body: await service.join(player.id, join, request.body) };
+        const battle = path.match(
+          /^\/api\/v1\/alpha-battles\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})(\/actions)?$/u,
+        );
+        if (battle?.[1]) {
+          if (request.method === 'GET' && !battle[2])
+            return { status: 200, body: await service.read(player.id, battle[1]) };
+          if (request.method === 'POST' && battle[2])
+            return { status: 200, body: await service.action(player.id, battle[1], request.body) };
+          if (request.method === 'DELETE' && !battle[2])
+            return { status: 200, body: await service.cancel(player.id, battle[1]) };
+        }
+        return { status: 404, body: { error: 'NOT_FOUND' } };
+      }
+
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
       const rankedForfeitMatchId = path.match(/^\/api\/v1\/matches\/([^/]+)\/forfeit$/u)?.[1];
@@ -179,7 +237,8 @@ export class ApiApplication {
       if (!authenticatedRoute) return { status: 404, body: { error: 'NOT_FOUND' } };
 
       const player = await this.requirePlayer(request);
-      if (request.method === 'GET' && path === '/api/v1/me') return await this.me(player.id);
+      if (request.method === 'GET' && path === '/api/v1/me')
+        return await this.me(player.id, player.authProvider === 'DISCORD');
       if (request.method === 'GET' && path === '/api/v1/collection')
         return await this.collection(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
@@ -282,7 +341,13 @@ export class ApiApplication {
     if (
       request.method === 'POST' &&
       (path === '/api/v1/matches/private' ||
-        /^\/api\/v1\/matches\/private\/[^/]+\/join$/u.test(path)) &&
+        /^\/api\/v1\/matches\/private\/[^/]+\/join$/u.test(path) ||
+        /^\/api\/v1\/alpha-battles\/join\/[A-Fa-f0-9]{12}$/u.test(path) ||
+        (path === '/api/v1/alpha-battles' &&
+          typeof request.body === 'object' &&
+          request.body !== null &&
+          'mode' in request.body &&
+          request.body.mode === 'PRIVATE')) &&
       !(await flags.enabled('ENABLE_PRIVATE_MATCH'))
     )
       return disabled('ENABLE_PRIVATE_MATCH');
@@ -540,7 +605,7 @@ export class ApiApplication {
       : { status: 200, body: card };
   }
 
-  private async me(playerId: string): Promise<ApiResponse> {
+  private async me(playerId: string, discordSession = false): Promise<ApiResponse> {
     const player = await this.prisma.player.findUniqueOrThrow({
       where: { id: playerId },
       include: { user: { select: { displayName: true } } },
@@ -555,6 +620,7 @@ export class ApiApplication {
       body: {
         id: player.id,
         displayName: player.user.displayName,
+        adminRole: discordSession ? await adminRoleForUser(this.prisma, player.userId) : null,
         balances: Object.fromEntries(
           balances.map((entry) => [entry.currency, entry._sum.amount ?? 0]),
         ),
@@ -982,7 +1048,20 @@ export class ApiApplication {
         !this.oauth.session().verifiesCsrf(session, header(request.headers, 'x-csrf-token'))
       )
         throw new CsrfError();
-      return { id: session.playerId, userId: session.userId, sessionId: session.sessionId };
+      if (
+        session.authProvider === 'DISCORD' &&
+        (request.path === '/api/v1/collection' ||
+          request.path === '/api/v1/decks' ||
+          /^\/api\/v1\/decks\//u.test(request.path) ||
+          (request.method === 'POST' && request.path.startsWith('/api/v1/alpha-battles')))
+      )
+        await grantAdminCollection(this.prisma, session.playerId);
+      return {
+        id: session.playerId,
+        userId: session.userId,
+        sessionId: session.sessionId,
+        authProvider: session.authProvider,
+      };
     }
     const playerId = header(request.headers, 'x-deckdrive-player-id');
     if (
@@ -996,7 +1075,7 @@ export class ApiApplication {
       select: { id: true },
     });
     if (player === null) throw new UnauthorizedError();
-    return { ...player, userId: undefined, sessionId: undefined };
+    return { ...player, userId: undefined, sessionId: undefined, authProvider: undefined };
   }
 
   private sessionToken(request: ApiRequest): string | undefined {
@@ -1004,6 +1083,10 @@ export class ApiApplication {
   }
 
   private errorResponse(error: unknown): ApiResponse {
+    if (error instanceof AlphaBattleError)
+      return { status: error.status, body: { error: error.code } };
+    if (error instanceof DeckValidationError)
+      return { status: 400, body: { error: 'INVALID_DECK' } };
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
     if (error instanceof AdminInputError) return { status: 400, body: { error: error.code } };
     if (error instanceof AdminOperationError)
@@ -1214,6 +1297,8 @@ function deckLimit(value: Prisma.JsonValue): number | null {
     : null;
 }
 function toEngineDefinition(value: Prisma.JsonValue): CardDefinition {
+  if (!isValidLegacyCardDefinition(value))
+    throw new BadRequestError('このデッキは「全カードで対戦」で使用してください。');
   if (
     typeof value !== 'object' ||
     value === null ||

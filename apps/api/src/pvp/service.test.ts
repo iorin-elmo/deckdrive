@@ -13,7 +13,11 @@ describe('PvpMatchService', () => {
           position: 0,
           quantity: 30,
           cardVersion: {
-            definition: { id: 'strike', cost: 1, effects: [] },
+            definition: {
+              id: 'strike',
+              cost: 1,
+              effects: [{ type: 'DAMAGE', amount: 6, target: 'ENEMY' }],
+            },
           },
         },
       ],
