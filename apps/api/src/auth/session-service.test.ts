@@ -11,6 +11,7 @@ const validSession = {
   csrfTokenHash: sha256('csrf-token'),
   expiresAt: new Date('2026-09-28T00:00:00.000Z'),
   revokedAt: null,
+  authProvider: null,
   user: { player: { id: 'player-1' } },
 };
 
@@ -60,6 +61,7 @@ describe('PrismaSessionService', () => {
           playerId: 'player-1',
           csrfTokenHash: validSession.csrfTokenHash,
           expiresAt: validSession.expiresAt,
+          authProvider: null,
         },
         'session-token',
       ),
@@ -76,6 +78,7 @@ describe('PrismaSessionService', () => {
     const session = await service.authenticate('session-token');
 
     expect(session).toMatchObject({ sessionId: 'session-1', playerId: 'player-1' });
+    expect(session?.authProvider).toBeNull();
     if (session === undefined) throw new Error('Expected an authenticated session.');
     expect(service.verifiesCsrf(session, 'csrf-token')).toBe(true);
     expect(service.verifiesCsrf(session, 'incorrect')).toBe(false);
@@ -127,6 +130,7 @@ describe('PrismaSessionService', () => {
         playerId: 'player-1',
         csrfTokenHash: 'old-hash',
         expiresAt: validSession.expiresAt,
+        authProvider: null,
       },
       'session-token',
     );

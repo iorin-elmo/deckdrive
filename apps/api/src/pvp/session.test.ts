@@ -22,6 +22,84 @@ function state(): BattleState {
 }
 
 describe('MatchSession', () => {
+  it('excludes maintenance time from turn and disconnect deadlines', async () => {
+    let now = 0;
+    const session = new MatchSession({
+      state: state(),
+      now: () => now,
+      turnTimeoutMs: 100,
+      reconnectGraceMs: 100,
+      ratedAbandonment: true,
+    });
+    const first = { playerId: 'player-1' as PlayerId, send: vi.fn() };
+    session.connect(first);
+    session.connect({ playerId: 'player-2' as PlayerId, send: vi.fn() });
+    session.disconnect(first);
+    now = 50;
+    session.pauseTimeouts();
+    now = 1_050;
+    session.tick();
+    session.resumeTimeouts();
+    session.tick();
+    expect(session.actionSequence).toBe(0);
+    expect(session.currentState.phase).toBe('PLAYER_TURN');
+    now = 1_099;
+    session.tick();
+    expect(session.actionSequence).toBe(0);
+    now = 1_100;
+    session.tick();
+    await vi.waitFor(() => expect(session.currentState.phase).toBe('MATCH_END'));
+
+    now = 0;
+    const turnSession = new MatchSession({
+      state: state(),
+      now: () => now,
+      turnTimeoutMs: 100,
+    });
+    now = 50;
+    turnSession.pauseTimeouts();
+    now = 1_050;
+    turnSession.resumeTimeouts();
+    turnSession.tick();
+    expect(turnSession.actionSequence).toBe(0);
+    now = 1_099;
+    turnSession.tick();
+    expect(turnSession.actionSequence).toBe(0);
+    now = 1_100;
+    turnSession.tick();
+    await vi.waitFor(() => expect(turnSession.actionSequence).toBe(1));
+  });
+
+  it('keeps the new turn deadline when END_TURN precedes the maintenance resume tick', async () => {
+    let now = 0;
+    const session = new MatchSession({
+      state: state(),
+      now: () => now,
+      turnTimeoutMs: 100,
+    });
+    now = 50;
+    session.pauseTimeouts();
+    now = 1_050;
+    const playerId = session.currentState.activePlayerId;
+    const response = await session.receive(playerId, {
+      type: 'ACTION',
+      requestId: 'after-maintenance',
+      sequence: 0,
+      action: { type: 'END_TURN', playerId },
+    });
+    expect(response.some((message) => message.type === 'ERROR')).toBe(false);
+    expect(session.actionSequence).toBe(1);
+
+    now = 1_051;
+    session.resumeTimeouts();
+    now = 1_149;
+    session.tick();
+    expect(session.actionSequence).toBe(1);
+    now = 1_150;
+    session.tick();
+    await vi.waitFor(() => expect(session.actionSequence).toBe(2));
+  });
+
   it('settles a rated disconnect after the grace period through a server replay action', async () => {
     let now = 0;
     const accepted: unknown[] = [];

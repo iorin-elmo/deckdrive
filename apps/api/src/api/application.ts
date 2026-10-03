@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createLogger } from '@deck-drive/logger';
 
 import {
   createInitialBattleState,
@@ -52,6 +53,10 @@ import {
 } from '../packs/pack-opening.js';
 import { PvpMatchService, PvpRequestError } from '../pvp/service.js';
 import { PrismaRankedReadService, RankedHistoryCursorError } from '../ranked/read-service.js';
+import { adminRoleForUser } from '../admin/identity.js';
+import { AdminInputError, parseAdminCommand, uuidString } from '../admin/contracts.js';
+import { AdminOperationError, PrismaAdminService } from '../admin/service.js';
+import { PrismaFeatureFlags } from '../admin/feature-flags.js';
 import { RewardValidationError } from '../rewards/reward-ledger.js';
 import {
   LoginRewardConfigurationError,
@@ -70,6 +75,7 @@ export interface ApiRequest {
   readonly headers: Readonly<Record<string, string | undefined>>;
   readonly query?: Readonly<Record<string, string | undefined>>;
   readonly clientAddress?: string;
+  readonly requestId?: string;
   readonly body?: unknown;
 }
 
@@ -87,13 +93,29 @@ export class ApiApplication {
     private readonly prisma: PrismaClient,
     private readonly environment: NodeJS.ProcessEnv = process.env,
     private readonly pvp: PvpMatchService | undefined = undefined,
+    private readonly logger = createLogger(),
   ) {
     this.oauth = new OAuthService(prisma, environment);
+  }
+
+  async ready(): Promise<ApiResponse> {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return { status: 200, body: { status: 'ready' } };
+    } catch {
+      return { status: 503, body: { status: 'unavailable' } };
+    }
   }
 
   async handle(request: ApiRequest): Promise<ApiResponse> {
     try {
       const path = request.path;
+      if (path === '/api/v1/admin' || path.startsWith('/api/v1/admin/'))
+        return await this.handleAdmin(request);
+      if (!path.startsWith('/api/v1/auth/')) {
+        const disabled = await this.featureGate(request);
+        if (disabled !== null) return disabled;
+      }
       if (request.method === 'POST' && path === '/api/v1/auth/development') {
         return await this.developmentLogin(request);
       }
@@ -162,7 +184,7 @@ export class ApiApplication {
         return await this.collection(player.id);
       if (request.method === 'GET' && path === '/api/v1/decks')
         return await this.listDecks(player.id);
-      if (request.method === 'GET' && path === '/api/v1/packs') return this.listPacks();
+      if (request.method === 'GET' && path === '/api/v1/packs') return await this.listPacks();
       if (request.method === 'GET' && path === '/api/v1/missions')
         return await this.listMissions(player.id);
       if (request.method === 'GET' && path === '/api/v1/progression')
@@ -218,8 +240,117 @@ export class ApiApplication {
         return await this.getMatch(player.id, matchId);
       return { status: 404, body: { error: 'NOT_FOUND' } };
     } catch (error) {
-      return this.errorResponse(error);
+      const response = this.errorResponse(error);
+      const body = response.body as { error: string };
+      const internalCode =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        typeof error.code === 'string' &&
+        /^[A-Z0-9_]{2,40}$/u.test(error.code)
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : 'UNKNOWN_ERROR';
+      const log = response.status >= 500 ? this.logger.error : this.logger.warn;
+      log('api.error', {
+        ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
+        path: request.path,
+        status: response.status,
+        code: response.status >= 500 ? internalCode : body.error,
+      });
+      return response;
     }
+  }
+
+  private async featureGate(request: ApiRequest): Promise<ApiResponse | null> {
+    // Real Prisma clients always have this delegate; older unit fixtures stub only the touched rows.
+    if (!this.prisma.featureFlag) return null;
+    const flags = new PrismaFeatureFlags(this.prisma, this.environment.NODE_ENV);
+    const disabled = (name: string): ApiResponse => ({
+      status: 503,
+      body: { error: name === 'MAINTENANCE_MODE' ? 'MAINTENANCE_MODE' : 'FEATURE_DISABLED' },
+    });
+    if (await flags.enabled('MAINTENANCE_MODE')) return disabled('MAINTENANCE_MODE');
+    const path = request.path;
+    if (
+      (path.startsWith('/api/v1/ranked/') ||
+        (request.method === 'POST' && path === '/api/v1/matches/ranked')) &&
+      !(await flags.enabled('ENABLE_RANKED'))
+    )
+      return disabled('ENABLE_RANKED');
+    if (
+      request.method === 'POST' &&
+      (path === '/api/v1/matches/private' ||
+        /^\/api\/v1\/matches\/private\/[^/]+\/join$/u.test(path)) &&
+      !(await flags.enabled('ENABLE_PRIVATE_MATCH'))
+    )
+      return disabled('ENABLE_PRIVATE_MATCH');
+    if (path === '/api/v1/cosmetics' && !(await flags.enabled('ENABLE_COSMETICS')))
+      return disabled('ENABLE_COSMETICS');
+    if (
+      request.method === 'POST' &&
+      /^\/api\/v1\/packs\/(RARE_PACK|MONTHLY_BUNDLE)\/open$/u.test(path) &&
+      !(await flags.enabled('ENABLE_RARE_PACK'))
+    )
+      return disabled('ENABLE_RARE_PACK');
+    return null;
+  }
+
+  private async handleAdmin(request: ApiRequest): Promise<ApiResponse> {
+    // Administrative authority is never granted by the development player header.
+    const session = await this.oauth.session().authenticate(this.sessionToken(request));
+    if (session === undefined) throw new UnauthorizedError();
+    if (session.authProvider !== 'DISCORD')
+      return { status: 403, body: { error: 'ADMIN_FORBIDDEN' } };
+    if ((await adminRoleForUser(this.prisma, session.userId)) !== 'OWNER')
+      return { status: 403, body: { error: 'ADMIN_FORBIDDEN' } };
+    if (
+      isUnsafeMethod(request.method) &&
+      !this.oauth.session().verifiesCsrf(session, header(request.headers, 'x-csrf-token'))
+    )
+      throw new CsrfError();
+    const admin = new PrismaAdminService(this.prisma, this.environment);
+    const path = request.path;
+    if (request.method === 'GET' && path === '/api/v1/admin/session')
+      return { status: 200, body: { role: 'OWNER' } };
+    if (request.method === 'GET' && path === '/api/v1/admin/players')
+      return { status: 200, body: { items: await admin.players(request.query?.q ?? '') } };
+    const playerId = path.match(/^\/api\/v1\/admin\/players\/([^/]+)$/u)?.[1];
+    if (request.method === 'GET' && playerId !== undefined)
+      return { status: 200, body: await admin.player(uuidString(playerId, 'playerId')) };
+    const ratingPlayerId = path.match(/^\/api\/v1\/admin\/players\/([^/]+)\/rating$/u)?.[1];
+    if (request.method === 'GET' && ratingPlayerId !== undefined)
+      return { status: 200, body: await admin.rating(uuidString(ratingPlayerId, 'playerId')) };
+    if (request.method === 'GET' && path === '/api/v1/admin/matches')
+      return { status: 200, body: { items: await admin.matches(request.query?.q ?? '') } };
+    const replayMatchId = path.match(/^\/api\/v1\/admin\/matches\/([^/]+)\/replay$/u)?.[1];
+    if (request.method === 'GET' && replayMatchId !== undefined)
+      return { status: 200, body: await admin.replay(replayMatchId) };
+    if (request.method === 'GET' && path === '/api/v1/admin/flags')
+      return { status: 200, body: { items: await admin.flags() } };
+    if (request.method === 'GET' && path === '/api/v1/admin/audit')
+      return { status: 200, body: await admin.audit(request.query?.cursor) };
+    const debugBattleId = path.match(/^\/api\/v1\/admin\/debug-battles\/([^/]+)$/u)?.[1];
+    if (request.method === 'GET' && debugBattleId !== undefined)
+      return { status: 200, body: await admin.debugBattle(uuidString(debugBattleId, 'battleId')) };
+    const reportSeasonId = path.match(/^\/api\/v1\/admin\/seasons\/([^/]+)\/report$/u)?.[1];
+    if (request.method === 'GET' && reportSeasonId !== undefined)
+      return {
+        status: 200,
+        body: await admin.rankedReport(uuidString(reportSeasonId, 'seasonId')),
+      };
+    const flagsSeasonId = path.match(/^\/api\/v1\/admin\/seasons\/([^/]+)\/flags$/u)?.[1];
+    if (request.method === 'GET' && flagsSeasonId !== undefined)
+      return {
+        status: 200,
+        body: { items: await admin.rankedFlags(uuidString(flagsSeasonId, 'seasonId')) },
+      };
+    if (request.method === 'POST' && path === '/api/v1/admin/actions') {
+      const command = parseAdminCommand(request.body);
+      return { status: 200, body: await admin.execute(session.userId, command) };
+    }
+    return { status: 404, body: { error: 'NOT_FOUND' } };
   }
 
   private async developmentLogin(request: ApiRequest): Promise<ApiResponse> {
@@ -463,15 +594,25 @@ export class ApiApplication {
     };
   }
 
-  private listPacks(): ApiResponse {
+  private async listPacks(): Promise<ApiResponse> {
+    const rareEnabled = this.prisma.featureFlag
+      ? await new PrismaFeatureFlags(this.prisma, this.environment.NODE_ENV).enabled(
+          'ENABLE_RARE_PACK',
+        )
+      : true;
     return {
       status: 200,
       body: {
-        products: packProducts.map((product) => ({
-          id: product.id,
-          gemCost: product.gemCost,
-          limit: product.limit,
-        })),
+        products: packProducts
+          .filter(
+            (product) =>
+              rareEnabled || (product.id !== 'RARE_PACK' && product.id !== 'MONTHLY_BUNDLE'),
+          )
+          .map((product) => ({
+            id: product.id,
+            gemCost: product.gemCost,
+            limit: product.limit,
+          })),
       },
     };
   }
@@ -864,6 +1005,9 @@ export class ApiApplication {
 
   private errorResponse(error: unknown): ApiResponse {
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
+    if (error instanceof AdminInputError) return { status: 400, body: { error: error.code } };
+    if (error instanceof AdminOperationError)
+      return { status: error.status, body: { error: error.code } };
     if (error instanceof CsrfError)
       return { status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } };
     if (error instanceof OAuthRateLimitError)
