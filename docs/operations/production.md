@@ -3,7 +3,8 @@
 This deployment keeps one API process, one PostgreSQL container, static web and
 admin pages, and a Caddy HTTPS entry point on a 64-bit Raspberry Pi. The
 `Deploy production` GitHub Actions workflow builds ARM64 images for the exact
-develop/main commit, pushes immutable SHA tags to GHCR, and uses SSH to deploy.
+develop/main commit, pushes commit-SHA tags to GHCR, and deploys the exact
+image digests over SSH.
 The Pi keeps the runtime secrets; the workflow never uploads them.
 
 ## One-time preparation

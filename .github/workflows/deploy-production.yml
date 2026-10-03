@@ -45,8 +45,10 @@ jobs:
           set -euo pipefail
           repository="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker buildx build --platform linux/arm64 --push \
+            --metadata-file "$RUNNER_TEMP/api-image.json" \
             --file infra/docker/api.Dockerfile --tag "$repository-api:$GITHUB_SHA" .
           docker buildx build --platform linux/arm64 --push \
+            --metadata-file "$RUNNER_TEMP/web-image.json" \
             --file infra/docker/web.Dockerfile --tag "$repository-web:$GITHUB_SHA" .
 
       - name: Configure pinned SSH host identity
@@ -73,6 +75,8 @@ jobs:
           set -euo pipefail
           target="$DEPLOY_USER@$DEPLOY_HOST"
           repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          api_digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/api-image.json")"
+          web_digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/web-image.json")"
           ssh -o StrictHostKeyChecking=yes "$target" 'mkdir -p deckdrive-prod/scripts/ops'
           scp -o StrictHostKeyChecking=yes infra/docker/compose.production.yml "$target:deckdrive-prod/compose.production.yml"
           scp -o StrictHostKeyChecking=yes infra/docker/Caddyfile "$target:deckdrive-prod/Caddyfile"
@@ -80,4 +84,4 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes "$target" \
             "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
           ssh -o StrictHostKeyChecking=yes "$target" \
-            "bash deckdrive-prod/scripts/ops/deploy.sh '$GITHUB_SHA' '$repository'"
+            "bash deckdrive-prod/scripts/ops/deploy.sh '$GITHUB_SHA' '$repository' '$api_digest' '$web_digest'"

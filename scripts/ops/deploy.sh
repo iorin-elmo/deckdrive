@@ -7,14 +7,14 @@ require_command crontab
 require_command curl
 require_file "$DEPLOY_DIR/runtime.env"
 require_file "$DEPLOY_DIR/backup.env"
-if [[ "$#" != 2 || ! "$1" =~ ^[a-f0-9]{40}$ || ! "$2" =~ ^ghcr\.io/[a-z0-9._/-]+$ ]]; then
-  printf 'Usage: deploy.sh <40-character commit SHA> <ghcr.io/owner/repository>\n' >&2
+if [[ "$#" != 4 || ! "$1" =~ ^[a-f0-9]{40}$ || ! "$2" =~ ^ghcr\.io/[a-z0-9._/-]+$ || ! "$3" =~ ^sha256:[a-f0-9]{64}$ || ! "$4" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+  printf 'Usage: deploy.sh <40-character commit SHA> <ghcr.io/owner/repository> <api digest> <web digest>\n' >&2
   exit 2
 fi
 
 umask 077
 candidate="$DEPLOY_DIR/release.candidate.env"
-printf 'API_IMAGE=%s-api:%s\nWEB_IMAGE=%s-web:%s\n' "$2" "$1" "$2" "$1" > "$candidate"
+printf 'API_IMAGE=%s-api@%s\nWEB_IMAGE=%s-web@%s\n' "$2" "$3" "$2" "$4" > "$candidate"
 old_release=0
 migration_started=0
 if [[ -f "$DEPLOY_DIR/release.env" ]]; then
