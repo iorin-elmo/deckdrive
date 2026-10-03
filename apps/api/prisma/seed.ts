@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { PrismaPg } from '@prisma/adapter-pg';
-import { packCardDefinitions } from '@deck-drive/card-definitions';
+import { allCardDefinitions as packCardDefinitions } from '@deck-drive/card-definitions';
 
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { cosmeticCatalog } from '../src/cosmetics/catalog.js';

@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { AlphaBattleError, AlphaBattleService } from '../battles/alpha-service.js';
+import { grantAdminCollection, exchangeCard, exchangeCosts } from '../cards/acquisition.js';
+import { adminRoleForUser } from '../admin/identity.js';
 
 import {
   createInitialBattleState,
+  isValidLegacyCardDefinition,
   projectBattleStateV2,
   type BattleState,
   type BattleStateV2,
@@ -115,6 +119,62 @@ export class ApiApplication {
       if (request.method === 'GET' && path === '/api/v1/cards') return await this.listCards();
       const cardId = path.match(/^\/api\/v1\/cards\/([^/]+)$/u)?.[1];
       if (request.method === 'GET' && cardId !== undefined) return await this.getCard(cardId);
+
+      if (path.startsWith('/api/v1/alpha-battles') || path === '/api/v1/card-exchange') {
+        const player = await this.requirePlayer(request);
+        if (request.method === 'POST') await grantAdminCollection(this.prisma, player.id);
+        if (path === '/api/v1/card-exchange') {
+          if (request.method === 'GET')
+            return {
+              status: 200,
+              body: {
+                costs: exchangeCosts,
+                cards: await this.prisma.cardVersion.findMany({
+                  where: { version: currentCardDataVersion(this.environment) },
+                  select: { id: true, cardId: true, definition: true },
+                }),
+              },
+            };
+          if (request.method === 'POST')
+            return {
+              status: 200,
+              body: await exchangeCard(
+                this.prisma,
+                player.id,
+                string(object(request.body).cardVersionId, 'cardVersionId'),
+                header(request.headers, 'idempotency-key') ?? '',
+              ),
+            };
+        }
+        const secret = this.environment.BATTLE_COMMAND_SECRET;
+        if (!secret || secret.length < 32)
+          return { status: 503, body: { error: 'BATTLE_NOT_CONFIGURED' } };
+        const service = new AlphaBattleService(this.prisma, secret);
+        const replayBattleId = path.match(
+          /^\/api\/v1\/alpha-battles\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/replay$/u,
+        )?.[1];
+        if (request.method === 'GET' && replayBattleId)
+          return { status: 200, body: await service.replay(player.id, replayBattleId) };
+        if (path === '/api/v1/alpha-battles' && request.method === 'POST')
+          return { status: 201, body: await service.start(player.id, request.body) };
+        if (path === '/api/v1/alpha-battles/active' && request.method === 'GET')
+          return { status: 200, body: await service.active(player.id) };
+        const join = path.match(/^\/api\/v1\/alpha-battles\/join\/([A-Fa-f0-9]{12})$/u)?.[1];
+        if (join && request.method === 'POST')
+          return { status: 200, body: await service.join(player.id, join, request.body) };
+        const battle = path.match(
+          /^\/api\/v1\/alpha-battles\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})(\/actions)?$/u,
+        );
+        if (battle?.[1]) {
+          if (request.method === 'GET' && !battle[2])
+            return { status: 200, body: await service.read(player.id, battle[1]) };
+          if (request.method === 'POST' && battle[2])
+            return { status: 200, body: await service.action(player.id, battle[1], request.body) };
+          if (request.method === 'DELETE' && !battle[2])
+            return { status: 200, body: await service.cancel(player.id, battle[1]) };
+        }
+        return { status: 404, body: { error: 'NOT_FOUND' } };
+      }
 
       const deckId = path.match(/^\/api\/v1\/decks\/([^/]+)$/u)?.[1];
       const matchId = path.match(/^\/api\/v1\/matches\/([^/]+)$/u)?.[1];
@@ -424,6 +484,7 @@ export class ApiApplication {
       body: {
         id: player.id,
         displayName: player.user.displayName,
+        adminRole: await adminRoleForUser(this.prisma, player.userId),
         balances: Object.fromEntries(
           balances.map((entry) => [entry.currency, entry._sum.amount ?? 0]),
         ),
@@ -441,6 +502,7 @@ export class ApiApplication {
   }
 
   private async collection(playerId: string): Promise<ApiResponse> {
+    await grantAdminCollection(this.prisma, playerId);
     const cards = await this.prisma.playerCard.findMany({
       where: { playerId },
       orderBy: { updatedAt: 'asc' },
@@ -547,6 +609,7 @@ export class ApiApplication {
   }
 
   private async createDeck(playerId: string, body: unknown): Promise<ApiResponse> {
+    await grantAdminCollection(this.prisma, playerId);
     const input = deckInput(body);
     await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.create({
@@ -568,6 +631,7 @@ export class ApiApplication {
   }
 
   private async updateDeck(playerId: string, deckId: string, body: unknown): Promise<ApiResponse> {
+    await grantAdminCollection(this.prisma, playerId);
     const input = deckInput(body);
     await this.validateOwnedDeck(playerId, input.cardDataVersion, input.cards);
     const deck = await this.prisma.deck.findFirst({
@@ -863,6 +927,10 @@ export class ApiApplication {
   }
 
   private errorResponse(error: unknown): ApiResponse {
+    if (error instanceof AlphaBattleError)
+      return { status: error.status, body: { error: error.code } };
+    if (error instanceof DeckValidationError)
+      return { status: 400, body: { error: 'INVALID_DECK' } };
     if (error instanceof UnauthorizedError) return { status: 401, body: { error: 'UNAUTHORIZED' } };
     if (error instanceof CsrfError)
       return { status: 403, body: { error: 'CSRF_VALIDATION_FAILED' } };
@@ -1070,6 +1138,8 @@ function deckLimit(value: Prisma.JsonValue): number | null {
     : null;
 }
 function toEngineDefinition(value: Prisma.JsonValue): CardDefinition {
+  if (!isValidLegacyCardDefinition(value))
+    throw new BadRequestError('このデッキは「全カードで対戦」で使用してください。');
   if (
     typeof value !== 'object' ||
     value === null ||

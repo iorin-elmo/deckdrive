@@ -51,6 +51,7 @@ export interface Collection {
 }
 
 export interface Player {
+  readonly adminRole?: 'OWNER' | null;
   readonly id: string;
   readonly displayName: string;
   readonly balances: Readonly<Record<string, number>>;
@@ -496,7 +497,7 @@ export class DeckDriveApi implements DeckDriveClient {
     return response.cosmetics;
   }
 
-  private async request<Result>(
+  async request<Result>(
     path: string,
     options: {
       readonly method?: 'GET' | 'POST' | 'PUT' | 'DELETE';

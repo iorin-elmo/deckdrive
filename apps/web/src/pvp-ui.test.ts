@@ -162,7 +162,7 @@ describe('PvP recovery in the routed UI', () => {
     expect(TestSocket.instances).toHaveLength(1);
     expect(window.localStorage.getItem(inviteStorageKey)).toBeNull();
     await act(async () => container.querySelector<HTMLAnchorElement>('#return-to-lobby')!.click());
-    expect(container.textContent).toContain('Enter the arena');
+    expect(container.textContent).toContain('全カードで対戦');
     expect(TestSocket.instances).toHaveLength(1);
   });
 });

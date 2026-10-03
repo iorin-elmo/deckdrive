@@ -1,3 +1,4 @@
+import { poolCardDefinitions } from './pool-cards.js';
 /** Versioned, serializable card-definition contracts. */
 export const packageName = '@deck-drive/card-definitions' as const;
 
@@ -14,6 +15,7 @@ export interface CardTranslation {
 }
 
 export type CardEffect =
+  | { readonly type: 'POOL_CARD'; readonly cardId: string }
   | {
       readonly type: 'DAMAGE';
       readonly amount: number;
@@ -832,6 +834,7 @@ export const allCardDefinitions: readonly CardDefinition[] = [
   ...basicCardDefinitions,
   ...packCardDefinitions,
   ...specialVictoryCardDefinitions,
+  ...poolCardDefinitions,
 ];
 
 export function validateCardDefinition(card: unknown): CardDefinitionValidationResult {
@@ -968,6 +971,11 @@ function isValidCardEffect(effect: unknown): effect is CardEffect {
   const hasSupportedTarget = value.target === 'SELF' || value.target === 'ENEMY';
 
   switch (value.type) {
+    case 'POOL_CARD':
+      return (
+        typeof value.cardId === 'string' &&
+        poolCardDefinitions.some((card) => card.id === value.cardId)
+      );
     case 'DAMAGE':
       return hasPositiveAmount && hasSupportedTarget;
     case 'HEAL':

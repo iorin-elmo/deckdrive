@@ -6,6 +6,7 @@
  */
 import { applyRuleAction, prepareRuleAction, validateRuleAction } from './rules.js';
 import type { CardDefinitionSource } from './rules.js';
+export { isValidDefinition as isValidLegacyCardDefinition } from './rules.js';
 
 export const packageName = '@deck-drive/game-engine' as const;
 
@@ -292,3 +293,8 @@ export function calculateResult(state: BattleState): BattleResult {
 
   return remainingPlayers.length === 0 ? { status: 'DRAW' } : { status: 'IN_PROGRESS' };
 }
+export {
+  legalActionsV2,
+  playChoiceOptionsV2,
+  type PlayChoiceOptionsV2,
+} from './legal-actions-v2.js';

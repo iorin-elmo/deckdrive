@@ -8,6 +8,28 @@ import { sha256 } from '../auth/crypto.js';
 import { ApiApplication } from './application.js';
 
 describe('ApiApplication authentication', () => {
+  it('requires session authentication for complete-pool battles and card exchange', async () => {
+    const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'production' });
+    const id = '11111111-1111-4111-8111-111111111111';
+    for (const [method, path] of [
+      ['GET', '/api/v1/alpha-battles/active'],
+      ['POST', '/api/v1/alpha-battles'],
+      ['GET', `/api/v1/alpha-battles/${id}`],
+      ['POST', `/api/v1/alpha-battles/${id}/actions`],
+      ['GET', `/api/v1/alpha-battles/${id}/replay`],
+      ['DELETE', `/api/v1/alpha-battles/${id}`],
+      ['GET', '/api/v1/card-exchange'],
+      ['POST', '/api/v1/card-exchange'],
+    ]) {
+      expect(
+        await application.handle({
+          method: method!,
+          path: path!,
+          headers: { 'x-deckdrive-player-id': id },
+        }),
+      ).toEqual({ status: 401, body: { error: 'UNAUTHORIZED' } });
+    }
+  });
   it('does not expose operator analytics or abuse flags through the player API', async () => {
     const application = new ApiApplication({} as PrismaClient, { NODE_ENV: 'test' });
     for (const path of ['/api/v1/ranked/analytics', '/api/v1/ranked/abuse-flags']) {
