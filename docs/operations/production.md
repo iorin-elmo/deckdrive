@@ -34,9 +34,12 @@ The Pi keeps the runtime secrets; the workflow never uploads them.
 5. From GitHub Actions, run **Deploy production** on `develop` (or `main`).
    The workflow uploads Compose and operation scripts to `~/deckdrive-prod`.
    It pulls the new images, takes and verifies an encrypted pre-migration DB
-   dump, runs committed migrations, starts the services, then checks API
-   readiness and the web/admin entry points. The first deployment also
-   installs the daily backup and weekly restore-drill cron entries.
+   dump, stops the old API/web services, runs committed migrations, starts the
+   new services, restarts Caddy to load the uploaded configuration, then checks API
+   readiness and the web/admin entry points through HTTPS.
+   Requests may receive an error during this migration window. The first
+   deployment also installs the daily backup and weekly restore-drill cron
+   entries.
 
 The active release file is promoted only after smoke checks and backup
 scheduling succeed. A failed update preserves both the active release and its
@@ -50,6 +53,11 @@ The production Compose network reserves `10.240.70.0/24` and assigns nginx
 this subnet does not overlap another Pi network before the first deployment.
 Caddy replaces client-supplied forwarding headers, and nginx passes that
 verified client address to the API so OAuth rate limits apply per client.
+Smoke checks connect to `127.0.0.1:443` with `PUBLIC_HOST` as the HTTPS host,
+so they verify Caddy routing and its trusted TLS certificate without relying
+on the Pi's DNS resolver. All three routes must return HTTP 200; redirects and
+missing or invalid certificates fail deployment, restore, and image rollback
+checks.
 
 ## Routine operations
 

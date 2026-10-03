@@ -55,11 +55,13 @@ if [[ "$old_release" == 1 ]]; then
 else
   DEPLOY_RELEASE_FILE="$candidate" bash "$OPS_DIR/backup.sh" pre-deploy
 fi
+DEPLOY_RELEASE_FILE="$candidate" compose stop --timeout 30 api web
 migration_started=1
 DEPLOY_RELEASE_FILE="$candidate" compose run --rm --no-deps api \
   pnpm --filter @deck-drive/api prisma:migrate:deploy
 DEPLOY_RELEASE_FILE="$candidate" compose up -d --wait --wait-timeout 180 api web caddy
-smoke_check
+DEPLOY_RELEASE_FILE="$candidate" compose restart caddy
+DEPLOY_RELEASE_FILE="$candidate" smoke_check
 bash "$OPS_DIR/install-schedule.sh"
 mv -- "$candidate" "$DEPLOY_DIR/release.env"
 if [[ "$old_release" == 1 ]]; then mv -- "$previous_candidate" "$DEPLOY_DIR/release.previous.env"; fi

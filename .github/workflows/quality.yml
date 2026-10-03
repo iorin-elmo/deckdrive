@@ -69,6 +69,7 @@ jobs:
           bash -n scripts/ops/*.sh
           bash tests/ops/deploy-failure.sh
           bash tests/ops/backup-contract.sh
+          bash tests/ops/smoke-https.sh
           cp infra/docker/runtime.env.example infra/docker/runtime.env
           trap 'rm -f infra/docker/runtime.env' EXIT
           API_IMAGE=ghcr.io/example/deckdrive-api:test \

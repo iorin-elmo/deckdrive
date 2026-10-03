@@ -54,12 +54,20 @@ load_backup_environment() {
 
 smoke_check() {
   require_command curl
-  local attempt path ready
+  require_command python3
+  local attempt path ready public_host status
+  public_host="$(compose config --format json | python3 -c \
+    'import json,sys; print(json.load(sys.stdin)["services"]["caddy"]["environment"]["PUBLIC_HOST"])')"
+  if [[ ! "$public_host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+    printf 'PUBLIC_HOST must be a plain hostname for HTTPS smoke checks.\n' >&2
+    return 1
+  fi
   for attempt in $(seq 1 36); do
     ready=1
     for path in /health/ready / /admin/; do
-      if ! curl --fail --silent --show-error --max-time 5 --output /dev/null \
-        "http://127.0.0.1:8080$path"; then
+      if ! status="$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
+        --resolve "$public_host:443:127.0.0.1" --output /dev/null \
+        --write-out '%{http_code}' "https://$public_host$path")" || [[ "$status" != 200 ]]; then
         ready=0
         break
       fi
@@ -67,6 +75,6 @@ smoke_check() {
     if [[ "$ready" == 1 ]]; then return; fi
     sleep 5
   done
-  printf 'Health/smoke check failed after 180 seconds.\n' >&2
+  printf 'HTTPS health/smoke check failed for %s after 36 attempts.\n' "$public_host" >&2
   return 1
 }
