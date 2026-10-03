@@ -35,12 +35,10 @@ describe('PrismaFeatureFlags', () => {
 describe('feature flag API gates', () => {
   it('applies N00 private-match and maintenance gates to complete-pool battles', async () => {
     let maintenance = false;
-    const findUnique = vi
-      .fn()
-      .mockImplementation(({ where }: { where: { name: string } }) => ({
-        enabled:
-          where.name === 'MAINTENANCE_MODE' ? maintenance : where.name !== 'ENABLE_PRIVATE_MATCH',
-      }));
+    const findUnique = vi.fn().mockImplementation(({ where }: { where: { name: string } }) => ({
+      enabled:
+        where.name === 'MAINTENANCE_MODE' ? maintenance : where.name !== 'ENABLE_PRIVATE_MATCH',
+    }));
     const app = new ApiApplication({ featureFlag: { findUnique } } as never);
     for (const request of [
       { method: 'POST', path: '/api/v1/alpha-battles', body: { mode: 'PRIVATE' }, headers: {} },

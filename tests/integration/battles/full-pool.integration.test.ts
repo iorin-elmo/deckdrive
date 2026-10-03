@@ -17,6 +17,8 @@ import {
   grantAdminCollection,
 } from '../../../apps/api/src/cards/acquisition.js';
 import { discordOwnerId } from '../../../apps/api/src/admin/identity.js';
+import { ApiApplication } from '../../../apps/api/src/api/application.js';
+import { PrismaSessionService } from '../../../apps/api/src/auth/session-service.js';
 loadRootEnvironment();
 if (!process.env.DATABASE_URL) throw Error('DATABASE_URL is required.');
 const prisma = new PrismaClient({
@@ -109,6 +111,7 @@ describe('complete card pool persistence and transport', () => {
     }
   }, 30000);
   afterAll(async () => {
+    await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.adminAction.deleteMany({ where: { adminUserId: { in: userIds } } });
     await prisma.adminCardEntitlement.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.packOpening.deleteMany({ where: { playerId: { in: playerIds } } });
@@ -124,10 +127,31 @@ describe('complete card pool persistence and transport', () => {
   it('grants every card only to the verified administrator', async () => {
     const admin = await player(true),
       ordinary = await player();
-    await Promise.all([
-      grantAdminCollection(prisma, admin),
-      grantAdminCollection(prisma, ordinary),
-    ]);
+    const adminPlayer = await prisma.player.findUniqueOrThrow({ where: { id: admin } });
+    const sessions = new PrismaSessionService(prisma);
+    const legacy = await sessions.create(adminPlayer.userId);
+    const app = new ApiApplication(prisma, { NODE_ENV: 'production' });
+    expect(
+      (
+        await app.handle({
+          method: 'GET',
+          path: '/api/v1/collection',
+          headers: { cookie: `deckdrive_session=${legacy.token}` },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await prisma.playerCard.count({ where: { playerId: admin } })).toBe(0);
+    const discord = await sessions.create(adminPlayer.userId, 'DISCORD');
+    expect(
+      (
+        await app.handle({
+          method: 'GET',
+          path: '/api/v1/collection',
+          headers: { cookie: `deckdrive_session=${discord.token}` },
+        })
+      ).status,
+    ).toBe(200);
+    await grantAdminCollection(prisma, ordinary);
     const owned = await prisma.playerCard.findMany({ where: { playerId: admin } });
     expect(owned).toHaveLength(allCardDefinitions.length);
     expect(owned.every((card) => card.quantity === 3)).toBe(true);

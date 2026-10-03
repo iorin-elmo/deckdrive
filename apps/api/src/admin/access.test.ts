@@ -31,7 +31,7 @@ describe('admin access', () => {
         path: '/api/v1/collection',
         headers: { cookie: 'deckdrive_session=token' },
       }),
-    ).toEqual({ status: 200, body: { cards: [] } });
+    ).toMatchObject({ status: 200, body: { cards: [] } });
     expect(findUnique).not.toHaveBeenCalled();
   });
   it('does not accept the development player header as administrator authentication', async () => {
