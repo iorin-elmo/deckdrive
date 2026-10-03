@@ -24,7 +24,7 @@ describe('PrismaFeatureFlags', () => {
 
   it('fails closed when the environment is missing or unknown', async () => {
     const findUnique = vi.fn().mockResolvedValue({ enabled: true });
-    for (const environment of [undefined, 'preview']) {
+    for (const environment of [undefined, 'preview', 'test']) {
       const flags = new PrismaFeatureFlags({ featureFlag: { findUnique } } as never, environment);
       await expect(flags.enabled('ENABLE_DEBUG')).resolves.toBe(false);
     }

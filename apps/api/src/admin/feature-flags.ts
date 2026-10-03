@@ -3,10 +3,8 @@ import type { PrismaClient } from '../generated/prisma/client.js';
 export const featureFlagDefaults = {
   ENABLE_RANKED: true,
   ENABLE_RARE_PACK: true,
-  ENABLE_X_LOGIN: false,
   ENABLE_COSMETICS: true,
   ENABLE_PRIVATE_MATCH: true,
-  ENABLE_NEW_CARDS: true,
   ENABLE_DEBUG: false,
   MAINTENANCE_MODE: false,
 } as const;
@@ -14,7 +12,7 @@ export const featureFlagDefaults = {
 export type FeatureFlagName = keyof typeof featureFlagDefaults;
 
 export function debugEnvironmentAllowed(environment: string | undefined): boolean {
-  return environment === 'development' || environment === 'staging' || environment === 'test';
+  return environment === 'development' || environment === 'staging';
 }
 
 export function isFeatureFlagName(value: string): value is FeatureFlagName {

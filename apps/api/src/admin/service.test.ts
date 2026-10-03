@@ -63,6 +63,39 @@ describe('PrismaAdminService', () => {
     });
   });
 
+  it('audits the effective default before the first flag override', async () => {
+    const createAudit = vi.fn().mockResolvedValue({ id: 'audit-flag' });
+    const transaction = {
+      adminAction: { findUnique: vi.fn().mockResolvedValue(null), create: createAudit },
+      featureFlag: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const service = new PrismaAdminService({
+      $transaction: vi.fn().mockImplementation((operation) => operation(transaction)),
+    } as never);
+
+    await expect(
+      service.execute('admin-user', {
+        action: 'SET_FLAG',
+        name: 'ENABLE_RANKED',
+        enabled: false,
+        reason: 'Suspend ranked queue',
+        requestId: 'ranked-off',
+      }),
+    ).resolves.toMatchObject({
+      before: { enabled: true },
+      after: { enabled: false },
+    });
+    expect(createAudit).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        before: { enabled: true },
+        after: { enabled: false },
+      }),
+    });
+  });
+
   it('replays the same request and rejects a different payload for that key', async () => {
     const recorded = {
       id: 'audit-1',

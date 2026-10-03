@@ -57,7 +57,16 @@ export function createLogger(
     for (const [key, value] of Object.entries(fields)) {
       if (!allowedFields.has(key as keyof LogFields)) continue;
       if (typeof value === 'number' && Number.isFinite(value)) safe[key] = value;
-      if (typeof value === 'string') safe[key] = value.replace(/[\r\n\t]/gu, ' ').slice(0, 200);
+      if (typeof value === 'string') {
+        const redacted =
+          key === 'path'
+            ? value.replace(
+                /(\/api\/v1\/matches\/private\/)[^/]+(?=\/(?:join|status)(?:\/|$))/gu,
+                '$1:inviteCode',
+              )
+            : value;
+        safe[key] = redacted.replace(/[\r\n\t]/gu, ' ').slice(0, 200);
+      }
     }
     write(`${JSON.stringify({ level, event, timestamp: now().toISOString(), ...safe })}\n`);
   };

@@ -28,4 +28,19 @@ describe('createLogger', () => {
       action: 'PLAY_CARD',
     });
   });
+
+  it('redacts private-match invite codes from request paths', () => {
+    const lines: string[] = [];
+    const logger = createLogger((line) => lines.push(line));
+    logger.info('http.request', {
+      path: '/api/v1/matches/private/secret-invite/join',
+    });
+    logger.error('api.error', {
+      path: '/api/v1/matches/private/secret-invite/status',
+    });
+    expect(lines.map((line) => JSON.parse(line).path)).toEqual([
+      '/api/v1/matches/private/:inviteCode/join',
+      '/api/v1/matches/private/:inviteCode/status',
+    ]);
+  });
 });

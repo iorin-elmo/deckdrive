@@ -22,7 +22,11 @@ import { packRarity } from '../packs/prisma-pack-opening.js';
 import { PrismaRankedAnalytics } from '../ranked/prisma-analytics.js';
 import { PrismaRankedReadService } from '../ranked/read-service.js';
 import type { AdminCommand } from './contracts.js';
-import { PrismaFeatureFlags, debugEnvironmentAllowed } from './feature-flags.js';
+import {
+  PrismaFeatureFlags,
+  debugEnvironmentAllowed,
+  featureFlagDefaults,
+} from './feature-flags.js';
 
 type Transaction = Prisma.TransactionClient;
 type Change = {
@@ -423,7 +427,12 @@ export class PrismaAdminService {
         });
         return {
           target: `flag:${command.name}`,
-          before: { enabled: existing?.enabled ?? null },
+          before: {
+            enabled:
+              command.name === 'ENABLE_DEBUG' && !debugEnvironmentAllowed(this.environment.NODE_ENV)
+                ? false
+                : (existing?.enabled ?? featureFlagDefaults[command.name]),
+          },
           after: { enabled: command.enabled },
         };
       }
