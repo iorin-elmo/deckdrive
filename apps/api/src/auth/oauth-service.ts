@@ -213,8 +213,10 @@ export class OAuthService {
         ? await this.sessionService.authenticate(sessionToken)
         : undefined;
     return {
-      ...(authorization.linkUserId === null && existingSession?.userId !== userId
-        ? { session: await this.sessionService.create(userId) }
+      ...(authorization.linkUserId === null &&
+      (existingSession?.userId !== userId ||
+        existingSession.authProvider !== providerValue(adapter.id))
+        ? { session: await this.sessionService.create(userId, providerValue(adapter.id)) }
         : {}),
       returnTo: stateCookie.returnTo,
       state: stateCookie.state,

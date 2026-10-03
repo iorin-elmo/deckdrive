@@ -3,6 +3,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Socket } from 'node:net';
 
 import type { PlayerId } from '@deck-drive/game-engine';
+import { correlationId, createLogger } from '@deck-drive/logger';
 
 import { MatchSession, type ConnectedPlayer } from './session.js';
 import { parseClientMessage, type ServerMessage } from './protocol.js';
@@ -14,6 +15,7 @@ export interface PvpWebSocketRegistry {
 }
 
 export interface PvpWebSocketOptions {
+  readonly logger?: ReturnType<typeof createLogger>;
   readonly maxMessageBytes?: number;
   readonly tickIntervalMs?: number;
   readonly maxPendingActionsPerPlayer?: number;
@@ -39,7 +41,12 @@ export function attachPvpWebSocket(
   const maxOutboundBytes = options.maxOutboundBytes ?? 256 * 1024;
   const sessionRevalidationIntervalMs = options.sessionRevalidationIntervalMs ?? 30_000;
   const connections = new Set<PvpWebSocketConnection>();
+  const logger = options.logger ?? createLogger();
   const onUpgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
+    const requestId = correlationId(request.headers['x-request-id']);
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const matchId = path.match(/^\/ws\/matches\/([^/]+)$/u)?.[1];
+    logger.info('ws.upgrade', { requestId, path, ...(matchId === undefined ? {} : { matchId }) });
     void acceptUpgrade(
       request,
       socket,
@@ -52,8 +59,11 @@ export function attachPvpWebSocket(
       maxActionsPerSecond,
       maxMessagesPerSecond,
       maxOutboundBytes,
+      requestId,
+      logger,
       (connection) => connections.delete(connection),
     ).catch(() => {
+      logger.error('ws.upgrade.error', { requestId, path, code: 'INTERNAL_ERROR' });
       if (!socket.destroyed) rejectUpgrade(socket, 500, 'WebSocket upgrade failed.');
     });
   };
@@ -90,6 +100,8 @@ async function acceptUpgrade(
   maxActionsPerSecond: number,
   maxMessagesPerSecond: number,
   maxOutboundBytes: number,
+  requestId: string,
+  logger: ReturnType<typeof createLogger>,
   onClosed: (connection: PvpWebSocketConnection) => void,
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost');
@@ -137,6 +149,7 @@ async function acceptUpgrade(
     maxActionsPerSecond,
     maxMessagesPerSecond,
     maxOutboundBytes,
+    logger,
     onClosed,
   );
   socket.write(
@@ -145,6 +158,7 @@ async function acceptUpgrade(
       'Upgrade: websocket',
       'Connection: Upgrade',
       `Sec-WebSocket-Accept: ${webSocketAccept(key)}`,
+      `X-Request-Id: ${requestId}`,
       '\r\n',
     ].join('\r\n'),
   );
@@ -169,6 +183,7 @@ class PvpWebSocketConnection {
     private readonly maxActionsPerSecond: number,
     private readonly maxMessagesPerSecond: number,
     private readonly maxOutboundBytes: number,
+    private readonly logger: ReturnType<typeof createLogger>,
     private readonly onClosed: (connection: PvpWebSocketConnection) => void,
   ) {}
 
@@ -298,6 +313,22 @@ class PvpWebSocketConnection {
         typeof value.requestId === 'string'
           ? value.requestId
           : undefined;
+      if (actionRequest !== undefined)
+        this.logger.info('ws.action', {
+          ...(/^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest) ? { requestId: actionRequest } : {}),
+          matchId: this.session.matchId,
+          playerId: this.playerId,
+          action:
+            typeof value === 'object' &&
+            value !== null &&
+            'action' in value &&
+            typeof value.action === 'object' &&
+            value.action !== null &&
+            'type' in value.action &&
+            typeof value.action.type === 'string'
+              ? value.action.type
+              : 'UNKNOWN',
+        });
       if (actionRequest !== undefined && !this.allowAction()) {
         this.sendJson({
           type: 'ERROR',
@@ -315,6 +346,19 @@ class PvpWebSocketConnection {
       void this.session
         .receive(this.playerId, value)
         .then((messages) => {
+          if (actionRequest !== undefined) {
+            const failure = messages.find((message) => message.type === 'ERROR');
+            const fields = {
+              ...(/^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest)
+                ? { requestId: actionRequest }
+                : {}),
+              matchId: this.session.matchId,
+              playerId: this.playerId,
+              ...(failure?.type === 'ERROR' ? { code: failure.code } : {}),
+            };
+            if (failure) this.logger.warn('ws.action.result', fields);
+            else this.logger.info('ws.action.result', fields);
+          }
           // MatchSession broadcasts accepted actions. Only direct responses are
           // sent here for PING, RESYNC, and request errors.
           if (actionRequest !== undefined && !wasCached) {
@@ -324,6 +368,23 @@ class PvpWebSocketConnection {
             return;
           }
           for (const message of messages) this.sendJson(message);
+        })
+        .catch(() => {
+          this.logger.error('ws.action.error', {
+            matchId: this.session.matchId,
+            playerId: this.playerId,
+            ...(actionRequest !== undefined && /^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest)
+              ? { requestId: actionRequest }
+              : {}),
+            code: 'MATCH_UNAVAILABLE',
+          });
+          this.sendJson({
+            type: 'ERROR',
+            protocolVersion: 1,
+            code: 'MATCH_UNAVAILABLE',
+            message: 'Match temporarily unavailable.',
+            ...(actionRequest === undefined ? {} : { requestId: actionRequest }),
+          });
         })
         .finally(() => {
           if (actionRequest !== undefined) this.session.releaseAction(this.playerId);

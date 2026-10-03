@@ -7,6 +7,9 @@ import {
 } from 'node:http';
 import { finished } from 'node:stream/promises';
 
+import { correlationId, createLogger } from '@deck-drive/logger';
+export { correlationId } from '@deck-drive/logger';
+
 import { ApiApplication, type ApiRequest } from './application.js';
 import {
   attachPvpWebSocket,
@@ -17,12 +20,14 @@ import {
 export const maximumRequestBodyBytes = 1024 * 1024;
 const pvpCleanupByServer = new WeakMap<Server, () => void>();
 const corsMethods = 'GET, POST, PUT, DELETE, OPTIONS';
-const corsHeaders = 'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id';
+const corsHeaders =
+  'content-type, idempotency-key, x-csrf-token, x-deckdrive-player-id, x-request-id';
 
 export interface ApiHttpServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly developmentLoginLoopbackOnly?: boolean;
   readonly trustedProxyAddresses?: readonly string[];
+  readonly logger?: ReturnType<typeof createLogger>;
   readonly pvpWebSocket?: {
     readonly registry: PvpWebSocketRegistry;
     readonly options?: PvpWebSocketOptions;
@@ -36,13 +41,27 @@ export function createApiHttpServer(
     allowedOrigins = [],
     developmentLoginLoopbackOnly = false,
     trustedProxyAddresses = [],
+    logger = createLogger(),
     pvpWebSocket,
   }: ApiHttpServerOptions = {},
 ): Server {
   const server = createServer(async (request, response) => {
+    const requestId = correlationId(request.headers['x-request-id']);
+    const startedAt = Date.now();
+    response.once('finish', () => {
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      logger.info('http.request', {
+        requestId,
+        method: request.method ?? 'UNKNOWN',
+        path,
+        status: response.statusCode,
+        durationMs: Date.now() - startedAt,
+      });
+    });
     const responseHeaders = {
       ...corsResponseHeaders(request, allowedOrigins),
       ...authenticatedResponseHeaders(request),
+      'x-request-id': requestId,
     };
     try {
       if (request.method === 'OPTIONS') {
@@ -52,6 +71,15 @@ export function createApiHttpServer(
       }
       const url = new URL(request.url ?? '/', 'http://localhost');
       const path = url.pathname;
+      if (request.method === 'GET' && path === '/health/live') {
+        writeJson(response, 200, { status: 'alive' }, responseHeaders);
+        return;
+      }
+      if (request.method === 'GET' && path === '/health/ready') {
+        const ready = await application.ready();
+        writeJson(response, ready.status, ready.body, responseHeaders);
+        return;
+      }
       if (
         shouldRejectDevelopmentLogin(
           request.method,
@@ -76,6 +104,7 @@ export function createApiHttpServer(
             Array.isArray(value) ? value[0] : value,
           ]),
         ),
+        requestId,
         body: await readJsonBody(request),
       };
       const apiResponse = await application.handle(apiRequest);
@@ -88,6 +117,11 @@ export function createApiHttpServer(
       });
     } catch (error) {
       if (response.headersSent) return;
+      logger.error('http.error', {
+        requestId,
+        path: request.url?.split('?')[0] ?? '/',
+        code: error instanceof HttpRequestError ? error.code : 'INTERNAL_ERROR',
+      });
       if (error instanceof HttpRequestError) {
         if (error.status === 413) {
           await drainRequestBody(request);
@@ -100,7 +134,10 @@ export function createApiHttpServer(
     }
   });
   if (pvpWebSocket !== undefined) {
-    const cleanup = attachPvpWebSocket(server, pvpWebSocket.registry, pvpWebSocket.options);
+    const cleanup = attachPvpWebSocket(server, pvpWebSocket.registry, {
+      ...pvpWebSocket.options,
+      logger,
+    });
     pvpCleanupByServer.set(server, cleanup);
     server.once('close', () => {
       cleanup();
@@ -210,6 +247,7 @@ function corsResponseHeaders(
     'access-control-allow-methods': corsMethods,
     'access-control-allow-headers': corsHeaders,
     'access-control-allow-credentials': 'true',
+    'access-control-expose-headers': 'x-request-id',
     'access-control-max-age': '600',
     vary: 'Origin',
   };

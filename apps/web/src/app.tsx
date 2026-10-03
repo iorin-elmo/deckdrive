@@ -406,6 +406,12 @@ function AuthenticatedLayout() {
     queryFn: () => client.me(playerId!),
     enabled: playerId !== null && sessionReady,
   });
+  const adminSession = useQuery({
+    queryKey: ['admin-session', playerId],
+    queryFn: () => api.adminSession(),
+    enabled: playerId !== null && sessionReady && !previewMode,
+    retry: false,
+  });
   const unauthorized = sessionUnauthorized || isUnauthorizedApiError(player.error);
   useEffect(() => {
     if (!unauthorized) return;
@@ -490,6 +496,19 @@ function AuthenticatedLayout() {
                 {t(labelKey)}
               </NavLink>
             ))}
+            {adminSession.data?.role === 'OWNER' && (
+              <a
+                className="nav-link"
+                href={
+                  import.meta.env.VITE_ADMIN_URL ||
+                  (import.meta.env.DEV ? 'http://localhost:5174' : '/admin/')
+                }
+                onClick={() => setMenuOpen(false)}
+              >
+                <Shield size={16} aria-hidden="true" />
+                管理
+              </a>
+            )}
             <button
               className="nav-link sm:ml-3"
               type="button"
