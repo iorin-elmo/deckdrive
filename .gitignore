@@ -8,3 +8,10 @@ apps/api/src/generated/
 .env
 .env.*
 !.env.example
+**/runtime.env
+**/backup.env
+release*.env
+.backup-work.*
+.restore-work.*
+.drill-work.*
+operations.log

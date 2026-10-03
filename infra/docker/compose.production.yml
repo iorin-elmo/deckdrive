@@ -1,0 +1,83 @@
+name: deck-drive-production
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    image: ${API_IMAGE:?required}
+    restart: unless-stopped
+    init: true
+    env_file: ./runtime.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      PVP_WORKER_COUNT: 1
+      TRUSTED_PROXY_ADDRESSES: 10.240.70.10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    image: ${WEB_IMAGE:?required}
+    restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 10.240.70.10
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:8080:8080'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?required}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.240.70.0/24

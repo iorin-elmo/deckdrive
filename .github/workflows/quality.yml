@@ -64,6 +64,24 @@ jobs:
       - name: Check formatting
         run: pnpm format
 
+      - name: Validate production operations
+        run: |
+          bash -n scripts/ops/*.sh
+          bash tests/ops/deploy-failure.sh
+          bash tests/ops/backup-contract.sh
+          bash tests/ops/smoke-https.sh
+          cp infra/docker/runtime.env.example infra/docker/runtime.env
+          trap 'rm -f infra/docker/runtime.env' EXIT
+          API_IMAGE=ghcr.io/example/deckdrive-api:test \
+          WEB_IMAGE=ghcr.io/example/deckdrive-web:test \
+          docker compose --env-file infra/docker/runtime.env.example \
+            -f infra/docker/compose.production.yml config --no-env-resolution --quiet
+          API_IMAGE=ghcr.io/example/deckdrive-api:test \
+          WEB_IMAGE=ghcr.io/example/deckdrive-web:test \
+          docker compose --env-file infra/docker/runtime.env.example \
+            -f infra/docker/compose.production.yml config --format json | \
+            jq -e '.services.api.environment.TRUSTED_PROXY_ADDRESSES == .services.web.networks.default.ipv4_address'
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -90,3 +108,16 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  container-build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        run: docker buildx build --platform linux/arm64 --file infra/docker/api.Dockerfile .
+      - name: Build web image
+        run: docker buildx build --platform linux/arm64 --file infra/docker/web.Dockerfile .
