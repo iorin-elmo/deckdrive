@@ -6,6 +6,11 @@ require_command docker
 require_command sha256sum
 load_backup_environment
 require_file "$RELEASE_FILE"
+case "${1:-}" in
+  ''|pre-deploy|pre-restore) ;;
+  *) printf 'Usage: backup.sh [pre-deploy|pre-restore]\n' >&2; exit 2 ;;
+esac
+if [[ "$#" -gt 1 ]]; then printf 'Usage: backup.sh [pre-deploy|pre-restore]\n' >&2; exit 2; fi
 
 umask 077
 work_dir="$(mktemp -d "$DEPLOY_DIR/.backup-work.XXXXXXXX")"
@@ -20,9 +25,11 @@ compose exec -T postgres pg_restore --list < "$work_dir/deckdrive.dump" > /dev/n
 
 tag=daily
 if [[ "$(date -u +%u)" == 7 ]]; then tag=weekly; fi
-restic backup --tag deckdrive --tag "$tag" \
+tags=(--tag deckdrive --tag "$tag")
+if [[ "$#" == 1 ]]; then tags+=(--tag "$1"); fi
+restic backup "${tags[@]}" \
   "$work_dir" "$DEPLOY_DIR/runtime.env" "$RELEASE_FILE" \
   "$DEPLOY_DIR/compose.production.yml" "$DEPLOY_DIR/Caddyfile"
 restic forget --tag deckdrive --group-by '' \
-  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
+  --keep-within 7d --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
 printf 'Encrypted off-device database backup completed.\n'

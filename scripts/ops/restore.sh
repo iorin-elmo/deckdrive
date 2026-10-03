@@ -36,7 +36,7 @@ if [[ "$database" != "$2" || "$database" == postgres || "$database" == template0
 fi
 
 # Keep a fresh encrypted copy of the current state before any destructive step.
-if [[ -f "$DEPLOY_DIR/release.env" ]]; then bash "$OPS_DIR/backup.sh"; fi
+if [[ -f "$DEPLOY_DIR/release.env" ]]; then bash "$OPS_DIR/backup.sh" pre-restore; fi
 compose stop api web || true
 DEPLOY_RELEASE_FILE="$compose_release" compose exec -T postgres sh -c \
   'dropdb --if-exists --force -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'

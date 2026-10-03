@@ -55,8 +55,10 @@ docker compose --env-file runtime.env --env-file release.env -f compose.producti
 
 At 02:17 UTC, cron makes a complete PostgreSQL custom-format dump, verifies
 its archive listing and SHA-256, encrypts it to the external restic repository,
-then retains 14 daily, 8 weekly, and 6 monthly snapshots. Sunday backups are
-also tagged `weekly`. At 03:37 UTC on Sunday, the latest dump is restored into
+then retains every snapshot from the latest 7 days, 14 daily, 8 weekly, and 6
+monthly snapshots. Sunday backups are also tagged `weekly`; deployment and
+restore safety backups use `pre-deploy` and `pre-restore` tags. At 03:37 UTC on
+Sunday, the latest dump is restored into
 a separate temporary database and checked for Prisma migration history. The
 drill drops only that temporary database. Check `operations.log` and off-device
 snapshot inventory; a missed or failed cron run needs investigation.

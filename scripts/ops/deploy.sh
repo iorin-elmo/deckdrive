@@ -42,7 +42,7 @@ trap recover_images ERR
 
 DEPLOY_RELEASE_FILE="$candidate" compose pull api web
 compose up -d --wait --wait-timeout 180 postgres
-bash "$OPS_DIR/backup.sh"
+bash "$OPS_DIR/backup.sh" pre-deploy
 migration_started=1
 DEPLOY_RELEASE_FILE="$candidate" compose run --rm --no-deps api \
   pnpm --filter @deck-drive/api prisma:migrate:deploy
