@@ -26,6 +26,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       PVP_WORKER_COUNT: 1
+      TRUSTED_PROXY_ADDRESSES: 10.240.70.10
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,6 +46,9 @@ services:
   web:
     image: ${WEB_IMAGE:?required}
     restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 10.240.70.10
     depends_on:
       api:
         condition: service_healthy
@@ -71,3 +75,9 @@ volumes:
   postgres-data:
   caddy-data:
   caddy-config:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.240.70.0/24

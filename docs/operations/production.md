@@ -38,9 +38,18 @@ The Pi keeps the runtime secrets; the workflow never uploads them.
    readiness and the web/admin entry points. The first deployment also
    installs the daily backup and weekly restore-drill cron entries.
 
+The active release file is promoted only after smoke checks and backup
+scheduling succeed. A failed update preserves both the active release and its
+previous rollback target; a failed first deployment leaves no active release.
+
 `runtime.env` is read by Compose and by the API container. Put the site behind
 HTTPS; Caddy requests the certificate for `PUBLIC_HOST`. The API and database
 have no public port; nginx's diagnostic port is bound to Pi loopback only.
+The production Compose network reserves `10.240.70.0/24` and assigns nginx
+`10.240.70.10`, which is the API's sole trusted forwarding peer. Check that
+this subnet does not overlap another Pi network before the first deployment.
+Caddy replaces client-supplied forwarding headers, and nginx passes that
+verified client address to the API so OAuth rate limits apply per client.
 
 ## Routine operations
 

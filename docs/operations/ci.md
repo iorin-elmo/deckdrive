@@ -61,7 +61,9 @@ image builds for `main`. The missing gates above remain explicit delivery work;
 they do not pass by omission and must be added before their owning feature is
 accepted for production.
 
-I00 also validates production shell syntax and Compose rendering in `quality`.
+I00 also validates production shell syntax, deployment failure cleanup,
+backup/release pairing, Compose rendering, and the trusted-proxy address
+contract in `quality`.
 These static checks do not replace a live Pi deployment or an off-device
 backup/restore rehearsal; see `docs/operations/production.md`.
 
