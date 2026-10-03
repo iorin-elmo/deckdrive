@@ -64,6 +64,14 @@ jobs:
       - name: Check formatting
         run: pnpm format
 
+      - name: Validate production operations
+        run: |
+          bash -n scripts/ops/*.sh
+          API_IMAGE=ghcr.io/example/deckdrive-api:test \
+          WEB_IMAGE=ghcr.io/example/deckdrive-web:test \
+          docker compose --env-file infra/docker/runtime.env.example \
+            -f infra/docker/compose.production.yml config --no-env-resolution --quiet
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -90,3 +98,15 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  container-build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        run: docker buildx build --platform linux/amd64 --file infra/docker/api.Dockerfile .
+      - name: Build web image
+        run: docker buildx build --platform linux/amd64 --file infra/docker/web.Dockerfile .
