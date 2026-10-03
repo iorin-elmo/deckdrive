@@ -260,7 +260,7 @@ function validateRequest(request: OpenPackRequest): void {
 /** Client-supplied keys may never overlap reserved, server-generated reward keys. */
 export const serverRewardIdempotencyPrefix = 'server:';
 
-function packRarity(definition: Prisma.JsonValue): PackRarity | undefined {
+export function packRarity(definition: Prisma.JsonValue): PackRarity | undefined {
   if (typeof definition !== 'object' || definition === null || Array.isArray(definition))
     return undefined;
   switch (definition.rarity) {

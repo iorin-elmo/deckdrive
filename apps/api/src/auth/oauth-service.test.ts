@@ -109,7 +109,7 @@ describe('OAuthService', () => {
       expect(service.expiredStateCookie(state)).toContain('Max-Age=0');
     },
   );
-  it.each(['matching', 'different-user', 'expired', 'missing'])(
+  it.each(['matching', 'different-user', 'expired', 'missing', 'development'])(
     'handles an existing login session: %s',
     async (kind) => {
       const create = vi.fn();
@@ -128,6 +128,7 @@ describe('OAuthService', () => {
             findUnique: vi.fn().mockResolvedValue({
               id: 'session-1',
               userId: kind === 'different-user' ? 'other-user' : 'user-1',
+              authProvider: kind === 'development' ? null : 'DISCORD',
               csrfTokenHash: 'hash',
               revokedAt: null,
               expiresAt: new Date(kind === 'expired' ? '2000-01-01' : '2099-01-01'),
@@ -166,6 +167,13 @@ describe('OAuthService', () => {
       } else {
         expect(result.session).toBeDefined();
         expect(create).toHaveBeenCalledOnce();
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              authProvider: 'DISCORD',
+            }),
+          }),
+        );
       }
     },
   );

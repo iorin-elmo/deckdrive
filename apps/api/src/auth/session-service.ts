@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../generated/prisma/client.js';
+import type { OAuthProvider, PrismaClient } from '../generated/prisma/client.js';
 import { matchesHash, randomToken, sha256 } from './crypto.js';
 
 const sessionLifetimeSeconds = 60 * 60 * 24 * 14;
@@ -16,6 +16,7 @@ export interface AuthenticatedSession {
   readonly playerId: string;
   readonly csrfTokenHash: string;
   readonly expiresAt: Date;
+  readonly authProvider: OAuthProvider | null;
 }
 
 export class PrismaSessionService {
@@ -24,13 +25,19 @@ export class PrismaSessionService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async create(userId: string): Promise<CreatedSession> {
+  async create(userId: string, authProvider?: OAuthProvider): Promise<CreatedSession> {
     await this.removeExpiredSessions();
     const token = randomToken();
     const csrfToken = sessionCsrfToken(token);
     const expiresAt = new Date(this.now().getTime() + sessionLifetimeSeconds * 1000);
     await this.prisma.session.create({
-      data: { userId, tokenHash: sha256(token), csrfTokenHash: sha256(csrfToken), expiresAt },
+      data: {
+        userId,
+        tokenHash: sha256(token),
+        csrfTokenHash: sha256(csrfToken),
+        expiresAt,
+        ...(authProvider === undefined ? {} : { authProvider }),
+      },
     });
     return { token, csrfToken, expiresAt };
   }
@@ -43,6 +50,7 @@ export class PrismaSessionService {
         id: true,
         userId: true,
         csrfTokenHash: true,
+        authProvider: true,
         expiresAt: true,
         revokedAt: true,
         user: { select: { player: { select: { id: true } } } },
@@ -61,6 +69,7 @@ export class PrismaSessionService {
       playerId: session.user.player.id,
       csrfTokenHash: session.csrfTokenHash,
       expiresAt: session.expiresAt,
+      authProvider: session.authProvider ?? null,
     };
   }
 

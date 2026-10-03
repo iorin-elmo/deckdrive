@@ -3,6 +3,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Socket } from 'node:net';
 
 import type { PlayerId } from '@deck-drive/game-engine';
+import { correlationId, createLogger } from '@deck-drive/logger';
 
 import { MatchSession, type ConnectedPlayer } from './session.js';
 import { parseClientMessage, type ServerMessage } from './protocol.js';
@@ -14,6 +15,8 @@ export interface PvpWebSocketRegistry {
 }
 
 export interface PvpWebSocketOptions {
+  readonly logger?: ReturnType<typeof createLogger>;
+  readonly maintenanceMode?: () => Promise<boolean> | boolean;
   readonly maxMessageBytes?: number;
   readonly tickIntervalMs?: number;
   readonly maxPendingActionsPerPlayer?: number;
@@ -39,7 +42,13 @@ export function attachPvpWebSocket(
   const maxOutboundBytes = options.maxOutboundBytes ?? 256 * 1024;
   const sessionRevalidationIntervalMs = options.sessionRevalidationIntervalMs ?? 30_000;
   const connections = new Set<PvpWebSocketConnection>();
+  const logger = options.logger ?? createLogger();
+  const maintenanceMode = options.maintenanceMode ?? (() => false);
   const onUpgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
+    const requestId = correlationId(request.headers['x-request-id']);
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const matchId = path.match(/^\/ws\/matches\/([^/]+)$/u)?.[1];
+    logger.info('ws.upgrade', { requestId, path, ...(matchId === undefined ? {} : { matchId }) });
     void acceptUpgrade(
       request,
       socket,
@@ -52,16 +61,44 @@ export function attachPvpWebSocket(
       maxActionsPerSecond,
       maxMessagesPerSecond,
       maxOutboundBytes,
+      requestId,
+      logger,
+      maintenanceMode,
       (connection) => connections.delete(connection),
     ).catch(() => {
+      logger.error('ws.upgrade.error', { requestId, path, code: 'INTERNAL_ERROR' });
       if (!socket.destroyed) rejectUpgrade(socket, 500, 'WebSocket upgrade failed.');
     });
   };
   server.on('upgrade', onUpgrade);
+  let tickInProgress = false;
+  let stopped = false;
   const tickTimer = setInterval(() => {
-    const sessions =
-      registry.sessions?.() ?? [...connections].map((connection) => connection.session);
-    for (const session of new Set(sessions)) session.tick();
+    if (tickInProgress) return;
+    tickInProgress = true;
+    void Promise.resolve()
+      .then(() => maintenanceMode())
+      .then((enabled) => {
+        if (stopped) return;
+        const sessions =
+          registry.sessions?.() ?? [...connections].map((connection) => connection.session);
+        for (const session of new Set(sessions)) {
+          if (enabled) session.pauseTimeouts();
+          else {
+            session.resumeTimeouts();
+            session.tick();
+          }
+        }
+      })
+      .catch(() => {
+        logger.error('ws.maintenance.error', { code: 'MAINTENANCE_CHECK_FAILED' });
+        const sessions =
+          registry.sessions?.() ?? [...connections].map((connection) => connection.session);
+        for (const session of new Set(sessions)) session.pauseTimeouts();
+      })
+      .finally(() => {
+        tickInProgress = false;
+      });
   }, tickIntervalMs);
   const revalidationTimer = setInterval(() => {
     for (const connection of connections)
@@ -70,6 +107,7 @@ export function attachPvpWebSocket(
   tickTimer.unref();
   revalidationTimer.unref();
   return () => {
+    stopped = true;
     clearInterval(tickTimer);
     clearInterval(revalidationTimer);
     server.off('upgrade', onUpgrade);
@@ -90,6 +128,9 @@ async function acceptUpgrade(
   maxActionsPerSecond: number,
   maxMessagesPerSecond: number,
   maxOutboundBytes: number,
+  requestId: string,
+  logger: ReturnType<typeof createLogger>,
+  maintenanceMode: () => Promise<boolean> | boolean,
   onClosed: (connection: PvpWebSocketConnection) => void,
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost');
@@ -111,6 +152,10 @@ async function acceptUpgrade(
   const key = request.headers['sec-websocket-key'];
   if (typeof key !== 'string' || key.length === 0) {
     rejectUpgrade(socket, 400, 'Missing WebSocket key.');
+    return;
+  }
+  if (await maintenanceMode()) {
+    rejectUpgrade(socket, 503, 'Maintenance Mode');
     return;
   }
   const playerId = await registry.authenticate(request);
@@ -137,6 +182,8 @@ async function acceptUpgrade(
     maxActionsPerSecond,
     maxMessagesPerSecond,
     maxOutboundBytes,
+    logger,
+    maintenanceMode,
     onClosed,
   );
   socket.write(
@@ -145,6 +192,7 @@ async function acceptUpgrade(
       'Upgrade: websocket',
       'Connection: Upgrade',
       `Sec-WebSocket-Accept: ${webSocketAccept(key)}`,
+      `X-Request-Id: ${requestId}`,
       '\r\n',
     ].join('\r\n'),
   );
@@ -157,6 +205,7 @@ class PvpWebSocketConnection {
   private closed = false;
   private disconnected = false;
   private readonly controlTimestamps: number[] = [];
+  private admissionQueue: Promise<void> = Promise.resolve();
   private client: ConnectedPlayer | undefined;
 
   constructor(
@@ -169,6 +218,8 @@ class PvpWebSocketConnection {
     private readonly maxActionsPerSecond: number,
     private readonly maxMessagesPerSecond: number,
     private readonly maxOutboundBytes: number,
+    private readonly logger: ReturnType<typeof createLogger>,
+    private readonly maintenanceMode: () => Promise<boolean> | boolean,
     private readonly onClosed: (connection: PvpWebSocketConnection) => void,
   ) {}
 
@@ -298,37 +349,137 @@ class PvpWebSocketConnection {
         typeof value.requestId === 'string'
           ? value.requestId
           : undefined;
-      if (actionRequest !== undefined && !this.allowAction()) {
+      if (actionRequest !== undefined)
+        this.logger.info('ws.action', {
+          ...(/^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest) ? { requestId: actionRequest } : {}),
+          matchId: this.session.matchId,
+          playerId: this.playerId,
+          action:
+            typeof value === 'object' &&
+            value !== null &&
+            'action' in value &&
+            typeof value.action === 'object' &&
+            value.action !== null &&
+            'type' in value.action &&
+            typeof value.action.type === 'string'
+              ? value.action.type
+              : 'UNKNOWN',
+        });
+      if (actionRequest === undefined) {
+        this.dispatch(value, undefined);
+        continue;
+      }
+      this.admissionQueue = this.admissionQueue
+        .then(async () => {
+          if (this.closed) return;
+          let maintenance: boolean;
+          try {
+            maintenance = await this.maintenanceMode();
+          } catch {
+            this.logger.error('ws.maintenance.error', {
+              requestId: actionRequest,
+              matchId: this.session.matchId,
+              playerId: this.playerId,
+              code: 'MAINTENANCE_CHECK_FAILED',
+            });
+            this.sendJson({
+              type: 'ERROR',
+              protocolVersion: 1,
+              code: 'MATCH_UNAVAILABLE',
+              message: 'Match temporarily unavailable.',
+              requestId: actionRequest,
+            });
+            return;
+          }
+          if (maintenance) {
+            this.sendJson({
+              type: 'ERROR',
+              protocolVersion: 1,
+              code: 'MAINTENANCE_MODE',
+              message: 'Service is in maintenance mode.',
+              requestId: actionRequest,
+            });
+            return;
+          }
+          this.dispatch(value, actionRequest);
+        })
+        .catch(() => {
+          this.logger.error('ws.action.error', {
+            requestId: actionRequest,
+            matchId: this.session.matchId,
+            playerId: this.playerId,
+            code: 'MATCH_UNAVAILABLE',
+          });
+          this.sendJson({
+            type: 'ERROR',
+            protocolVersion: 1,
+            code: 'MATCH_UNAVAILABLE',
+            message: 'Match temporarily unavailable.',
+            requestId: actionRequest,
+          });
+        });
+    }
+  }
+
+  private dispatch(value: unknown, actionRequest: string | undefined): void {
+    if (actionRequest !== undefined && !this.allowAction()) {
+      this.sendJson({
+        type: 'ERROR',
+        protocolVersion: 1,
+        code: 'RATE_LIMITED',
+        message: 'Too many pending or recent actions.',
+        requestId: actionRequest,
+      });
+      return;
+    }
+    const wasCached =
+      actionRequest === undefined
+        ? false
+        : this.session.hasCachedRequest(this.playerId, actionRequest);
+    void this.session
+      .receive(this.playerId, value)
+      .then((messages) => {
+        if (actionRequest !== undefined) {
+          const failure = messages.find((message) => message.type === 'ERROR');
+          const fields = {
+            ...(/^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest) ? { requestId: actionRequest } : {}),
+            matchId: this.session.matchId,
+            playerId: this.playerId,
+            ...(failure?.type === 'ERROR' ? { code: failure.code } : {}),
+          };
+          if (failure) this.logger.warn('ws.action.result', fields);
+          else this.logger.info('ws.action.result', fields);
+        }
+        // MatchSession broadcasts accepted actions. Only direct responses are
+        // sent here for PING, RESYNC, and request errors.
+        if (actionRequest !== undefined && !wasCached) {
+          for (const message of messages) {
+            if (message.type === 'ERROR') this.sendJson(message);
+          }
+          return;
+        }
+        for (const message of messages) this.sendJson(message);
+      })
+      .catch(() => {
+        this.logger.error('ws.action.error', {
+          matchId: this.session.matchId,
+          playerId: this.playerId,
+          ...(actionRequest !== undefined && /^[A-Za-z0-9_-]{1,100}$/u.test(actionRequest)
+            ? { requestId: actionRequest }
+            : {}),
+          code: 'MATCH_UNAVAILABLE',
+        });
         this.sendJson({
           type: 'ERROR',
           protocolVersion: 1,
-          code: 'RATE_LIMITED',
-          message: 'Too many pending or recent actions.',
-          requestId: actionRequest,
+          code: 'MATCH_UNAVAILABLE',
+          message: 'Match temporarily unavailable.',
+          ...(actionRequest === undefined ? {} : { requestId: actionRequest }),
         });
-        continue;
-      }
-      const wasCached =
-        actionRequest === undefined
-          ? false
-          : this.session.hasCachedRequest(this.playerId, actionRequest);
-      void this.session
-        .receive(this.playerId, value)
-        .then((messages) => {
-          // MatchSession broadcasts accepted actions. Only direct responses are
-          // sent here for PING, RESYNC, and request errors.
-          if (actionRequest !== undefined && !wasCached) {
-            for (const message of messages) {
-              if (message.type === 'ERROR') this.sendJson(message);
-            }
-            return;
-          }
-          for (const message of messages) this.sendJson(message);
-        })
-        .finally(() => {
-          if (actionRequest !== undefined) this.session.releaseAction(this.playerId);
-        });
-    }
+      })
+      .finally(() => {
+        if (actionRequest !== undefined) this.session.releaseAction(this.playerId);
+      });
   }
 
   private allowAction(): boolean {

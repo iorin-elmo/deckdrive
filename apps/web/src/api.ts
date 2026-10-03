@@ -296,6 +296,10 @@ export class DeckDriveApi implements DeckDriveClient {
     return result;
   }
 
+  async adminSession(): Promise<{ role: 'OWNER' }> {
+    return this.request('/api/v1/admin/session');
+  }
+
   async logout(): Promise<void> {
     await this.request('/api/v1/auth/logout', { method: 'POST' });
     this.csrfTokenValue = undefined;

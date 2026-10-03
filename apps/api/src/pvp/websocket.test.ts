@@ -1,6 +1,6 @@
 import { connect, type Socket } from 'node:net';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createInitialBattleState } from '@deck-drive/game-engine';
 import type { BattleState, MatchId, PlayerId } from '@deck-drive/game-engine';
 
@@ -158,6 +158,86 @@ function battleState(): BattleState {
 }
 
 describe('PvP WebSocket adapter', () => {
+  it('rejects upgrades and active actions during maintenance, then resumes admission', async () => {
+    const session = new MatchSession({ state: battleState(), now: () => 0 });
+    const tick = vi.spyOn(session, 'tick');
+    let maintenance = false;
+    let checkFailed = false;
+    const registry: PvpWebSocketRegistry = {
+      find: () => session,
+      authenticate: () => 'player-1' as PlayerId,
+      sessions: () => [session],
+    };
+    const server = createApiHttpServer({} as ApiApplication, {
+      pvpWebSocket: {
+        registry,
+        options: {
+          maintenanceMode: () => {
+            if (checkFailed) throw new Error('Flag storage is unavailable.');
+            return maintenance;
+          },
+          tickIntervalMs: 20,
+          sessionRevalidationIntervalMs: 60_000,
+        },
+      },
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('Server has no port.');
+    let client: RawWebSocketClient | undefined;
+    try {
+      client = await RawWebSocketClient.open(address.port, 'player-1');
+      await client.waitFor((message) => message.type === 'STATE');
+      maintenance = true;
+      tick.mockClear();
+      client.send({
+        type: 'ACTION',
+        requestId: 'maintenance-action',
+        sequence: 0,
+        action: { type: 'END_TURN', playerId: 'player-1' },
+      });
+      await expect(
+        client.waitFor(
+          (message) => message.type === 'ERROR' && message.requestId === 'maintenance-action',
+        ),
+      ).resolves.toMatchObject({ code: 'MAINTENANCE_MODE' });
+      await expect(RawWebSocketClient.open(address.port, 'player-1')).rejects.toThrow(/503/u);
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      expect(tick).not.toHaveBeenCalled();
+      expect(session.actionSequence).toBe(0);
+
+      checkFailed = true;
+      client.send({
+        type: 'ACTION',
+        requestId: 'failed-flag-check',
+        sequence: 0,
+        action: { type: 'END_TURN', playerId: 'player-1' },
+      });
+      await expect(
+        client.waitFor(
+          (message) => message.type === 'ERROR' && message.requestId === 'failed-flag-check',
+        ),
+      ).resolves.toMatchObject({ code: 'MATCH_UNAVAILABLE' });
+      await expect(RawWebSocketClient.open(address.port, 'player-1')).rejects.toThrow(/500/u);
+      expect(session.actionSequence).toBe(0);
+
+      checkFailed = false;
+      maintenance = false;
+      client.send({
+        type: 'ACTION',
+        requestId: 'maintenance-action',
+        sequence: 0,
+        action: { type: 'END_TURN', playerId: 'player-1' },
+      });
+      await client.waitFor((message) => message.type === 'STATE' && message.actionSequence === 1);
+      expect(session.actionSequence).toBe(1);
+    } finally {
+      client?.close();
+      closePvpWebSocket(server);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('recovers projected state and missing events over a real authenticated socket', async () => {
     let session = new MatchSession({ state: battleState(), now: () => 0, snapshotInterval: 10 });
     const persisted = new Map<

@@ -1,4 +1,5 @@
 import { allCardDefinitions } from '@deck-drive/card-definitions';
+import { createHash, randomUUID } from 'node:crypto';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { adminRoleForUser } from '../admin/identity.js';
 import { AlphaBattleError } from '../battles/alpha-service.js';
@@ -49,14 +50,18 @@ export async function grantAdminCollection(prisma: PrismaClient, playerId: strin
         create: { playerId, cardVersionId: version.id, quantity },
         update: { quantity },
       });
-      await tx.adminCardEntitlement.create({
+      await tx.adminAction.create({
         data: {
-          playerId,
           adminUserId: player.userId,
-          cardVersionId: version.id,
-          beforeQuantity: previous?.quantity ?? 0,
-          afterQuantity: quantity,
-          reason: 'ADMIN_COMPLETE_POOL_ENTITLEMENT',
+          requestId: `entitlement:${randomUUID()}`,
+          action: 'ADMIN_CARD_ENTITLEMENT',
+          target: `player:${playerId}:card:${version.id}`,
+          payloadHash: createHash('sha256')
+            .update(JSON.stringify({ playerId, cardVersionId: version.id, quantity }))
+            .digest('hex'),
+          before: { quantity: previous?.quantity ?? 0 },
+          after: { quantity },
+          reason: '全カード対戦用のAdmin所持上限補充',
         },
       });
     }

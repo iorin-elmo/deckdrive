@@ -87,8 +87,51 @@ model User {
   oauthAccounts OAuthAccount[]
   sessions      Session[]
   oauthAuthorizations OAuthAuthorization[] @relation("OAuthAuthorizationLinkUser")
+  adminActions AdminAction[]
+  debugBattles DebugBattle[]
 
   @@map("users")
+}
+
+model AdminAction {
+  id          String       @id @default(uuid()) @db.Uuid
+  adminUserId String       @map("admin_user_id") @db.Uuid
+  requestId   String       @map("request_id") @db.VarChar(100)
+  action      String       @db.VarChar(80)
+  target      String       @db.VarChar(200)
+  reason      String       @db.VarChar(2000)
+  payloadHash String       @map("payload_hash") @db.VarChar(64)
+  before      Json
+  after       Json
+  timestamp   DateTime     @default(now()) @db.Timestamptz(6)
+  admin       User         @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  @@unique([adminUserId, requestId])
+  @@index([target, timestamp])
+  @@index([timestamp])
+  @@map("admin_actions")
+}
+
+model FeatureFlag {
+  name      String   @id @db.VarChar(80)
+  enabled   Boolean
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("feature_flags")
+}
+
+model DebugBattle {
+  id           String   @id @default(uuid()) @db.Uuid
+  adminUserId  String   @map("admin_user_id") @db.Uuid
+  initialState Json     @map("initial_state")
+  state        Json
+  commands     Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  admin        User     @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@map("debug_battles")
 }
 
 model OAuthAccount {
@@ -110,6 +153,7 @@ model Session {
   userId        String    @map("user_id") @db.Uuid
   tokenHash     String    @unique @map("token_hash")
   csrfTokenHash String    @map("csrf_token_hash")
+  authProvider  OAuthProvider? @map("auth_provider")
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
   revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

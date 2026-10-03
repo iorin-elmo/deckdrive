@@ -1,10 +1,12 @@
 import { once } from 'node:events';
 
 import { describe, expect, it, vi } from 'vitest';
+import { createLogger } from '@deck-drive/logger';
 
 import type { ApiApplication } from './application.js';
 import {
   createApiHttpServer,
+  correlationId,
   clientAddress,
   isLoopbackAddress,
   maximumRequestBodyBytes,
@@ -44,6 +46,14 @@ describe('clientAddress', () => {
   });
 });
 
+describe('correlationId', () => {
+  it('keeps bounded IDs and replaces unsafe input', () => {
+    expect(correlationId('trace_123')).toBe('trace_123');
+    expect(correlationId('bad\nvalue')).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(correlationId('x'.repeat(101))).toMatch(/^[0-9a-f-]{36}$/u);
+  });
+});
+
 describe('shouldRejectDevelopmentLogin', () => {
   it('rejects development login from a non-loopback address when the guard is enabled', () => {
     expect(
@@ -60,6 +70,35 @@ describe('shouldRejectDevelopmentLogin', () => {
 });
 
 describe('createApiHttpServer', () => {
+  it('serves liveness without the database and readiness from the application', async () => {
+    const lines: string[] = [];
+    const application = {
+      handle: vi.fn(),
+      ready: vi.fn().mockResolvedValue({ status: 503, body: { status: 'unavailable' } }),
+    } as unknown as ApiApplication;
+    const server = createApiHttpServer(application, {
+      logger: createLogger((line) => lines.push(line)),
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('Expected a TCP server address.');
+    try {
+      const base = `http://127.0.0.1:${String(address.port)}`;
+      const live = await fetch(`${base}/health/live`, { headers: { 'x-request-id': 'health-1' } });
+      expect(live.status).toBe(200);
+      expect(live.headers.get('x-request-id')).toBe('health-1');
+      const ready = await fetch(`${base}/health/ready`);
+      expect(ready.status).toBe(503);
+      expect(application.ready).toHaveBeenCalledOnce();
+      expect(application.handle).not.toHaveBeenCalled();
+      expect(lines.some((line) => JSON.parse(line).requestId === 'health-1')).toBe(true);
+    } finally {
+      server.close();
+      await once(server, 'close');
+    }
+  });
   it('returns a client error for malformed JSON instead of leaving the request open', async () => {
     const application = { handle: vi.fn() } as unknown as ApiApplication;
     const server = createApiHttpServer(application);

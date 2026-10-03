@@ -14,6 +14,7 @@ export * from './random/index.js';
 export * from './replay.js';
 export * from './protocol-v2.js';
 export * from './replay-v2.js';
+export * from './debug.js';
 export { createInitialBattleState, initialHp, initialMaxEnergy } from './rules.js';
 export type {
   CardDefinition,

@@ -135,7 +135,8 @@ export class PvpSocketClient {
         this.reconnectAttempt = 0;
       }
       if (message.type === 'ERROR' && typeof message.requestId === 'string') {
-        if (message.code !== 'MATCH_UNAVAILABLE') this.pendingActions.delete(message.requestId);
+        if (message.code !== 'MATCH_UNAVAILABLE' && message.code !== 'MAINTENANCE_MODE')
+          this.pendingActions.delete(message.requestId);
       }
       if (message.type === 'EVENT' && typeof message.sequence === 'number')
         this.lastEventSequence = Math.max(this.lastEventSequence, message.sequence);

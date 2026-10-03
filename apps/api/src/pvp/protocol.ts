@@ -111,6 +111,7 @@ export interface ErrorMessage {
     | 'MATCH_FINISHED'
     | 'MATCH_ABANDONED'
     | 'MATCH_UNAVAILABLE'
+    | 'MAINTENANCE_MODE'
     | 'REQUEST_CONFLICT'
     | 'RATE_LIMITED';
   readonly message: string;

@@ -109,6 +109,7 @@ describe('complete card pool persistence and transport', () => {
     }
   }, 30000);
   afterAll(async () => {
+    await prisma.adminAction.deleteMany({ where: { adminUserId: { in: userIds } } });
     await prisma.adminCardEntitlement.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.packOpening.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.alphaBattle.deleteMany({ where: { hostId: { in: playerIds } } });
@@ -130,6 +131,17 @@ describe('complete card pool persistence and transport', () => {
     const owned = await prisma.playerCard.findMany({ where: { playerId: admin } });
     expect(owned).toHaveLength(allCardDefinitions.length);
     expect(owned.every((card) => card.quantity === 3)).toBe(true);
+    expect(
+      await prisma.adminAction.count({
+        where: { target: { startsWith: `player:${admin}:` }, action: 'ADMIN_CARD_ENTITLEMENT' },
+      }),
+    ).toBe(allCardDefinitions.length);
+    await grantAdminCollection(prisma, admin);
+    expect(
+      await prisma.adminAction.count({
+        where: { target: { startsWith: `player:${admin}:` }, action: 'ADMIN_CARD_ENTITLEMENT' },
+      }),
+    ).toBe(allCardDefinitions.length);
     expect(await prisma.playerCard.count({ where: { playerId: ordinary } })).toBe(0);
   });
   it('lets an ordinary player acquire new cards from packs and retries without charging twice', async () => {
