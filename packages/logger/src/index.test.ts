@@ -43,4 +43,33 @@ describe('createLogger', () => {
       '/api/v1/matches/private/:inviteCode/status',
     ]);
   });
+
+  it('flushes asynchronously buffered file logs when closed', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'deckdrive-logger-'));
+    const nested = join(directory, 'logs');
+    const file = join(nested, 'api.log');
+    const logger = createLogger(undefined, () => new Date('2026-10-02T00:00:00.000Z'), file);
+    try {
+      logger.info('http.request', { requestId: 'first' });
+      logger.info('ws.action', { requestId: 'second' });
+      await logger.close();
+      expect(
+        readFileSync(file, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line)),
+      ).toEqual([
+        expect.objectContaining({ event: 'http.request', requestId: 'first' }),
+        expect.objectContaining({ event: 'ws.action', requestId: 'second' }),
+      ]);
+    } finally {
+      await logger.close();
+      unlinkSync(file);
+      rmdirSync(nested);
+      rmdirSync(directory);
+    }
+  });
 });
+import { mkdtempSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';

@@ -1,6 +1,8 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { PlayerId } from '@deck-drive/game-engine';
+import { createLogger } from '@deck-drive/logger';
 
+import { PrismaFeatureFlags } from './admin/feature-flags.js';
 import { ApiApplication } from './api/application.js';
 import { closePvpWebSocket, createApiHttpServer } from './api/http.js';
 import { parseCookies, sessionCookieName } from './auth/cookies.js';
@@ -26,6 +28,8 @@ if (databaseUrl === undefined || databaseUrl.length === 0)
   throw new Error('DATABASE_URL is required to start the API.');
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+const logger = createLogger();
+const flags = new PrismaFeatureFlags(prisma, process.env.NODE_ENV);
 const oauth = new OAuthService(prisma, process.env);
 const allowedOrigins = apiCorsOrigins(process.env.CORS_ORIGINS, oauth.applicationOrigin());
 const pvp = new PvpMatchService(prisma, async (request) => {
@@ -45,13 +49,14 @@ const pvp = new PvpMatchService(prisma, async (request) => {
   return null;
 });
 await pvp.restoreActive();
-const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp), {
+const server = createApiHttpServer(new ApiApplication(prisma, process.env, pvp, logger), {
   allowedOrigins,
   developmentLoginLoopbackOnly: true,
   trustedProxyAddresses: apiTrustedProxyAddresses(process.env.TRUSTED_PROXY_ADDRESSES),
+  logger,
   pvpWebSocket: {
     registry: pvp,
-    options: { allowedOrigins },
+    options: { allowedOrigins, logger, maintenanceMode: () => flags.enabled('MAINTENANCE_MODE') },
   },
 });
 const host = apiHost(process.env.HOST);
@@ -70,6 +75,7 @@ async function shutdown(): Promise<void> {
     });
   });
   await prisma.$disconnect();
+  await logger.close();
 }
 
 process.once('SIGINT', () => void shutdown());

@@ -209,25 +209,27 @@ describe('PvP socket client', () => {
   });
 
   it('allows a failed action to be retried on the open socket with the same request ID', () => {
-    const socket = new FakeSocket();
-    const client = new PvpSocketClient(
-      'match-1',
-      { onMessage: () => {} },
-      { socketFactory: () => socket },
-    );
-    client.sendAction({ type: 'END_TURN', playerId: 'player-1' }, 0, 'retry-me');
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: 'ERROR',
-        protocolVersion: 1,
-        code: 'MATCH_UNAVAILABLE',
-        message: 'retry',
-        requestId: 'retry-me',
-      }),
-    });
-    expect(client.retryAction('retry-me')).toBe(true);
-    expect(socket.sent).toHaveLength(2);
-    expect(socket.sent[0]).toBe(socket.sent[1]);
-    client.close();
+    for (const code of ['MATCH_UNAVAILABLE', 'MAINTENANCE_MODE']) {
+      const socket = new FakeSocket();
+      const client = new PvpSocketClient(
+        'match-1',
+        { onMessage: () => {} },
+        { socketFactory: () => socket },
+      );
+      client.sendAction({ type: 'END_TURN', playerId: 'player-1' }, 0, 'retry-me');
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: 'ERROR',
+          protocolVersion: 1,
+          code,
+          message: 'retry',
+          requestId: 'retry-me',
+        }),
+      });
+      expect(client.retryAction('retry-me')).toBe(true);
+      expect(socket.sent).toHaveLength(2);
+      expect(socket.sent[0]).toBe(socket.sent[1]);
+      client.close();
+    }
   });
 });

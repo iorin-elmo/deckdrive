@@ -1743,12 +1743,19 @@ function PvpBattlePage() {
           setStateMessage({ ...message, turn: projected.turn, phase: projected.phase });
         }
         if (message.type === 'ERROR') {
-          setError(String(message.code ?? 'UNKNOWN_ERROR'));
+          setError(
+            message.code === 'MAINTENANCE_MODE'
+              ? message.message
+              : String(message.code ?? 'UNKNOWN_ERROR'),
+          );
           if (message.code === 'MATCH_ABANDONED') {
             setMatchAbandoned(true);
             setPendingRequestId(undefined);
             navigate(`/result/${matchId}`);
-          } else if (message.code === 'MATCH_UNAVAILABLE' && message.requestId !== undefined) {
+          } else if (
+            (message.code === 'MATCH_UNAVAILABLE' || message.code === 'MAINTENANCE_MODE') &&
+            message.requestId !== undefined
+          ) {
             setRetryRequestId(message.requestId);
           } else if (message.requestId !== undefined) {
             setPendingRequestId((current) => (current === message.requestId ? undefined : current));

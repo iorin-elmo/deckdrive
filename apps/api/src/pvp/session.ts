@@ -129,6 +129,7 @@ export class MatchSession {
   private readonly snapshots: MatchSnapshot[];
   private actionQueue: Promise<void> = Promise.resolve();
   private turnStartedAt: number;
+  private pausedAt: number | undefined;
   private readonly disconnectedAt = new Map<string, number>();
   private readonly connectedOnce = new Set<string>();
   private readonly timeoutStreaks = new Map<string, number>();
@@ -254,6 +255,7 @@ export class MatchSession {
 
   /** Called by the server's scheduler; keeping time outside the engine makes it testable. */
   tick(at = this.now()): void {
+    if (this.pausedAt !== undefined) return;
     if (this.abandoned || this.abandoning || this.abandonRequested) return;
     const expiredDisconnects = [...this.disconnectedAt.entries()].filter(
       ([, disconnectedAt]) => at - disconnectedAt >= this.reconnectGraceMs,
@@ -294,6 +296,20 @@ export class MatchSession {
         if (this.timeoutInFlightTurn === timeoutTurn) this.timeoutInFlightTurn = undefined;
       });
     }
+  }
+
+  /** Maintenance suspends server timeouts without changing the persisted action history. */
+  pauseTimeouts(at = this.now()): void {
+    this.pausedAt ??= at;
+  }
+
+  resumeTimeouts(at = this.now()): void {
+    if (this.pausedAt === undefined) return;
+    const pausedAt = this.pausedAt;
+    this.pausedAt = undefined;
+    this.turnStartedAt += Math.max(0, at - pausedAt);
+    for (const [playerId, disconnectedAt] of this.disconnectedAt)
+      this.disconnectedAt.set(playerId, at - Math.max(0, pausedAt - disconnectedAt));
   }
 
   receive(playerId: PlayerId, value: unknown): Promise<readonly ServerMessage[]> {

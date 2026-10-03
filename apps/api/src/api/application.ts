@@ -88,12 +88,12 @@ export interface ApiResponse {
 /** Framework-neutral `/api/v1` controller. A Node or edge adapter can call it directly. */
 export class ApiApplication {
   private readonly oauth: OAuthService;
-  private readonly logger = createLogger();
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly environment: NodeJS.ProcessEnv = process.env,
     private readonly pvp: PvpMatchService | undefined = undefined,
+    private readonly logger = createLogger(),
   ) {
     this.oauth = new OAuthService(prisma, environment);
   }

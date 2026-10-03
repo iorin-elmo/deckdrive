@@ -18,6 +18,8 @@
 
 フラグは実際に切替先がある機能だけを管理画面へ表示します。`ENABLE_X_LOGIN` は受理済みの ADR 0002 で X ログイン自体が対象外のため設けません。`ENABLE_NEW_CARDS` は切替対象が実装されたときに追加します。初回のフラグ変更でも、監査ログの `before` には有効な既定値を記録します。
 
+`MAINTENANCE_MODE` は通常の REST API に加えて PvP WebSocket の新規接続を HTTP 503 で拒否し、既存接続からの action には `MAINTENANCE_MODE` エラーを返します。メンテナンス中はサーバーの PvP 定期 tick も実行しません。フラグの確認に失敗した場合は接続や action を通さず、定期 tick も停止します。
+
 変更操作には空でない `reason` と一意の `requestId` が必須です。同じ管理者と requestId の再送は記録済み結果を返し、異なる内容なら `409 ADMIN_REQUEST_CONFLICT` になります。変更と監査行は Serializable トランザクションで確定します。付与は通貨台帳、カード所持数、コスメティックの付与記録、ミッション進捗をそれぞれ更新します。
 
 ## デバッグ機能
@@ -30,6 +32,6 @@
 
 `/health/live` はプロセス応答、`/health/ready` は DB 接続を確認します。`pnpm health` は両方へアクセスし、一方でも失敗すると終了コード 1 になります。接続先は `HEALTH_BASE_URL` で変更できます。
 
-HTTP リクエストと WebSocket アップグレードには `x-request-id` を採番または検証します。HTTP 応答と WebSocket の 101 応答にも ID を返します。WebSocket の各アクションはプロトコルの `requestId` を記録します。ログは JSON Lines として標準出力へ書きます。`LOG_FILE` を設定すると同じ内容をファイルへ追記し、`pnpm logs` で直近 100 件、`pnpm logs -- --request-id <ID>` で対象リクエストを確認できます。ログフィールドは許可リスト方式で、HTTP body、cookie、OAuth token、メールアドレス、管理操作理由は記録しません。非公開試合の招待コードはログの URL パスから伏せます。
+HTTP リクエストと WebSocket アップグレードには `x-request-id` を採番または検証します。HTTP 応答と WebSocket の 101 応答にも ID を返します。WebSocket の各アクションはプロトコルの `requestId` を記録します。ログは JSON Lines として標準出力へ書きます。`LOG_FILE` を設定するとディレクトリを起動時に用意してファイルへ非同期追記し、終了時に書き込みを完了させます。ディスクが遅い場合は最大 1 MiB のバッファを超えるファイル出力を破棄し、標準エラーへ通知します。`pnpm logs` で直近 100 件、`pnpm logs -- --request-id <ID>` で対象リクエストを確認できます。ログフィールドは許可リスト方式で、HTTP body、cookie、OAuth token、メールアドレス、管理操作理由は記録しません。非公開試合の招待コードはログの URL パスから伏せます。
 
 既存の `pnpm replay`、`pnpm simulate:packs`、`pnpm db:seed`、`pnpm db:reset` も引き続き利用できます。`db:reset` は開発用 DB のみを対象にしてください。
