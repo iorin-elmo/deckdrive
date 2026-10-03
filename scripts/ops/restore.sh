@@ -28,7 +28,7 @@ if [[ ! -f "$DEPLOY_DIR/runtime.env" ]]; then cp -- "$saved_runtime" "$DEPLOY_DI
 chmod 600 "$DEPLOY_DIR/runtime.env" "$compose_release"
 
 DEPLOY_RELEASE_FILE="$compose_release" compose pull api web
-DEPLOY_RELEASE_FILE="$compose_release" compose up -d --wait postgres
+DEPLOY_RELEASE_FILE="$compose_release" compose up -d --wait --wait-timeout 180 postgres
 database="$(DEPLOY_RELEASE_FILE="$compose_release" compose exec -T postgres printenv POSTGRES_DB | tr -d '\r')"
 if [[ "$database" != "$2" || "$database" == postgres || "$database" == template0 || "$database" == template1 ]]; then
   printf 'Database confirmation does not match the production database.\n' >&2
@@ -45,6 +45,6 @@ DEPLOY_RELEASE_FILE="$compose_release" compose exec -T postgres sh -c \
   < "$dump_file"
 mv -- "$compose_release" "$DEPLOY_DIR/release.env"
 rm -f -- "$DEPLOY_DIR/release.previous.env"
-compose up -d --wait api web caddy
+compose up -d --wait --wait-timeout 180 api web caddy
 smoke_check
 printf 'Database and matching application images restored from snapshot %s.\n' "$1"

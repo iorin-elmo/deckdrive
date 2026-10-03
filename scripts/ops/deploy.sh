@@ -31,7 +31,7 @@ recover_images() {
   if [[ "$migration_started" == 1 ]]; then
     compose stop api web || true
   elif [[ "$old_release" == 1 ]]; then
-    compose up -d --wait api web caddy || true
+    compose up -d --wait --wait-timeout 180 api web caddy || true
   else
     compose stop api web || true
   fi
@@ -41,13 +41,13 @@ recover_images() {
 trap recover_images ERR
 
 DEPLOY_RELEASE_FILE="$candidate" compose pull api web
-compose up -d --wait postgres
+compose up -d --wait --wait-timeout 180 postgres
 bash "$OPS_DIR/backup.sh"
 migration_started=1
 DEPLOY_RELEASE_FILE="$candidate" compose run --rm --no-deps api \
   pnpm --filter @deck-drive/api prisma:migrate:deploy
 mv -- "$candidate" "$DEPLOY_DIR/release.env"
-compose up -d --wait api web caddy
+compose up -d --wait --wait-timeout 180 api web caddy
 smoke_check
 bash "$OPS_DIR/install-schedule.sh"
 trap - ERR

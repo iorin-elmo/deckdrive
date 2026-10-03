@@ -7,9 +7,9 @@ require_file "$DEPLOY_DIR/release.env"
 umask 077
 cp -- "$DEPLOY_DIR/release.env" "$DEPLOY_DIR/release.rollback.env"
 cp -- "$DEPLOY_DIR/release.previous.env" "$DEPLOY_DIR/release.env"
-if ! compose up -d --wait api web caddy || ! smoke_check; then
+if ! compose up -d --wait --wait-timeout 180 api web caddy || ! smoke_check; then
   cp -- "$DEPLOY_DIR/release.rollback.env" "$DEPLOY_DIR/release.env"
-  compose up -d --wait api web caddy || true
+  compose up -d --wait --wait-timeout 180 api web caddy || true
   printf 'Image rollback failed; inspect service logs.\n' >&2
   exit 1
 fi

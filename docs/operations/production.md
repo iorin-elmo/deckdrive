@@ -24,11 +24,12 @@ The Pi keeps the runtime secrets; the workflow never uploads them.
    the verified SSH public host-key line, obtained through an independent
    channel; do not use an unchecked `ssh-keyscan` result. The workflow uses
    the short-lived `GITHUB_TOKEN` for GHCR and requires `packages: write`.
-4. Initialize the off-device encrypted repository once with the values from
+4. Initialize a dedicated off-device encrypted repository once with the values from
    `backup.env`: `set -a; source ~/deckdrive-prod/backup.env; set +a; restic
    init`. For SFTP, provision a dedicated remote account/key and verify that
    the deployment user can reach it. Never put the repository on the Pi's
-   local disk.
+   local disk. Retention groups all `deckdrive` snapshots together, including
+   snapshots made after replacing the Pi.
 5. From GitHub Actions, run **Deploy production** on `develop` (or `main`).
    The workflow uploads Compose and operation scripts to `~/deckdrive-prod`.
    It pulls the new images, takes and verifies an encrypted pre-migration DB
