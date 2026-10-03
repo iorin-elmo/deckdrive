@@ -53,7 +53,7 @@ workflow job or made a required check.
 | Integration tests | Required in `quality` | D00 applies the committed migration and development seed to the PostgreSQL service, then verifies persisted replay metadata and a database constraint. |
 | Engine replay regression | Required in `quality` | `pnpm test:replay` reproduces the known replay fixture and rejects a deliberately changed golden result. |
 | E2E | Not introduced | Add after the user-facing flows and Playwright suite exist (W00 and later). |
-| Docker image build | PR `container-build` job | I00 builds API and web images from the committed Dockerfiles; manual production deployment builds/pushes ARM64 images. |
+| Docker image build | PR `container-build` job | I00 builds API and web ARM64 images from the committed Dockerfiles; manual production deployment publishes them. |
 
 The product specification requires lint, formatting, typecheck, unit,
 integration, replay, and build checks for pull requests, plus E2E and Docker
